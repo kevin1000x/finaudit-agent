@@ -60,6 +60,9 @@ OPTIONS    可选的处理方式（至少两个）
 # 阶段状态
 cat .planning/STATE.md
 
+# 校验已冻结实验输入未被改动（声明任何评测/POC 结论前必跑）
+cd docs/agent/poc-01 && sha256sum -c SHA256SUMS
+
 # OpenSpec：提一个变更 / 查看 / 应用 / 归档
 openspec list
 openspec show <change-id>

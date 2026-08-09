@@ -16,6 +16,14 @@
 | `912f89655ff2f24719e6103be69d28b5991d4135cb6bfc2b367ff7071a9969b1` | `field_inventory.md` |
 | `2d2bf51065e2a20a4ea8c58327d73f728d22513c81ec2a9a673fd52b21fd82eb` | `questions.md` |
 
+机器可读副本：`SHA256SUMS`。声明任何基于本次冻结的结论前先跑：
+
+```bash
+cd docs/agent/poc-01 && sha256sum -c SHA256SUMS
+```
+
+（已于 2026-08-10 实跑，5/5 `OK`，exit 0。）
+
 ## 回答者隔离条件
 
 | 条件 | 落实方式 |

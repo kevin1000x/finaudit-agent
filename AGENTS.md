@@ -54,6 +54,10 @@
 - Python 3.11+（本项目独立于 `data secret` 的 3.8.5 冻结环境，不受其约束）
 - 上游数据源：巨潮资讯网、AKShare
 - 已有可复用资产：`kevin1000x/cninfo-financial-analyzer`（年报下载、PDF 解析、中文金融情感词典、Fog 指数、TNI）
+  —— **不在本机**，需要真实字段名时先克隆（POC-01 因此用了替代字段清单）
+- 仓库：`kevin1000x/finaudit-agent`，默认分支 `main`，remote 走 HTTPS + `gh` 凭据助手
+- **可见性：PRIVATE。** D-005 约束至 Phase 4。改为公开是**决策变更**，必须先修订 D-005，不得顺手 `gh repo edit --visibility public`
+- `.gitattributes` 强制 LF 入库：冻结文件的 SHA-256 必须跨平台稳定，这是 D-012 的物理保障，不要改
 
 ## 当前状态
 

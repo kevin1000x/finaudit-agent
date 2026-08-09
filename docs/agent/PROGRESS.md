@@ -53,6 +53,13 @@
 - IMPACT：字段 id 改为按公开准则报表项目自建；POC-01 检验的是口径能否消除分歧而非字段名对齐，不影响判定有效性
 - 处理：记录偏离并继续（`poc-01/FREEZE.md` §已记录偏离）
 
+**同日完成的版本化**
+- `git init -b main`，首次提交 `d940a24`（47 files，5947 insertions）
+- 推送到 `kevin1000x/finaudit-agent`，**可见性 PRIVATE**（D-005：主仓私有至 Phase 4）
+- `.gitattributes` 强制 LF 入库，保障冻结文件 SHA-256 跨平台稳定（D-012 的物理保障）
+- `.gitignore` 增加 `.claude/settings.local.json`
+- 冻结哈希在提交后复验：5/5 MATCH；`sha256sum -c SHA256SUMS` 实跑 exit 0
+
 **产生的待办**
 - Phase 1 前需扩展 `PROJECT_SPEC.md` §5.1 字段集覆盖 C1–C9 → 走 OpenSpec `/opsx:propose`（对权威规格的变更）
 
