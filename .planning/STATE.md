@@ -1,0 +1,90 @@
+---
+gsd_state_version: 1.0
+milestone: v0.1
+milestone_name: 骨架与 cninfo 延伸
+current_phase: 00
+current_phase_name: cninfo 实证结论
+status: poc-01-executed-pass-phase-0-not-started
+stopped_at: POC-01 已执行并判定 PASS；Phase 0 尚未开始，仍无生产代码
+last_updated: "2026-08-09T16:56:00Z"
+last_activity: 2026-08-10
+last_activity_desc: 执行 POC-01（H1 口径可判定性）——3 份口径定义 + 5 道题冻结后交两个独立会话作答，机械比对判定 PASS（4/5 完全一致，压线）；暴露 9 条收敛定义缺陷，证据在 docs/agent/poc-01/
+progress:
+  total_phases: 5
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
+---
+
+# 项目状态
+
+## 项目引用
+
+见 `.planning/PROJECT.md`。
+
+**核心价值**：让 AI 给出的财务分析结论可以被人独立复核。
+**当前焦点**：Phase 0 — cninfo 实证结论
+**权威文档**：`PROJECT_SPEC.md`、`DECISIONS.md`、`EVAL_CASES.md`。`.planning/` 只汇总与路由，不覆盖它们。
+
+## 当前位置
+
+- 阶段：Phase 0（cninfo 实证结论）— **尚未开始**
+- 计划：0 / 0（Phase 0 计划尚未撰写）
+- 状态：POC-01 已执行（PASS），等待 `/gsd-plan-phase` 生成阶段计划
+
+**仍没有任何生产代码。** POC-01 按设计就不产出代码，它产出的是一个判定与 16 条缺陷清单。
+不要把 POC-01 的 PASS 当作 H1 已被证实——两位回答者是同源模型，且完全一致题数恰为阈值下限。
+
+## 已执行的方法论阶段
+
+| 阶段 | 状态 | Artifact |
+|---|---|---|
+| DISCOVER | ✅ 完成 | `docs/agent/IDEA.md` |
+| RESEARCH | ✅ 完成（复用 2026-08-09 多渠道调研） | `docs/agent/RESEARCH.md` |
+| ARCHITECT | ✅ 完成 | `docs/agent/ARCHITECTURE.md` |
+| POC | ✅ POC-01 **已执行**（PASS） | `docs/agent/POC.md` §执行记录、`docs/agent/poc-01/` |
+| PLAN | ⬜ 未开始 | — |
+| IMPLEMENT | ⬜ 未开始 | — |
+| VERIFY | ⬜ 未开始 | — |
+| REVIEW | ⬜ 未开始 | — |
+
+POC-01 于 2026-08-10 执行完毕，判定 **PASS**（4/5 完全一致，压线；取数字段与公式结构 5/5 一致）。
+POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判定门通过。
+
+## 累积上下文
+
+### 关键决策
+
+- D-001 不做通用 Data Agent（竞品 `datafoundry` 7 周 648★ 已占位）
+- D-002 语义层先于 Agent —— 抗风险设计，L1 单独成立
+- D-003 证据链是第一类产物；给不出证据链 = 失败
+- D-004 与 `data secret` 机制复用、资产隔离
+- D-008 每周 ≤ 8 小时，转正优先
+- D-010 仅公开数据，不可协商
+- D-012 评测集在看到模型输出前冻结
+
+### 待解决问题
+
+- U-01 证据链字段集未定，等 Phase 2 复核实验数据
+- U-02 准则语料获取方式未定，Phase 3 前专项调研
+- U-03 CLI 与 TUI 是否双入口，Phase 2 后再定
+
+### 最危险的未验证假设
+
+**H1 口径可判定性 —— 部分缓解，未证实。** POC-01 判定 PASS（证据：`docs/agent/poc-01/`）。
+但两点必须随结论一起传递：① 完全一致题数恰为阈值下限 4，压线通过；
+② 两位回答者是同一基座模型的独立会话，错误相关，支持强度弱于两位真人。
+结论应读作 **H1 未被证伪**，不是 H1 已被证实。
+
+**新增风险：`PROJECT_SPEC.md` §5.1 字段集不足以支撑机械判定。**
+POC-01 暴露 9 条双方收敛缺陷，根因是 `common_pitfalls` 是散文而非可执行规则。Phase 1 前必须扩展字段集。
+
+## 下一步
+
+1. ~~执行 POC-01~~ ✅ PASS（2026-08-10）
+2. **扩展 §5.1 字段集**覆盖 C1–C9（见 `docs/agent/poc-01/COMPARISON.md` §5）→ `/opsx:propose`
+3. `/gsd-plan-phase 01` 规划 Phase 1（20 个指标语义层）
+4. 并行开始 Phase 0（cninfo 实证结论）
+
+推荐入口：`/opsx:propose`（先改规格），再 `/gsd-plan-phase 01`

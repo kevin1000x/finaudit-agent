@@ -1,0 +1,44 @@
+metric_id: revenue_growth_yoy
+display_name: 营业收入同比增长率
+aliases: [营收同比增长, 营业收入增长率, 收入同比]
+version: 1
+
+source_fields:
+  - id: is.operating_revenue_current
+    statement: 合并利润表（本期报表）
+    line_item: 营业收入 —— 本期金额
+  - id: is.operating_revenue_prior_as_presented
+    statement: 合并利润表（本期报表）
+    line_item: 营业收入 —— 上期比较金额，取本期报表列示的数（即重述后数）
+
+formula: >
+  (is.operating_revenue_current - is.operating_revenue_prior_as_presented)
+  / is.operating_revenue_prior_as_presented
+
+period_semantics: 时段
+
+standard_basis:
+  - 《企业会计准则第 14 号——收入》（2017 年修订）
+    —— 界定"营业收入"的确认与列报
+  - 《企业会计准则第 30 号——财务报表列报》第十五、十六条
+    —— 规定比较期数据的列报与可比性要求
+  - 《企业会计准则第 28 号——会计政策、会计估计变更和差错更正》
+    —— 规定追溯重述时比较期数据的调整
+  - 《企业会计准则第 20 号——企业合并》
+    —— 同一控制下合并追溯调整比较期，非同一控制下合并不追溯
+
+common_pitfalls:
+  - 上期数必须取本期报表列示的比较期金额（重述后），不得取上年年报当时原始披露的数。
+    两者不一致时必须标记 restated=true 并记录差异，不得静默选一个。
+  - "营业收入"与"营业总收入"不是同一项目。金融类企业及含利息收入的公司两者差异显著。
+    本口径固定取"营业收入"；若报表仅列示"营业总收入"而无"营业收入"→ undefined，拒答。
+  - 同一控制下企业合并会追溯调整比较期，数值可比但含合并范围变动，
+    必须标记 scope_change=true；非同一控制下合并不追溯，同比数不得解读为内生增长。
+  - 比较期缺失（首次披露、当年新上市、报表期间变更）→ undefined，拒答，
+    不得按 0 处理，也不得用年化或推算值补齐。
+  - 分母 ≤ 0 时 undefined，拒答；不得对分母取绝对值。
+
+undefined_conditions:
+  - is.operating_revenue_prior_as_presented 缺失 → undefined，拒答
+  - is.operating_revenue_prior_as_presented <= 0 → undefined，拒答
+  - 报表仅列示"营业总收入"而无"营业收入" → undefined，拒答

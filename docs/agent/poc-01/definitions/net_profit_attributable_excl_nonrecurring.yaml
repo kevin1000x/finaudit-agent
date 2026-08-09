@@ -1,0 +1,40 @@
+metric_id: net_profit_attributable_excl_nonrecurring
+display_name: 扣除非经常性损益后归属于母公司股东的净利润
+aliases: [扣非归母净利润, 扣非净利润, 扣非后净利润]
+version: 1
+
+source_fields:
+  - id: is.net_profit_attributable_to_parent
+    statement: 合并利润表
+    line_item: 归属于母公司所有者（股东）的净利润
+  - id: notes.nonrecurring_pl_net_attributable_to_parent
+    statement: 财务报表附注「非经常性损益项目及金额」
+    line_item: 归属于母公司股东的非经常性损益净额（已扣除所得税影响及少数股东损益影响）
+
+formula: >
+  is.net_profit_attributable_to_parent
+  - notes.nonrecurring_pl_net_attributable_to_parent
+
+period_semantics: 时段
+
+standard_basis:
+  - 中国证监会《公开发行证券的公司信息披露解释性公告第 1 号——非经常性损益》（2023 年修订）
+    —— 界定非经常性损益的项目范围与列报要求
+  - 《公开发行证券的公司信息披露编报规则第 9 号——净资产收益率和每股收益的计算及披露》（2010 年修订）
+    —— 规定"扣除非经常性损益后"的归母口径用法
+  - 《企业会计准则第 33 号——合并财务报表》
+    —— 界定"归属于母公司所有者的净利润"与少数股东损益的划分
+
+common_pitfalls:
+  - 被减项必须是"归属于母公司所有者的净利润"，不是利润表底部的"净利润"。
+    后者含少数股东损益，先扣非再扣少数股东权益与先扣少数股东权益再扣非结果不同。
+  - 减项必须取附注中"已扣除所得税影响及少数股东损益影响后、归属于母公司股东的非经常性损益净额"，
+    不得使用"非经常性损益项目合计（税前）"。年报附注同时列示这两个数，取错是最常见错误。
+  - 存在追溯重述或会计政策变更的年度，比较期数值以最近一期年报披露的重述后数值为准，
+    并必须标记 restated=true；不得混用重述前后的数。
+  - 非经常性损益的项目清单随证监会解释性公告版本变化（如 2008 / 2023 版差异）。
+    跨版本年度的数值不得直接比较，必须记录所依据的公告版本。
+
+undefined_conditions:
+  - 附注未披露"归属于母公司股东的非经常性损益净额"（仅披露税前合计）→ undefined，拒答
+  - 报表未区分归母与少数股东损益 → undefined，拒答

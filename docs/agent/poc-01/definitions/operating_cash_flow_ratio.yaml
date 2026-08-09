@@ -1,0 +1,40 @@
+metric_id: operating_cash_flow_ratio
+display_name: 经营现金流量比率
+aliases: [现金流量比率, 经营现金流对流动负债比率]
+version: 1
+
+source_fields:
+  - id: cfs.net_cash_flow_from_operating_activities
+    statement: 合并现金流量表
+    line_item: 经营活动产生的现金流量净额
+  - id: bs.total_current_liabilities_period_end
+    statement: 合并资产负债表
+    line_item: 流动负债合计（期末余额）
+
+formula: >
+  cfs.net_cash_flow_from_operating_activities
+  / bs.total_current_liabilities_period_end
+
+period_semantics: 混合 —— 分子为时段（本期累计），分母为时点（期末余额）
+
+standard_basis:
+  - 《企业会计准则第 31 号——现金流量表》
+    —— 界定"经营活动产生的现金流量净额"的构成
+  - 《企业会计准则第 30 号——财务报表列报》第三章
+    —— 界定流动负债与非流动负债的划分标准
+  - 说明：本比率本身不由任何会计准则规定，准则只规定其分子与分母两个报表项目的定义。
+    分子分母的组合方式属于本项目选定口径，跨口径不可比。
+
+common_pitfalls:
+  - 分母固定为"流动负债合计"，不得替换为"负债合计"。
+    两者在本口径下不可互换；使用总负债的比率另立 metric_id，不视为本指标的变体。
+  - 分母是时点值，固定取期末余额，不得使用期初期末平均数。
+    平均口径另立 metric_id（operating_cash_flow_ratio_avg），版本互不兼容。
+  - 分母 ≤ 0 时结果 undefined，必须拒答；不得返回 0、inf 或按绝对值计算。
+  - 分子必须是"经营活动产生的现金流量净额"，不得使用"经营活动现金流入小计"、
+    "销售商品、提供劳务收到的现金"或净利润替代。
+  - 分子为负（经营活动净流出）时比率为负，是有效结果，不是 undefined，不得取绝对值。
+
+undefined_conditions:
+  - bs.total_current_liabilities_period_end <= 0 → undefined，拒答
+  - 报表未单独列示"流动负债合计"（非分类列报的资产负债表）→ undefined，拒答

@@ -1,0 +1,10 @@
+# 仓库以文档与 YAML 为主，统一用 LF 入库，避免 Windows 上 CRLF 污染 diff。
+# 这直接关系到 D-012：冻结文件的 SHA-256 必须跨平台稳定。
+* text=auto eol=lf
+
+# 二进制，不做行尾转换
+*.png binary
+*.jpg binary
+*.gif binary
+*.pdf binary
+*.xlsx binary

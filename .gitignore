@@ -1,0 +1,41 @@
+# 非公开数据的物理隔离（D-010）——这些目录永远不进版本控制
+data/raw/
+data/private/
+data/cache/
+*.internal.*
+*_internal.*
+
+# 下载的年报与中间产物
+*.pdf
+data/parsed/
+data/results/
+reports/
+
+# 凭据
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# 编辑器与系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Agent 工具的本机状态（权限白名单等，因机器而异，不进版本控制）
+.claude/settings.local.json
+.claude/settings.json.bak
+
+# 本地评测输出（评测问题集本身要进版本控制，结果不进）
+eval/runs/
