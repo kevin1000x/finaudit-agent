@@ -6,9 +6,9 @@ current_phase: 00
 current_phase_name: cninfo 实证结论
 status: poc-01-executed-pass-phase-0-not-started
 stopped_at: POC-01 已执行并判定 PASS；Phase 0 尚未开始，仍无生产代码
-last_updated: "2026-08-09T16:56:00Z"
+last_updated: "2026-08-09T17:30:00Z"
 last_activity: 2026-08-10
-last_activity_desc: 执行 POC-01（H1 口径可判定性）——3 份口径定义 + 5 道题冻结后交两个独立会话作答，机械比对判定 PASS（4/5 完全一致，压线）；暴露 9 条收敛定义缺陷，证据在 docs/agent/poc-01/
+last_activity_desc: 执行 POC-01 判定 PASS（证据 docs/agent/poc-01/）；D-004 增加无时序依赖条款；D-008 修订取消时间预算上限改为 changelog 记录，U-04 因前提消失而关闭
 progress:
   total_phases: 5
   completed_phases: 0
@@ -60,7 +60,7 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 - D-002 语义层先于 Agent —— 抗风险设计，L1 单独成立
 - D-003 证据链是第一类产物；给不出证据链 = 失败
 - D-004 与 `data secret` 机制复用、资产隔离，**且无时序依赖**——本项目不以它的任何进度或结论为前置，它永远阻塞也不影响推进到 Phase 4（2026-08-10 补充）
-- D-008 每周 ≤ 8 小时，转正优先
+- D-008 **不设时间预算上限**，投入以 changelog 记录（2026-08-10 修订，原 ≤8h/周 已取消）
 - D-010 仅公开数据，不可协商
 - D-012 评测集在看到模型输出前冻结
 
