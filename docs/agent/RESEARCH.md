@@ -22,7 +22,61 @@
 
 **`FACT`**：`datafoundry` 用 7 周达到 648 star，说明这个方向有真实需求且竞争激烈。
 **`INFERENCE`**：一个校招生的个人项目做通用版无法在功能上竞争，且在面试里回答不了"你和它的区别是什么"。
-**`UNKNOWN`**：这些项目的语义层是否绑定了行业准则依据。已读 README，未读源码，不能断言。
+**`UNKNOWN`**：上表这些项目的语义层是否绑定了行业准则依据。已读 README，未读源码，不能断言。
+（§2.1 对**另一个**更权威的样本给出了 `FACT` 级答案，但不能外推到上表各项。）
+
+## 2.1 `anthropics/financial-services` —— 口径空隙的直接证据（2026-08-10 调研）
+
+Anthropic 官方的金融服务参考实现，34.3k star。README 自述定位：
+
+> "Reference agents, skills, and data connectors for the financial-services workflows we see most — investment banking, equity research, private equity, and wealth management."
+
+规模：11 个命名 agent、7 个垂直 plugin 包、11 个 MCP 数据连接器（Daloopa / Morningstar / S&P Global / FactSet / Moody's / LSEG / PitchBook 等）、约 40 个 skill 与命令（`/comps` `/dcf` `/lbo` `/ic-memo` `/earnings` …）。
+
+### 读了源码后的发现（`FACT`，读的是 `skills/comps-analysis/SKILL.md` 原文，非 README）
+
+| 观察 | 原文 |
+|---|---|
+| 指标是**语义解释**，不是**可执行口径** | `EBITDA — Earnings before interest, tax, depreciation, amortization` |
+| 公式不指明取数行项 | `FCF = Operating CF - CapEx`（未说明营运资金波动、股权激励费用如何处理） |
+| 期间约定给选择不给规则 | `LTM smooths seasonality; quarterly shows trends` |
+| **零准则引用** | 全文无 GAAP / IFRS / 任何权威框架的条号引用 |
+| 缺失数据只要求披露，不给协议 | Red Flags 段落只有 `🚩 Missing data without explanation` |
+| 边界是"不适用"而非"拒答" | `Not ideal for: Private companies without comparable public peers…` |
+| `hooks/hooks.json` 内容 | `{"hooks": {}}` —— 目录在，钩子为空 |
+
+### 解读（区分 `FACT` 与 `INFERENCE`）
+
+**`FACT`**：口径在这份参考实现里是**隐式的**——依赖使用者已经知道 EBITDA 该怎么算。
+
+**`INFERENCE`（重要，且必须公平）**：**这不是缺陷，是不同的问题定义。** 它的数据源层级规则写得很硬：
+
+> "ALWAYS follow this data source hierarchy: FIRST: Check for MCP data sources — If S&P Kensho MCP, FactSet MCP, or Daloopa MCP are available, use them exclusively" / "DO NOT use web search"
+
+也就是说，**口径被外包给了数据供应商**。FactSet / S&P 交付的已经是规范化后的数值，口径由供应商保证。在美股 + 付费数据源的语境下这是合理设计，口径问题不是被解决了，是被移出了视野。
+
+**`INFERENCE`**：这恰好划出了本项目的位置。A 股语境里**没有这一层**——巨潮给的是 PDF，AKShare 给的是口径不披露的加工值，非经常性损益是证监会特有构造（无 GAAP 对应物）。供应商规范化层不存在，口径必须自己承担。这直接支持 D-013（PDF 优先）。
+
+**`FACT`（对 D-003 的佐证）**：README 的护栏措辞是
+
+> "These agents draft analyst work product … for review by a qualified professional … every output is staged for human sign-off."
+
+它承认**人必须复核**。本项目的主张正接在这句后面：**除非口径可被机械校验，否则复核成本高到没人真的会做。** 二者是互补而非竞争关系——这是面试里讲差异化最干净的一句。
+
+### 可借鉴的（挑有用的，不照搬）
+
+1. **skill 用纯文件承载**：markdown + JSON、无构建步骤、进 git、由 `scripts/check.py` 校验。
+   这正是 L1 语义层该有的形态，也印证 POC-01 说的"需要一个机械校验器"。
+2. **垂直包的组织方式**：`skills/` + `commands/` + `hooks/` + `.mcp.json` 打成一个包。
+3. **`hooks/` 目录存在但为空** —— 格式支持钩子，参考实现没往里放东西。
+   本项目的 L3 恰恰要把 policy 放进这个位置。**同样的形状，装不同的东西**，是个好讲的对比。
+4. **护栏措辞**可直接借用到 `PROJECT_SPEC.md` 的定位段。
+
+### 不借鉴的
+
+- ❌ 11 个 MCP 数据连接器（全是付费海外源，与 D-010 和 A 股语境无关）
+- ❌ `/dcf` `/lbo` 这类估值建模 skill（不在本项目范围，见 `PROJECT_SPEC.md` §8）
+- ❌ 多垂直领域铺开（D-001：垂直优先，不做通用）
 
 ## 3. 领域卡点（一线从业者的公开判断）
 

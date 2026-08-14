@@ -95,6 +95,43 @@
 
 ---
 
+### 2026-08-10 — 调研 `anthropics/financial-services`，拿到口径空隙的直接证据
+
+**做了什么**：读了该仓库的 README、目录结构、`skills/comps-analysis/SKILL.md` **源文件**（非 README）、`hooks/hooks.json`。
+
+**真实输出（`FACT`，逐字引用见 `docs/agent/RESEARCH.md` §2.1）**
+- Anthropic 官方金融服务参考实现，34.3k star，11 agent / 7 垂直包 / 11 个 MCP 数据连接器 / 约 40 skill
+- 指标定义是**语义解释不是可执行口径**：`EBITDA — Earnings before interest, tax, depreciation, amortization`
+- 公式不指明取数行项：`FCF = Operating CF - CapEx`
+- **零准则引用**，全文无 GAAP / IFRS 条号
+- 缺失数据只要求披露不给协议；边界写成「不适用」而非「拒答」
+- `hooks/hooks.json` 内容是 `{"hooks": {}}`——目录在，钩子为空
+
+**解读（公平版，不是"竞品有缺陷"）**
+它的数据源规则是硬约束：`ALWAYS ... use them exclusively`（FactSet / S&P / Daloopa），
+`DO NOT use web search`。**口径被外包给了数据供应商**。美股 + 付费源语境下这是合理设计——
+口径不是被解决了，是被移出了视野。
+
+而 A 股**没有这一层**：巨潮给 PDF，AKShare 给口径不披露的加工值，
+非经常性损益是证监会特有构造无 GAAP 对应物。供应商规范化层不存在，口径必须自己承担。
+→ 直接支持 D-013。
+
+**对 D-003 的佐证**：其 README 自述护栏为
+`draft analyst work product … staged for human sign-off`——承认人必须复核。
+本项目的主张接在这句之后：**除非口径可机械校验，否则复核成本高到没人真的会做。**
+二者互补而非竞争，这是面试讲差异化最干净的一句。
+
+**决定借鉴的**：文件承载 skill（md + json，无构建，进 git，脚本校验）／垂直包组织方式
+（`skills/` + `commands/` + `hooks/` + `.mcp.json`）／护栏措辞。
+**明确不借鉴的**：11 个付费海外数据连接器、`/dcf` `/lbo` 估值建模、多垂直铺开（D-001）。
+
+**D-013 修正**：操作者指出「口径不明显」是不能当**权威源**的理由，不是不能当**对照**的理由——
+成立，初稿一刀切拒绝雪球是把论据用过头了。修正后判据统一为「能不能当权威源」。
+雪球目前仍不加，但理由换成**边际信息为零**（AKShare 已聚合同类端点，多一个源只多 ToS 暴露面），
+而非「原则上排斥」。将来若确有对照价值，需先修订 D-010。
+
+---
+
 ### 2026-08-10 — D-008 修订：取消时间预算上限，改为 changelog 记录（决策变更，无代码变更）
 
 **触发**：操作者判断「每周 ≤ 8 小时」这类约束在本项目上没有产生价值——不影响技术决策、无法机械执行、却要在 12 个文件里同步维护同一个数字。原话：「时间其实不用做约束，咱们做好 changelog 记录就行」。
