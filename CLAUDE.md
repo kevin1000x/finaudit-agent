@@ -74,6 +74,20 @@ python -m eval.run --suite frozen-01 --report reports/
 
 （评测命令在 Phase 1 实现前不存在，不要假装跑过。）
 
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `kevin1000x/finaudit-agent`（私有），用 `gh` CLI。与 `.planning/`（阶段）、`openspec/changes/`（规格变更）职责不重叠：**改规格 → OpenSpec；推阶段 → GSD；其余 → issue。** 见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+五个 canonical 标签，仓库原先无 label 故无冲突：`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`。见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+Single-context，但**不建 `CONTEXT.md` 与 `docs/adr/`**——决策权威是 `DECISIONS.md`，术语表是 `PROJECT_SPEC.md` §2.1，另建会造出第二个决策落点（D-009）。ADR 以追加 D-0xx 条目的形式落在 `DECISIONS.md`。见 `docs/agents/domain.md`。
+
 ## Skill 与 Hook 的分工
 
 - **Prompt = preference，Hook = policy。** 必须每次执行的动作写进 hook，不要写进提示词。
