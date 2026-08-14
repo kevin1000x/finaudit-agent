@@ -60,8 +60,12 @@
   —— **没有**：审计意见数据（零命中）；README 无任何实证结论
   —— **财务字段极窄**：`METRIC_COLUMNS = ["stock_code","year","roa","ocf"]`，只有 ROA 与 OCF，
      没有三表明细字段。Phase 1 的语义层**不能直接建在它现有数据层上**，须先扩数据层
+  —— **PDF 侧能力比数据侧强**：`src/pdf_parser.py` 已有 pdfplumber/PyMuPDF/OCR 三条文本路径、
+     表格抽取（pdfplumber，可选 camelot/tabula）、章节抽取（`extract_mda_section`）、
+     以及 `identify_financial_statement` / `extract_financial_statements` 雏形。
+     **数据源的正解是年报 PDF 本身，不是 AKShare**——见 D-013。
 - 易混淆仓库（别搞错）：
-  - `cninfo-analyzer-web`（TypeScript）是上面那个的 **Web 前端**，不是分析引擎
+  - `cninfo-analyzer-web`（TypeScript）是上面那个的 **Web 前端**，已克隆到 `../cninfo-analyzer-web`，用于演示
   - `privacy-preserving-agent-poc`（PRIVATE）就是 `data secret`，**D-004 禁止读取、复制、引用**
 - 仓库：`kevin1000x/finaudit-agent`，默认分支 `main`，remote 走 HTTPS + `gh` 凭据助手
 - **可见性：PRIVATE。** D-005 约束至 Phase 4。改为公开是**决策变更**，必须先修订 D-005，不得顺手 `gh repo edit --visibility public`
