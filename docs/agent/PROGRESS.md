@@ -18,6 +18,51 @@
 
 ## 变更日志
 
+### 2026-08-10 — 克隆 cninfo 并实查资产（解除 POC-01 偏离，发现 Phase 0 缺口）
+
+**做了什么**
+- 列出 GitHub 账号全部 10 个仓库，确认三个易混淆项后再动手：
+  - `cninfo-financial-analyzer`（PUBLIC / Python）—— 分析引擎，**本次要的**
+  - `cninfo-analyzer-web`（PUBLIC / TypeScript）—— 上面那个的 Web 前端，**不是**引擎
+  - `privacy-preserving-agent-poc`（PRIVATE）—— 即 `data secret`，**未克隆、未读取**（D-004）
+- 克隆 `cninfo-financial-analyzer` 到 `../cninfo-financial-analyzer`，**与本仓库平级，不在本仓库内**
+
+**真实输出**
+- 规模：23 个 Python 文件 / 8310 行；含 `api/`、`supabase/`、`Dockerfile`，比 `AGENTS.md` 原描述大得多
+- **有**：Fog 指数（`src/text_analyzer.py:265`，中文适配 Gunning-Fog）、中文金融情感词典
+  （`data/dictionaries/`，含 NOTICE.md）、年报下载与 PDF 解析、pipeline + CLI、AKShare + Supabase 缓存
+- **审计意见数据零命中**（`grep -rin "审计意见|非标|audit_opinion|opinion"` 无结果）
+- **README 无任何实证结论**（`grep -nE "结论|发现|显著|p *[<=]|相关性" README.md` 无结果）——
+  证实 handoff 的判断：通篇讲怎么算，没有一条算出了什么
+- 财务字段：`METRIC_COLUMNS = ["stock_code", "year", "roa", "ocf"]`，**只有 ROA 与 OCF**
+
+**三个影响**
+
+1. **POC-01 的偏离已核对，判定不需要修正。** H1 检验的是口径定义能否消除取数分歧，
+   与字段名无关。但替代清单与现实差距比当时估计的大：本次 3 份口径定义所需字段
+   （营业收入 / 归母净利润 / 流动负债合计 / 非经常性损益）**在 cninfo 上一个都没有**。
+   → 推翻了「Phase 1 可直接在 cninfo 数据层上做语义层」这个隐含假设，须先扩数据层。
+   详见 `docs/agent/poc-01/FREEZE.md` §事后核对（追加，未改原记录）。
+
+2. **Phase 0 推荐方向有硬缺口。** 「Fog 指数 vs 非标审计意见」——Fog 有，审计意见没有。
+   与「明确不做：不加新数据源」直接冲突，规划 Phase 0 前必须先做取舍（选项已写入 ROADMAP）。
+
+3. **发现一个支持本项目立论的真实案例。** cninfo 的
+   `ROA_COLUMN_CANDIDATES = ("总资产净利润率(%)", "总资产利润率(%)", "资产报酬率(%)")`，
+   `_first_column()` 取第一个命中的列当 `roa` 且不记录用了哪个。三者分子口径不一定相同。
+   无论是否恰好相等，「静默选择且不留痕」本身就使结果无法独立复核——
+   这正是本项目要消灭的失效模式，出现在自己的上游仓库里，不是假想案例。
+
+**没做什么**
+- 没有克隆或读取 `privacy-preserving-agent-poc`（D-004）
+- 没有克隆 `cninfo-analyzer-web`（Phase 0 不需要前端）
+- 没有修改 cninfo 仓库的任何文件
+- 没有把 cninfo 的任何代码或数据复制进本仓库
+
+**同步更新**：`AGENTS.md` §环境（资产描述与易混淆仓库）、`.planning/ROADMAP.md` Phase 0（前置解除 + 方向缺口与选项）、`docs/agent/poc-01/FREEZE.md`（事后核对）
+
+---
+
 ### 2026-08-10 — D-008 修订：取消时间预算上限，改为 changelog 记录（决策变更，无代码变更）
 
 **触发**：操作者判断「每周 ≤ 8 小时」这类约束在本项目上没有产生价值——不影响技术决策、无法机械执行、却要在 12 个文件里同步维护同一个数字。原话：「时间其实不用做约束，咱们做好 changelog 记录就行」。

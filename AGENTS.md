@@ -53,8 +53,16 @@
 
 - Python 3.11+（本项目独立于 `data secret` 的 3.8.5 冻结环境，不受其约束）
 - 上游数据源：巨潮资讯网、AKShare
-- 已有可复用资产：`kevin1000x/cninfo-financial-analyzer`（年报下载、PDF 解析、中文金融情感词典、Fog 指数、TNI）
-  —— **不在本机**，需要真实字段名时先克隆（POC-01 因此用了替代字段清单）
+- 已有可复用资产：`kevin1000x/cninfo-financial-analyzer`（PUBLIC，Python，23 文件 / 8310 行）
+  —— 已于 2026-08-10 克隆到 `../cninfo-financial-analyzer`（与本仓库平级，**不在本仓库内**）
+  —— **有**：Fog 指数（中文适配 Gunning-Fog，`src/text_analyzer.py`）、中文金融情感词典
+     （`data/dictionaries/`，按 NOTICE.md 引用）、年报下载与 PDF 解析、pipeline + CLI、AKShare + Supabase 缓存
+  —— **没有**：审计意见数据（零命中）；README 无任何实证结论
+  —— **财务字段极窄**：`METRIC_COLUMNS = ["stock_code","year","roa","ocf"]`，只有 ROA 与 OCF，
+     没有三表明细字段。Phase 1 的语义层**不能直接建在它现有数据层上**，须先扩数据层
+- 易混淆仓库（别搞错）：
+  - `cninfo-analyzer-web`（TypeScript）是上面那个的 **Web 前端**，不是分析引擎
+  - `privacy-preserving-agent-poc`（PRIVATE）就是 `data secret`，**D-004 禁止读取、复制、引用**
 - 仓库：`kevin1000x/finaudit-agent`，默认分支 `main`，remote 走 HTTPS + `gh` 凭据助手
 - **可见性：PRIVATE。** D-005 约束至 Phase 4。改为公开是**决策变更**，必须先修订 D-005，不得顺手 `gh repo edit --visibility public`
 - `.gitattributes` 强制 LF 入库：冻结文件的 SHA-256 必须跨平台稳定，这是 D-012 的物理保障，不要改
