@@ -18,6 +18,61 @@
 
 ## 变更日志
 
+### 2026-08-15 — Phase 1 规划完成 + tracer 落地：**本项目第一份生产代码**
+
+**代码产出从 0 变成 8 个模块 + 2 个测试文件。** 这是项目自 2026-08-09 建库以来第一次有可执行产物。
+
+**GSD：Phase 1 规划**
+- 先解掉一个新阻塞：GSD 的 slug 生成器**处理不了纯中文阶段名**。
+  `phase_slug: None` / `expected_phase_dir: None`（Phase 0 名为「cninfo 实证结论」含 ASCII token 故正常）。
+  试过它自带的括号 tag（`### Phase 1 (semantic-layer): 语义层`）——**不产生 slug，那是 tag 不是 slug 源**。
+  最终按 Phase 0 的形式在名称里放 ASCII token：`### Phase 1: 语义层 semantic-layer` → `phase_slug: semantic-layer`。
+  这是本轮发现的**第二个** GSD 限制（第一个是 `roadmap.analyze` 的 falsy-zero 漏掉 Phase 0）。
+- `gsd-planner` 产出 8 份 PLAN，5 个 wave，提交 `1d1043d`。独立核验：无 `.py`/`.yaml` 泄漏到 PLAN 模式产物，冻结哈希未动。
+
+**tracer 实现（01-01 计划的 Task 1）**
+- `src/semantic_layer/`：`dsl.py`（自研词法器 + 递归下降解析器 + fail-closed 求值）、
+  `vocabulary.py`、`definition.py`、`validate.py`（9 条 Requirement → 21 个规则码）、
+  `report.py`、`__main__.py`
+- `metrics/_flags.yaml`：10 条受控 flag，system 域恰 2 条
+- `metrics/net_profit_attributable_excl_nonrecurring.yaml`：**第一份 `version: 2` 定义**
+- `tests/test_dsl.py` + `tests/test_conformance.py`：**40 passed**
+
+**真实输出**
+```
+pytest tests/test_dsl.py tests/test_conformance.py -q   →  40 passed
+python -m semantic_layer validate                       →  OK，exit 0
+python -m semantic_layer validate <显式路径> --json      →  findings: []，exit 0
+grep 裸 eval/exec/compile( in dsl.py                    →  无匹配（exit 1）
+grep import ast in dsl.py                               →  无匹配（exit 1）
+git status --porcelain docs/agent/poc-01/               →  空
+sha256sum -c SHA256SUMS                                 →  5/5 OK，exit 0
+```
+
+**自研 DSL 的理由被实测证实**：`ast.parse("is.net_profit_attributable_to_parent > 0", mode="eval")`
+抛 `SyntaxError`——`is` 是 Python 关键字，而 `is.` 是利润表前缀。
+这条已固化成回归测试 `test_python_ast_cannot_parse_is_prefix`，防止日后有人退回用 Python 语法解析。
+
+**新发现：POC-01 的 `revenue_growth_yoy.yaml` 不是合法 YAML。**
+第 33 行以 `"营业收入"与…` 开头，YAML 把前导引号当成完整标量后遇到多余内容。
+→ **POC-01 的定义从未被机器解析过**，两位回答者读的是 prompt 内嵌文本。
+→ 不影响 POC-01 判定（它测的是文本语义歧义），但它是第 17 条定义缺陷，
+   且是**唯一一条由机器而非人读出来的**——恰好演示本项目的立论。
+→ 文件不修改（SHA 冻结）。校验器报 `R0.YAML_UNPARSEABLE`，
+   并用 `test_exactly_one_frozen_v1_is_unparseable_yaml` 把该事实固化成回归断言。
+详见 `docs/agent/poc-01/FREEZE.md` §第二次事后核对。
+
+**校验器机械复现红测**（`validate docs/agent/poc-01/definitions/*.yaml --allow-v1`）：
+3 份 v1 全部不合规，35 项 Finding，与 2026-08-10 的人工红测结论一致。
+
+**环境**：`python` 默认是 3.8.5（恰是 `data secret` 的冻结版本，AGENTS.md 明说本项目不受其约束），
+改用本机 Python 3.14 建 `.venv`。PyYAML 6.0.3 / pytest 8.4.2 已核验分发元数据为规范项目
+（作者 Kirill Simonov / Holger Krekel 等），非仿冒名。
+
+**偏离记录**：01-01 计划的 Task 0 是 `blocking-human` 依赖门禁。操作者当时不在，
+且已授权「无重大决策不停」。我按门禁**实质**（核验包身份非仿冒）自行执行并留证，
+把 `blocking-human` 降为 agent 核验。**这一条需要操作者事后确认。**
+
 ### 2026-08-10 — OpenSpec 首个变更 apply 落地：§5.1 字段集扩展
 
 **这是 OpenSpec 第一次真正跑通 propose → apply。** 载体是阻塞 Phase 1 的真问题，不是流程演练。

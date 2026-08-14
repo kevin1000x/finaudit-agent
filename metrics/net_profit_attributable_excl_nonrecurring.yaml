@@ -1,0 +1,84 @@
+metric_id: net_profit_attributable_excl_nonrecurring
+display_name: 扣除非经常性损益后归属于母公司股东的净利润
+aliases:
+  - 扣非归母净利润
+  - 扣非净利润
+  - 扣非后净利润
+version: 2
+
+grain:
+  entity: stock_code
+  period: fiscal_year
+  period_type: annual
+
+source_fields:
+  - id: is.net_profit_attributable_to_parent
+    statement: 合并利润表
+    line_item: 归属于母公司所有者（股东）的净利润
+    sign_convention: 收益记正_损失记负
+    missing_representation: null
+
+  - id: notes.nonrecurring_pl_net_attributable_to_parent
+    statement: 财务报表附注「非经常性损益项目及金额」
+    line_item: 归属于母公司股东的非经常性损益净额（已扣除所得税影响及少数股东损益影响）
+    sign_convention: 收益记正_损失记负
+    missing_representation: null
+
+  - id: notes.restatement_flag
+    statement: 财务报表附注
+    line_item: 比较期是否经追溯重述
+    missing_representation: null
+
+formula: >
+  is.net_profit_attributable_to_parent
+  - notes.nonrecurring_pl_net_attributable_to_parent
+
+period_semantics: 时段
+
+derivation:
+  allow_from_components: false
+  note: >
+    禁止由「非经常性损益项目合计（税前） − 所得税影响额 − 少数股东部分」倒推归母非经常性损益净额。
+    附注未直接披露归母净额时按 undefined_conditions 拒答，不做推算。
+
+standard_basis:
+  - name: 公开发行证券的公司信息披露解释性公告第 1 号——非经常性损益
+    issuer: 中国证监会
+    article: 全文
+    version: "2023"
+  - name: 公开发行证券的公司信息披露编报规则第 9 号——净资产收益率和每股收益的计算及披露
+    issuer: 中国证监会
+    article: 第三条
+    version: "2010"
+  - name: 企业会计准则第 33 号——合并财务报表
+    issuer: 财政部
+    article: 第五章
+    version: "2014"
+
+flags:
+  - name: restated
+    trigger: notes.restatement_flag == true
+  - name: basis_version_mismatch
+    trigger: standard_basis.version != comparison_period.standard_basis.version
+
+undefined_conditions:
+  - expr: is_missing(notes.nonrecurring_pl_net_attributable_to_parent)
+    reason: 附注未披露「归属于母公司股东的非经常性损益净额」，仅有税前合计时不得倒推
+  - expr: is_missing(is.net_profit_attributable_to_parent)
+    reason: 报表未区分「归属于母公司所有者的净利润」与少数股东损益
+
+common_pitfalls:
+  - text: 被减项必须是「归属于母公司所有者的净利润」，不是利润表底部的「净利润」；后者含少数股东损益
+    enforced_by: source_fields.id
+
+  - text: 减项须取已扣所得税影响及少数股东损益影响后的归母净额，不得使用「非经常性损益项目合计（税前）」
+    enforced_by: undefined_conditions.0
+
+  - text: 存在追溯重述或会计政策变更的年度，比较期数值以最近一期年报披露的重述后数值为准
+    enforced_by: flags.restated
+
+  - text: 非经常性损益的项目清单随证监会解释性公告版本变化，跨版本年度的数值不得直接比较
+    enforced_by: flags.basis_version_mismatch
+
+  - text: 该指标在亏损年度的经济含义需结合行业周期判断，不宜单独作为经营质量的结论
+    advisory_only: true

@@ -60,6 +60,38 @@ cninfo 现有财务数据层只有 `METRIC_COLUMNS = ["stock_code", "year", "roa
 这不推翻 POC-01，但推翻了「Phase 1 可以直接在 cninfo 数据层上做语义层」这个隐含假设。
 已记入 `AGENTS.md` §环境 与 `docs/agent/PROGRESS.md`。
 
+### 第二次事后核对（2026-08-15，L1 校验器首次机械解析这批文件后追加）
+
+**`revenue_growth_yoy.yaml` 不是合法 YAML。** 第 33 行以 `"营业收入"与"营业总收入"…` 开头，
+YAML 把前导的 `"营业收入"` 当作一个完整的引号标量，随后遇到多余内容 →
+`ParserError: expected <block end>, but found '<scalar>'`。
+
+**这说明 POC-01 的定义从未被机器解析过。** 两位回答者读的是 prompt 里内嵌的文本，
+语法层的错误因此一直没有暴露。
+
+**对 POC-01 判定的影响：无。** POC-01 检验的是「两位读者读同一份文本后，取数路径是否一致」，
+两人看到的内容与文件语法是否合法无关，PASS 不需要修正。
+
+**但它是一条应当计入的定义缺陷**，且性质特殊：前 16 条缺陷是人读出来的，这一条是机器读出来的。
+它恰好演示了本项目的立论——**机械校验能抓到人眼读不出的东西**。
+
+**文件不修改。** SHA 冻结（kill criterion + D-012），且修改它会使上方全部哈希失效。
+处理方式是让校验器把「无法解析」报成 `R0.YAML_UNPARSEABLE`，
+并在 `tests/test_conformance.py::test_exactly_one_frozen_v1_is_unparseable_yaml`
+把这个事实固化成回归断言——语法非法的文件集合一旦变化即说明冻结目录被动过。
+
+校验器实测（`python -m semantic_layer validate docs/agent/poc-01/definitions/*.yaml --allow-v1`）：
+
+| 文件 | 规则命中 | 合计 |
+|---|---|---|
+| `net_profit_attributable_excl_nonrecurring.yaml` | R1×1 R2×2 R3×1 R4×1 R5×3 R6×2 R7×2 R8×4 | 16 |
+| `operating_cash_flow_ratio.yaml` | R1×2 R2×2 R3×1 R4×1 R5×3 R6×2 R7×2 R8×5 | 18 |
+| `revenue_growth_yoy.yaml` | R0×1（加载即失败，9 条 Requirement 无从校验） | 1 |
+
+三份全部不合规，与 2026-08-10 的人工红测结论一致。
+
+---
+
 **顺带发现（对本项目立论是正面证据）**：cninfo 的 `src/financial_data_sources.py` 里
 `ROA_COLUMN_CANDIDATES = ("总资产净利润率(%)", "总资产利润率(%)", "资产报酬率(%)")`，
 `_first_column()` 按顺序取第一个命中的列当 `roa`，**且不记录用了哪一个**。

@@ -1,0 +1,71 @@
+# 全局受控 flag 词表（PROJECT_SPEC.md §5.1「全局 flag 词表」）
+#
+# 指标定义只能**引用**本表，不得自造 flag。新增 flag 是对本表的变更，走独立评审。
+# 本文件只枚举标记，不定义任何字段语义——它不是第三份权威文档（D-009）。
+#
+# scope 语义：
+#   definition —— 由指标定义声明并给出可求值 trigger
+#   system     —— 由运行时产出，**定义文件内不得声明**，声明即 R4 不合规
+
+vocabulary_version: 1
+
+flags:
+  - name: restated
+    description: 比较期数值经追溯重述或会计政策变更调整，与原始披露数不一致
+    scope: definition
+    affects_comparability: true
+    introduced_by: POC-01 C5
+
+  - name: basis_version_mismatch
+    description: 本期与比较期所依据的准则/公告版本不同，跨版本数值不可直接比较
+    scope: definition
+    affects_comparability: true
+    introduced_by: POC-01 C8
+
+  - name: metric_version_mismatch
+    description: 参与比较的两期结论由不同版本的口径定义产出
+    scope: system
+    affects_comparability: true
+    introduced_by: spec R9
+
+  - name: scope_change
+    description: 合并范围发生变动（同一控制下合并追溯调整比较期）
+    scope: definition
+    affects_comparability: true
+    introduced_by: POC-01 C7
+
+  - name: parent_only_scope
+    description: 取数来自母公司报表而非合并报表
+    scope: definition
+    affects_comparability: true
+    introduced_by: POC-01 S6
+
+  - name: unaudited
+    description: 数据来源于未经审计的报告期（如季报、中期财务报表）
+    scope: definition
+    affects_comparability: false
+    introduced_by: POC-01 S6
+
+  - name: unit_scale_mismatch
+    description: 参与运算的字段计量单位不一致（元 / 万元 / 千元）
+    scope: definition
+    affects_comparability: true
+    introduced_by: POC-01 S6
+
+  - name: currency_mismatch
+    description: 参与运算的字段记账本位币不一致
+    scope: definition
+    affects_comparability: true
+    introduced_by: POC-01 S6
+
+  - name: period_length_mismatch
+    description: 本期与比较期的期间长度不同（如报表期间变更、当年新上市）
+    scope: definition
+    affects_comparability: true
+    introduced_by: POC-01 Q4
+
+  - name: source_disagreement
+    description: 年报 PDF 抽取值与对照源（AKShare）不一致，该不一致本身作为证据记录
+    scope: system
+    affects_comparability: false
+    introduced_by: D-013

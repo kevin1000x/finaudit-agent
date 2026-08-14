@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finaudit-semantic-layer"
+version = "0.1.0"
+description = "可审计财务分析 Agent 的 L1 语义层：口径定义的结构契约与机械校验器"
+requires-python = ">=3.11"
+dependencies = ["pyyaml>=6.0.3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.4.2"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

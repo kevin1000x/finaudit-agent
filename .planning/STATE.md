@@ -4,11 +4,11 @@ milestone: v0.1
 milestone_name: 骨架与 cninfo 延伸
 current_phase: 00
 current_phase_name: cninfo 实证结论
-status: poc-01-executed-pass-phase-0-not-started
-stopped_at: POC-01 已执行并判定 PASS；Phase 0 尚未开始，仍无生产代码
-last_updated: "2026-08-09T17:30:00Z"
-last_activity: 2026-08-10
-last_activity_desc: 执行 POC-01 判定 PASS（证据 docs/agent/poc-01/）；D-004 增加无时序依赖条款；D-008 修订取消时间预算上限改为 changelog 记录，U-04 因前提消失而关闭
+status: phase-1-tracer-landed-first-production-code
+stopped_at: Phase 1 tracer 已落地（40 tests passed），wave 2-5 待执行；Phase 0 尚未开始
+last_updated: "2026-08-15T04:40:00Z"
+last_activity: 2026-08-15
+last_activity_desc: 打通三框架（OpenSpec 完整跑通 propose→apply→archive；GSD 解析阻塞解除并产出 8 份 PLAN）；实现 Phase 1 tracer——自研受限布尔 DSL + 9 条 Requirement 校验器 + 首份 version 2 定义，40 tests passed，本项目第一份生产代码
 progress:
   total_phases: 5
   completed_phases: 0
@@ -30,10 +30,10 @@ progress:
 ## 当前位置
 
 - 阶段：Phase 0（cninfo 实证结论）— **尚未开始**
-- 计划：0 / 0（Phase 0 计划尚未撰写）
+- 计划：Phase 1 有 8 份 PLAN（5 个 wave），已执行 wave 1 的 tracer；Phase 0 计划尚未撰写
 - 状态：POC-01 已执行（PASS），等待 `/gsd-plan-phase` 生成阶段计划
 
-**仍没有任何生产代码。** POC-01 按设计就不产出代码，它产出的是一个判定与 16 条缺陷清单。
+**已有第一份生产代码**（`src/semantic_layer/`，40 tests passed）。POC-01 本身按设计不产出代码。
 不要把 POC-01 的 PASS 当作 H1 已被证实——两位回答者是同源模型，且完全一致题数恰为阈值下限。
 
 ## 已执行的方法论阶段
