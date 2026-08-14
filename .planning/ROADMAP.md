@@ -16,7 +16,7 @@
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [ ] **Phase 0: cninfo 实证结论** - 不写新代码，给已有仓库补一条可复现的实证结论
-- [ ] **Phase 1: 语义层** - 20 个财务指标的机器可读口径定义，本项目唯一别人抄不走的一层
+- [ ] **Phase 1: 语义层 semantic-layer** - 20 个财务指标的机器可读口径定义，本项目唯一别人抄不走的一层
 - [ ] **Phase 2: TUI 与可信执行层** - 跑通一次完整问答并产出可复核的证据链
 - [ ] **Phase 3: 知识层** - 准则 RAG（引用可追溯）+ 条件性图谱
 - [ ] **Phase 4: 评测闭环与对外材料** - 分层评测报告与对外展示物
@@ -56,7 +56,7 @@ Fog 指数已实现（`src/text_analyzer.py:265`，中文适配 Gunning-Fog）�
 Plans:
 - [ ] TBD
 
-### Phase 1: 语义层
+### Phase 1: 语义层 semantic-layer
 **Goal**: 产出 20 个核心财务指标的机器可读口径定义，并使其能被脚本机械消费而不只是给人看（D-002）。
 **Depends on**: Nothing (独立，不依赖 Phase 0)；但字段集须先由 OpenSpec 变更 `extend-metric-definition-schema` 落地
 **Success Criteria** (what must be TRUE):
@@ -65,14 +65,24 @@ Plans:
   3. C2 类拒答准确率 = 100%——一个都不能猜
   4. 评测问题集 ≥ 20 题（C1–C5 五类）已冻结，带时间戳与哈希（AC-04 / D-012）
   5. 非公开数据自动扫描通过，仓库零非公开数据（AC-10）
-**Plans**: TBD
+**Plans**: 8 plans（5 个 wave）
 
 **可对外**：本阶段结束时把 `metrics/` + 问题集单独开源为姊妹仓库（D-005）。
 **明确不做**：不做 Agent、不做 TUI、不做 RAG。
 **输入**：POC-01 暴露的 9 条收敛缺陷（`docs/agent/poc-01/COMPARISON.md` §5）。
 
+**注**：本阶段无 `REQUIREMENTS.md`，各计划的 `requirements` 字段用本节的 Success Criteria
+（记为 SC-1…SC-5）与 `PROJECT_SPEC.md` §9 的 AC 编号替代。
+
 Plans:
-- [ ] TBD
+- [ ] 01-01-PLAN.md — 语义层内核 tracer：受限布尔 DSL + 9 条 Requirement 校验器 + 全局 flag 词表 + 第 1 份 version: 2 定义 + 机读拒答（wave 1）
+- [ ] 01-02-PLAN.md — OpenSpec 变更：把条件表达式语法与 flag 词表位置写进权威文档（wave 2）
+- [ ] 01-03-PLAN.md — 门禁命令：AC-10 非公开数据扫描器 + advisory_only 元规则统计（wave 2）
+- [ ] 01-04-PLAN.md — 指标批次 A：利润表与盈利能力 6 个（wave 3）
+- [ ] 01-05-PLAN.md — 指标批次 B：资产负债表与偿债 6 个（wave 3）
+- [ ] 01-06-PLAN.md — 指标批次 C：现金流与周转 7 个 + 现金循环周期的显式排除（wave 3）
+- [ ] 01-07-PLAN.md — 评测问题集 20 题与冻结（含不可逆决策检查点）+ C2 类拒答 100%（wave 4）
+- [ ] 01-08-PLAN.md — 收口验证：全量门禁实测、元规则判定、H1 停止条件判定、VERIFICATION.md（wave 5）
 
 ### Phase 2: TUI 与可信执行层
 **Goal**: 跑通一次完整问答，并产出能让人独立复核的证据链，验证 H2。
