@@ -84,21 +84,112 @@ L0  数据层            年报下载 · PDF 解析 · 情感词典 · Fog · TN
 
 ### 5.1 L1 语义层
 
-每个指标一个 YAML 文件，至少包含：
+> 本节的**行为契约**是 `openspec/specs/semantic-layer/metric-definition/spec.md` 的 9 条 Requirement。
+> 本节是人读的字段说明，二者一一对应、不重复权威（D-009）。冲突时以本文件为准。
+>
+> 字段集于 2026-08-10 由 OpenSpec 变更 `extend-metric-definition-schema` 扩展。
+> 扩展依据：POC-01 暴露的 9 条双方收敛缺陷（`docs/agent/poc-01/COMPARISON.md` §5）。
+> **旧字段集撑不住机械判定**，根因是 `common_pitfalls` 是散文而非可执行规则。
+
+每个指标一个 YAML 文件，字段集如下：
 
 ```yaml
 metric_id: net_profit_attributable_excl_nonrecurring
 display_name: 扣除非经常性损益后归属于母公司股东的净利润
-version: 1
-source_fields: [...]          # 数据来源字段
-formula: ...                  # 计算公式（可执行表达式）
-standard_basis: ...           # 准则依据（条号）
-period_semantics: 时段        # 时点 / 时段
-common_pitfalls:              # 至少 3 条
-  - ...
+aliases: [扣非归母净利润, 扣非净利润]
+version: 2                    # 见下方「版本号语义」
+
+grain:                        # 数据粒度 —— 缺此项公式无法定位到唯一一行
+  entity: stock_code          # 实体维度
+  period: fiscal_year         # 期间维度
+  period_type: annual         # 报告期类型：annual / semi_annual / quarterly
+
+source_fields:
+  - id: is.net_profit_attributable_to_parent
+    statement: 合并利润表
+    line_item: 归属于母公司所有者（股东）的净利润
+    sign_convention: 收益记正_损失记负   # 参与加减的字段必填
+    missing_representation: null        # 「缺失」如何表达，须与「取值为零」可区分
+  - id: notes.nonrecurring_pl_net_attributable_to_parent
+    statement: 财务报表附注
+    line_item: 归属于母公司股东的非经常性损益净额（已扣所得税及少数股东损益影响）
+    sign_convention: 收益记正_损失记负
+    missing_representation: null
+
+formula: >
+  is.net_profit_attributable_to_parent
+  - notes.nonrecurring_pl_net_attributable_to_parent
+
+period_semantics: 时段        # 时点 / 时段 / 混合
+
+derivation:                   # 必填，二选一，不得留空
+  allow_from_components: false
+  note: 禁止由「税前合计 − 所得税影响 − 少数股东部分」倒推归母净额
+
+standard_basis:               # 结构化条目，每条须含名称 + 条号 + 版本
+  - name: 公开发行证券的公司信息披露解释性公告第 1 号——非经常性损益
+    issuer: 中国证监会
+    article: 全文
+    version: "2023"
+  - name: 企业会计准则第 33 号——合并财务报表
+    issuer: 财政部
+    article: 第五章
+    version: "2014"
+
+flags:                        # 只能引用全局词表，不得自造
+  - name: restated
+    trigger: notes.restatement_flag == true
+  - name: basis_version_mismatch
+    trigger: standard_basis.version != comparison_period.standard_basis.version
+
+undefined_conditions:         # 每条须可对给定数据求值；命中即拒答
+  - expr: is_missing(notes.nonrecurring_pl_net_attributable_to_parent)
+    reason: 附注未披露归母非经常性损益净额
+
+common_pitfalls:              # 每条须满足元规则，见下
+  - text: 被减项必须是归母净利润，不是利润表底部的净利润
+    enforced_by: source_fields.id            # 有可求值规则承载
+  - text: 非经常性损益项目清单随证监会公告版本变化
+    enforced_by: flags.basis_version_mismatch
+  - text: 该指标在亏损年度的经济含义需结合行业判断
+    advisory_only: true                      # 无机械后果，显式标注
 ```
 
-版本号变更即视为口径变更，历史结论不可跨版本比较。
+#### 元规则（本次扩展的核心，BREAKING）
+
+**每一条 `common_pitfalls` 必须要么由一条可求值规则承载（`enforced_by` 指向某个 flag 触发条件、
+`undefined_conditions` 条目或字段约束），要么显式标注 `advisory_only: true`。**
+
+既无 `enforced_by` 又无 `advisory_only` 的陷阱条目 → 该定义不合规。
+
+这条规则防止「散文冒充规则」重新长回来。POC-01 的 9 条收敛缺陷中有 5 条同源于此。
+
+监控指标：Phase 1 结束时统计 `advisory_only` 占比。**> 50% 视为元规则失效**，须重新设计而非接受现状。
+
+#### 版本号语义
+
+版本号在本项目里的**唯一用途**是判定「两期结论能不能比」。因此它只对影响可比性的改动敏感：
+
+- **必须 bump**：`grain` / `source_fields` / `formula` / `sign_convention` / `derivation` /
+  flag 触发条件 / `undefined_conditions` 的任何改动
+- **不 bump**：`advisory_only` 陷阱文本、`display_name`、`aliases` 的措辞调整
+
+版本号变更即视为口径变更，**历史结论不可跨版本比较**，证据链须携带 `metric_id` 与版本号。
+
+#### 全局 flag 词表
+
+flag 的价值在于跨指标一致，因此**词表全局唯一，指标只能引用不能自造**。
+词表位置在 Phase 1 有 5 个以上真实 flag 后确定（候选：本文件内 / 独立文件）。
+新增 flag 是对词表的变更，走独立评审，不由单个指标定义顺手引入。
+
+#### 与 POC-01 定义的关系
+
+POC-01 的 3 份定义停留在 `version: 1`，**不迁移、不改写**，作为旧 schema 的历史样本保留
+（`POC.md` 的 kill criterion 禁止「改定义直到通过」；`SHA256SUMS` 冻结校验须始终通过）。
+
+新 schema 下的定义**从 `version: 2` 起**。红测已确认：v1 与 v2 之间没有任何一条 Requirement
+是共同满足的（27 格矩阵 `PASS` 为 0，见 `openspec/changes/extend-metric-definition-schema/conformance-checklist.md`），
+因此跨版本比较在技术上也确实无意义。
 
 ### 5.2 L3 可信执行层
 
@@ -143,7 +234,11 @@ Hook 是策略（policy），不是建议（preference）。Prompt 里写"请校
 
 Phase 0–1 的阻塞性标准：
 
-- **AC-01**：语义层覆盖至少 20 个核心财务指标，每个含字段映射、公式、准则依据、≥3 条常见陷阱。
+- **AC-01**：语义层覆盖至少 20 个核心财务指标，每个满足 §5.1 的完整字段集——
+  `grain` / `source_fields`（含 `sign_convention` 与 `missing_representation`）/ `formula` /
+  `period_semantics` / `derivation` / 结构化 `standard_basis`（名称 + 条号 + 版本）/
+  `flags`（引用全局词表，带可求值触发条件）/ `undefined_conditions`（可求值）/
+  ≥3 条 `common_pitfalls`，且**每条陷阱满足元规则**（有 `enforced_by` 或标 `advisory_only`）。
 - **AC-02**：口径定义缺失时系统拒绝作答，且拒答理由可机读。
 - **AC-03**：`cninfo` 产出至少一条可复现的实证结论，含数据范围、方法、显著性、局限。
 - **AC-04**：评测问题集 ≥ 20 题，每题有标准答案与判定规则，且**在看到模型输出前冻结**。

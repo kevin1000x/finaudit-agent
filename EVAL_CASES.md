@@ -59,6 +59,11 @@ attribution_hint: null             # 仅用于事后分析，判分时不可见
 
 C2 类题目的正确行为是**拒绝作答并给出机读理由**。
 
+> 判定依赖 `PROJECT_SPEC.md` §5.1 的 `undefined_conditions` **可对给定数据求值**这一约束
+> （行为契约见 `openspec/specs/semantic-layer/metric-definition/spec.md` R7）。
+> 若某条未定义条件写成不可求值的自然语言，则该题无法机械判定——
+> 这不算模型失败，算**定义不合规**，须先修定义再评测。
+
 - 拒答且理由正确 → `PASS`
 - 拒答但理由错误 → `FAIL`（归因：口径层）
 - 强行给出答案 → `FAIL`（归因：口径层），**即使数字碰巧对也算失败**

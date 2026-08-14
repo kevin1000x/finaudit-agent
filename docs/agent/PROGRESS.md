@@ -18,6 +18,45 @@
 
 ## 变更日志
 
+### 2026-08-10 — OpenSpec 首个变更 apply 落地：§5.1 字段集扩展
+
+**这是 OpenSpec 第一次真正跑通 propose → apply。** 载体是阻塞 Phase 1 的真问题，不是流程演练。
+
+**红测先行（tasks.md 第 2 组，先于契约定稿完成）**
+本变更不产出代码，无法写单元测试。等价红测是：用新契约去检验 POC-01 的 3 份 `version: 1` 定义，
+**它们必须不合规**；若竟然合规，说明契约没加强约束，变更即失败。
+
+真实结果（`openspec/changes/extend-metric-definition-schema/conformance-checklist.md`）：
+- 27 格矩阵：**`FAIL` 27 / `PARTIAL` 6 / `PASS` 0**
+- 红测判据 R1 数据粒度 / R2 符号约定 / R4 标记受控词表 / R8 陷阱可执行 —— **各 3/3 `FAIL`**
+- 不合规点与 POC-01 两位独立回答者收敛的 9 条缺陷高度重合
+  （R1↔C1、R2↔C4、R3↔C3、R4↔C2+C5、R5↔C8、R6↔C7，R8 为根因项）
+- 被检的 3 份定义**全程未改动**（kill criterion + D-012）
+
+**附带发现**：`PASS` 为 0 意味着这不是「在旧字段集上加几个字段」，而是**换了一套契约**。
+因此 D5（v1 不迁移、新定义从 `version: 2` 起）不只是流程洁癖——
+v1 与 v2 没有任何一条 Requirement 共同满足，跨版本比较在技术上也确实无意义。
+
+**落地了什么**
+- `PROJECT_SPEC.md` §5.1 重写：新增 `grain` / `sign_convention` / `missing_representation` /
+  `derivation` / `flags`（含可求值 `trigger`）/ `undefined_conditions`（可求值 `expr`），
+  `standard_basis` 改为含 `name` + `article` + `version` 的结构化条目
+- **元规则（BREAKING）**：每条 `common_pitfalls` 必须有 `enforced_by` 或标 `advisory_only`，
+  二者皆无即不合规。附监控阈值：Phase 1 结束时 `advisory_only` 占比 > 50% 视为元规则失效
+- 版本号语义：必 bump 7 项 / 不 bump 3 项，理由是「版本号唯一用途是判定可比性」
+- 全局 flag 词表规则：指标只能引用不能自造；词表位置待 Phase 1 有 5 个以上真实 flag 后定
+- `PROJECT_SPEC.md` AC-01 同步为新字段集
+- `EVAL_CASES.md` §3.2 补：未定义条件不可求值算**定义不合规**，不算模型失败
+
+**验证（真实命令与输出）**
+- `sha256sum -c SHA256SUMS` → 5/5 `OK`，exit 0（apply 前后各一次，冻结输入未被触碰）
+- `openspec validate --changes --strict` → `✓ change/extend-metric-definition-schema`，
+  `1 passed, 0 failed`，exit 0
+
+**D-009 边界**：`PROJECT_SPEC.md` §5.1 是人读的字段说明，
+`openspec/specs/semantic-layer/metric-definition/spec.md` 是可测的行为契约，
+一一对应、不重复权威，§5.1 顶部已声明冲突时以 `PROJECT_SPEC.md` 为准。
+
 ### 2026-08-10 — 克隆 cninfo 并实查资产（解除 POC-01 偏离，发现 Phase 0 缺口）
 
 **做了什么**
