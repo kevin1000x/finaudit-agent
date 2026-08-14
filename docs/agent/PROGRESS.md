@@ -57,6 +57,21 @@ v1 与 v2 没有任何一条 Requirement 共同满足，跨版本比较在技术
 `openspec/specs/semantic-layer/metric-definition/spec.md` 是可测的行为契约，
 一一对应、不重复权威，§5.1 顶部已声明冲突时以 `PROJECT_SPEC.md` 为准。
 
+**归档完成 —— OpenSpec 至此走完完整一圈**
+- 归档前人工 D-010 扫描（**非** AC-10 自动扫描，后者是 Phase 1 交付物）：
+  雇主/客户数据线索 4 处命中**全部是规则自身的表述**（"禁止雇主/客户数据"），
+  另有 1 处 handoff 里提及实习背景的上下文说明；凭据线索 0 命中。判定：干净。
+- `openspec archive` → `Specs to update: semantic-layer/metric-definition: create`，
+  `+ 9 added`，`Change archived as '2026-08-15-extend-metric-definition-schema'`，exit 0
+- **`openspec/specs/` 首次有产物**：`semantic-layer/metric-definition/spec.md`，9 条 Requirement，
+  `## Purpose` 正确继承（非 `TBD` 占位）
+- `openspec validate --specs --strict` → `✓ spec/semantic-layer/metric-definition`，`1 passed, 0 failed`
+- `openspec list` → `No active changes found.`
+
+**三框架状态更新**：OpenSpec 从「装好但零产出」变为 **propose → apply → archive 完整跑通一圈**。
+GSD 的 ROADMAP 解析阻塞已解除（`phase_found: true`），但 `.planning/phases/` 仍无 PLAN.md。
+Superpowers 持续供门禁（本轮的红测先行、完成前验证均出自它）。
+
 ### 2026-08-10 — 克隆 cninfo 并实查资产（解除 POC-01 偏离，发现 Phase 0 缺口）
 
 **做了什么**
