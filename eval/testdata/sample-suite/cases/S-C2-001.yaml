@@ -1,0 +1,24 @@
+# 测试专用极小套件。**不是** frozen-01，不参与任何结论。
+id: S-C2-001
+category: C2
+frozen_at: "2026-08-15T00:00:00Z"
+
+question: |
+  样例：一个语义层里必定不存在的指标。
+expected:
+  target_name: __definitely_not_a_metric__
+  metric_id: null
+  value: null
+  refusal_code: METRIC_NOT_DEFINED
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: exact
+  refusal_expected: true
+  refusal_code: METRIC_NOT_DEFINED
+
+attribution_hint: 口径层

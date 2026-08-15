@@ -1,0 +1,38 @@
+id: Q-C5-001
+category: C5
+frozen_at: ""
+
+# D-007 的候选论据之一。此刻只冻结题面，不预判结论。
+
+question: |
+  某公司通过三家关联方 A、B、C 形成购销闭环：本公司销售给 A，A 销售给 B，
+  B 销售给 C，C 又采购自本公司。年报附注的关联交易章节按**交易对手逐户列示**，
+  每一户单独看都不构成异常。请识别是否存在这样的循环，并给出完整路径。
+
+expected:
+  metric_id: null
+  expected_capability: 多跳路径识别（闭环检测）
+  graph_necessity_claim: >
+    纯向量 RAG 在此的失效点是**可检索性**：闭环这个事实不在任何单一段落里。
+    附注按交易对手逐户列示，每一户的描述都正常，「A→B→C→本公司」这条路径
+    是跨段落组合出来的，没有哪一段的向量与「循环交易」相似。
+    检索 top-k 段落再让模型总结，k 取多大都不会浮现闭环。
+  falsification_test: >
+    用纯向量 RAG 跑本题，若它能稳定给出完整路径，则本题不构成建图理由，
+    应记录并撤回该论据（D-007 要求先证明「非图不可」）。
+  rationale: >
+    本阶段仅冻结。D-007 规定建图前必须先写出 3 个「纯向量 RAG 答不了」的
+    具体问题**并证明其答不了**——本题是候选之一，证明留待 Phase 3 实测。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: set_equality
+  refusal_expected: false
+  not_run_in_phase: 1
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 检索层：多跳关系无法由单段检索命中

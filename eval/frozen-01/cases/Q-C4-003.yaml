@@ -1,0 +1,35 @@
+id: Q-C4-003
+category: C4
+frozen_at: ""
+
+# 考的是两条准则之间的关系，不是单条检索。
+
+question: |
+  新收入准则实施的当年，营业收入同比增长率的可比性受什么影响？依据哪条准则？
+
+expected:
+  metric_id: revenue_growth_yoy
+  metric_version: 2
+  expected_citations:
+    - name: 企业会计准则第 14 号——收入
+      issuer: 中华人民共和国财政部
+      versions_required: ["2017"]
+    - name: 企业会计准则第 28 号——会计政策、会计估计变更和差错更正
+      issuer: 中华人民共和国财政部
+  must_state: 首次执行年度的比较期数据是否重述决定了同比增长率的可比性
+  rationale: >
+    revenue_growth_yoy 的 standard_basis 含这两条。回答须把「新准则实施」
+    与「比较期是否追溯重述」联系起来，而不只是复述准则名称。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: set_equality
+  refusal_expected: false
+  not_run_in_phase: 1
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 检索层：只答出第 14 号而未联系到第 28 号的重述要求

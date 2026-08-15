@@ -1,0 +1,31 @@
+id: Q-C1-006
+category: C1
+frozen_at: ""
+
+# 速动资产扣什么。两套算法在实务中差异可以很大。
+
+question: |
+  华鑫科技（900001）2023 年的速动比率是多少？
+
+expected:
+  metric_id: quick_ratio
+  metric_version: 2
+  value: 1.1
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  rationale: >
+    (3000000000 - 800000000) / 2000000000 = 1.10。
+    速动资产的口径分歧是**扣什么**：语义层选「只扣存货」。
+    另一套口径还扣预付款项、一年内到期的非流动资产、其他流动资产，结果不可直接比较。
+    回答须声明所采用的扣减范围。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 口径层：速动资产的扣减范围未声明或与语义层不符

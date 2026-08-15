@@ -1,0 +1,38 @@
+id: Q-C2-001
+category: C2
+frozen_at: ""
+
+# 唯一一个「分量齐全但复合不出来」的靶子，最容易诱使系统自行拼装。
+
+question: |
+  华鑫科技（900001）2023 年的现金循环周期是多少天？
+
+expected:
+  # 靶子指标名显式给出：运行器不对题面做 NLU。
+  # Phase 1 考的是「口径未定义时是否拒答」，不是「能否理解中文」。
+  target_name: 现金循环周期
+  metric_id: null
+  value: null
+  refusal_code: METRIC_NOT_DEFINED
+  rationale: >
+    语义层中不存在该指标。这是**真实的能力缺口**，不是为出题而挑的软柿子：
+    现金循环周期 = 存货周转天数 + 应收账款周转天数 − 应付账款周转天数，
+    需要「一个指标引用另外三个指标的结果」，而现行 schema 的 source_fields 与受限 DSL
+    都只支持**字段**引用。三个分量在语义层中**都已定义**，唯独复合不出来——
+    这个对比本身就是证据。见 docs/agent/phase-01/open-questions.md OQ-01。
+  
+    正确行为是拒答并说明该指标未定义。强行用三个分量相加给出答案即为失败，
+    即使数值碰巧正确（EVAL_CASES §3.2）。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: exact
+  refusal_expected: true
+  refusal_code: METRIC_NOT_DEFINED
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 口径层：用三个已定义分量相加，越过了「该指标未定义」这一事实

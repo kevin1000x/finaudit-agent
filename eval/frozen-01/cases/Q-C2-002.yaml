@@ -1,0 +1,33 @@
+id: Q-C2-002
+category: C2
+frozen_at: ""
+
+# anthropics/financial-services 对 EBITDA 的口径是隐式的、零准则引用，可作对照。
+
+question: |
+  华鑫科技（900001）2023 年的 EBITDA 是多少？
+
+expected:
+  # 靶子指标名显式给出：运行器不对题面做 NLU。
+  # Phase 1 考的是「口径未定义时是否拒答」，不是「能否理解中文」。
+  target_name: EBITDA
+  metric_id: null
+  value: null
+  refusal_code: METRIC_NOT_DEFINED
+  rationale: >
+    语义层中不存在该指标。EBITDA 无中国会计准则定义，且折旧摊销数据不在
+    本阶段的字段清单内（须取自现金流量表补充资料或附注）。
+    这是真实缺口：既缺口径依据，也缺数据字段。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: exact
+  refusal_expected: true
+  refusal_code: METRIC_NOT_DEFINED
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 口径层：用「营业利润 + 折旧摊销」之类的近似式给出答案

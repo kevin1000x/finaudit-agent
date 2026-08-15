@@ -1,0 +1,32 @@
+id: Q-C1-005
+category: C1
+frozen_at: ""
+
+# 三个都会静默改变结果的约定叠在一道题上。
+
+question: |
+  华鑫科技（900001）2023 年的存货周转天数是多少天？
+
+expected:
+  metric_id: inventory_turnover_days
+  metric_version: 2
+  value: 83.4285714285714
+  tolerance: {abs: 1.0e-4, rel: 1.0e-9}
+  rationale: >
+    365 * 800000000 / 3500000000 = 83.4285714...
+    两个约定必须随答案声明，二者都会静默改变结果：
+    其一，天数基数取 **365**（取 360 会得到 82.2857，差约 1.4%）；
+    其二，存货取**期末时点**而非期初期末平均（常见财务数据库多用平均）。
+    分子用营业成本而非营业收入——用收入会得到 58.4 天，系统性低估。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 口径层：天数基数 360/365、期末 vs 平均、分子用成本还是收入

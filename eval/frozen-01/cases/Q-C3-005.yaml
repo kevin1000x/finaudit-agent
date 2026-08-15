@@ -1,0 +1,38 @@
+id: Q-C3-005
+category: C3
+frozen_at: ""
+
+# 陷阱五：单位不一致。注意语义层目前无承载单位的字段（见 01-04 的 advisory 陷阱），本题因此也是对该缺口的一次实测。
+
+question: |
+  华鑫科技（900001）2023 年的营业收入比 2022 年增长了多少？
+
+expected:
+  metric_id: revenue_growth_yoy
+  metric_version: 2
+  fixture: synthetic-01
+  value: 0.190476190476190
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  required_flag: unit_scale_mismatch
+  rationale: >
+    **夹具中两行的列报单位不同**：2022 行标注 unit 为「万元」，营业收入 420000；
+    2023 行以「元」列示，营业收入 5000000000。
+    统一为元后：420000 万元 = 4200000000 元，
+    (5000000000 - 4200000000) / 4200000000 = 0.190476...
+  
+    不做单位归一直接相除会得到 (5000000000 - 420000) / 420000 ≈ 11903 倍，
+    一个荒谬到应当被察觉的数——但如果实现只是照字段取值相除，它不会察觉。
+    正确行为是识别单位差异并归一，或拒答并指出单位不一致。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+  accept_refusal_with_code: UNIT_SCALE_MISMATCH
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 计算层：未做单位归一，跨单位直接相除

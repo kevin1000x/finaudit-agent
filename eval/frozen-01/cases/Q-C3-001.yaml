@@ -1,0 +1,32 @@
+id: Q-C3-001
+category: C3
+frozen_at: ""
+
+# 陷阱一：缺失期。
+
+question: |
+  新元（900004）2023 年的营业收入同比增长率是多少？
+
+expected:
+  metric_id: revenue_growth_yoy
+  metric_version: 2
+  value: null
+  refusal_code: UNDEFINED_CONDITION_HIT
+  fixture: synthetic-01
+  rationale: >
+    该公司当年新上市（notes.listing_first_disclosure_flag 为 true），
+    夹具中 is.operating_revenue_prior_as_presented 缺失，无比较基数。
+    正确行为是拒答，**不得按 0 处理**，也不得用年化或推算值补齐——
+    按 0 处理会得出增长率无穷大或某个荒谬数值。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: exact
+  refusal_expected: true
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 计算层：缺失期按 0 处理或推算补齐

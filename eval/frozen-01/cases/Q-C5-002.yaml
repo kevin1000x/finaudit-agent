@@ -1,0 +1,39 @@
+id: Q-C5-002
+category: C5
+frozen_at: ""
+
+# D-007 的候选论据之二，且自带一条防止结论过松的对照路径。
+
+question: |
+  某公司 2018 年变更了一项会计政策。请列出该变更影响到的**全部**指标，
+  包括通过其他指标间接受影响的，并给出每一条的影响传播路径。
+
+expected:
+  metric_id: null
+  expected_capability: 变更影响的传递闭包
+  graph_necessity_claim: >
+    失效点是**传递性**：政策变更直接影响的指标可以从各指标的 standard_basis 检索到，
+    但「指标 X 受影响 → 依赖 X 的指标 Y 也受影响」这一层需要沿依赖边传播。
+    向量检索返回的是与查询相似的段落，不是闭包。
+    语义层里 20 份定义共享字段与准则依据，构成一张真实的依赖图。
+  falsification_test: >
+    若纯向量 RAG 能列全传递闭包（含间接受影响的指标），则本题不构成建图理由。
+    注意：本题的正确答案可由 metrics/ 下 20 份定义的 standard_basis 机械推导，
+    因此存在**不建图也能答**的第三条路径——Phase 3 须同时对比这条路径，
+    否则会把「需要结构化」误证成「需要图数据库」。
+  rationale: >
+    本阶段仅冻结。本题特意留了第三条路径作为对照，防止 D-007 的判定被做成
+    「图 vs 纯 RAG」的二选一——那样会得出一个过于容易的结论。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: set_equality
+  refusal_expected: false
+  not_run_in_phase: 1
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 检索层：传递闭包无法由相似度检索得到

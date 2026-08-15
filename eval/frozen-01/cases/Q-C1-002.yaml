@@ -1,0 +1,30 @@
+id: Q-C1-002
+category: C1
+frozen_at: ""
+
+# 营业收入 vs 营业总收入。金融类与含利息收入的公司两者差异显著。
+
+question: |
+  华鑫科技（900001）2023 年的毛利率是多少？
+
+expected:
+  metric_id: gross_profit_margin
+  metric_version: 2
+  value: 0.30
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  rationale: >
+    (5000000000 - 3500000000) / 5000000000 = 0.30。
+    分母必须取「营业收入」而非「营业总收入」——后者含利息收入等不与营业成本配比的项目。
+    语义层的 gross_profit_margin 不声明 is.total_operating_revenue_current。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 口径层：分母误用营业总收入

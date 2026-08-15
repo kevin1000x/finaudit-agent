@@ -1,0 +1,35 @@
+id: Q-C4-001
+category: C4
+frozen_at: ""
+
+# 新旧准则交替期。本阶段仅冻结不执行——准则检索是 Phase 3 的 L2 能力。
+
+question: |
+  计算扣非归母净利润时，「非经常性损益」的项目清单依据哪份文件？
+  该文件的 2008 年版与 2023 年版在项目范围上有何差异，会如何影响跨年度比较？
+
+expected:
+  metric_id: net_profit_attributable_excl_nonrecurring
+  metric_version: 2
+  expected_citations:
+    - name: 公开发行证券的公司信息披露解释性公告第 1 号——非经常性损益
+      issuer: 中国证券监督管理委员会
+      versions_required: ["2008", "2023"]
+  must_state: 跨版本年度的扣非净利润不可直接比较
+  rationale: >
+    该指标的 standard_basis 中记录的是 2023 版。回答须能指出存在多个版本、
+    项目清单发生过变化，并据此说明跨版本比较的限制。
+    仅答出「依据证监会公告第 1 号」而不涉及版本差异，视为引用不完整。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: set_equality
+  refusal_expected: false
+  not_run_in_phase: 1
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 检索层：找不到该公告或找不到版本差异

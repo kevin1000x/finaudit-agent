@@ -133,10 +133,13 @@ ls metrics/*.yaml（不含 _flags）             20
 
 **判定：PASS。** 三个批次的 success criteria 全部有真实命令与输出支撑。
 
-## 留给 01-08 裁决的三件事
+## 三件事的裁决（2026-08-15，操作者）
 
-1. **4 个零引用的 definition 域 flag**（`parent_only_scope` / `unaudited` /
-   `unit_scale_mismatch` / `currency_mismatch`）——是删掉，还是等有字段承载时再用？
-2. **`standard_basis` 的条号精度**——28 条未到条号，Phase 3 前能否收窄一部分？
-3. **OQ-04 的根因未除**——元数据命名空间仍豁免于声明检查，`standard_basis.<任意词>`
-   至今能通过校验。Phase 2 必办。
+1. **4 个零引用的 definition 域 flag** —— **留着，等有字段承载时再用。**
+   它们描述的风险真实存在（母公司口径、未经审计、单位不一致、币种不一致），
+   缺的是数据侧承载字段而不是概念本身。删掉等于承认这些风险不存在，
+   而 Phase 2 引入 PDF 抽取后 `unaudited` 与 `parent_only_scope` 都可能拿到真实字段。
+   **约束**：在拿到字段之前，任何定义都不得为它们编造 trigger（见上方「三次同型错误」）。
+2. **`standard_basis` 的条号精度** —— **认可当前状态，Phase 3 的 L2 落地后再收窄。**
+   现在编一个看似精确的条号比诚实写「全文」更糟。
+3. **OQ-04 的根因** —— Phase 2 必办，判据见 `open-questions.md`。

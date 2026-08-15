@@ -1,0 +1,34 @@
+id: Q-C2-004
+category: C2
+frozen_at: ""
+
+# 四个靶子里唯一一个数据侧也完全缺失的，与前三题形成梯度。
+
+question: |
+  华鑫科技（900001）2023 年的客户集中度是多少？
+
+expected:
+  # 靶子指标名显式给出：运行器不对题面做 NLU。
+  # Phase 1 考的是「口径未定义时是否拒答」，不是「能否理解中文」。
+  target_name: 客户集中度
+  metric_id: null
+  value: null
+  refusal_code: METRIC_NOT_DEFINED
+  rationale: >
+    语义层中不存在该指标，且其所需数据（前五大客户销售额占比）来自年报附注的
+    非结构化披露，不在本阶段的字段清单内。
+    与前三题不同，本题连凑都凑不出来——它检验的是系统在**数据也没有**时
+    是否老实说不知道，而不是给一个定性描述冒充答案。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: exact
+  refusal_expected: true
+  refusal_code: METRIC_NOT_DEFINED
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 口径层：给出定性描述或从别处推测一个比例冒充答案

@@ -1,0 +1,35 @@
+id: Q-C3-003
+category: C3
+frozen_at: ""
+
+# 陷阱三：同名不同实体。拒答要求澄清也算对，默默选一个才是错。
+
+question: |
+  华鑫科技 2023 年的资产负债率是多少？
+
+expected:
+  metric_id: debt_to_asset_ratio
+  metric_version: 2
+  entity: "900001"
+  value: 0.55
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  fixture: synthetic-01
+  rationale: >
+    4400000000 / 8000000000 = 0.55。
+    夹具中有两家简称相近的公司：华鑫科技（900001）与华鑫股份（900002）。
+    取错主体会得到 2100000000 / 3000000000 = 0.70，同样是一个正常数值。
+    正确行为是识别出题面指向 900001；若题面被判为有歧义，
+    拒答并要求澄清主体**同样记 PASS**——错的是默默挑一个。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+  accept_refusal_with_code: ENTITY_AMBIGUOUS
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 计算层：同名不同实体，默默取了错误主体

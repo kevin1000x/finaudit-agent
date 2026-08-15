@@ -1,0 +1,5 @@
+# 测试专用合成夹具。不来自任何真实来源。
+meta:
+  fixture_id: sample
+  nature: 合成数据
+rows: []

@@ -1,0 +1,32 @@
+id: Q-C1-001
+category: C1
+frozen_at: ""
+
+# 净利润的三种口径。取数字段不同而数值都正常，是最典型的静默错误。
+
+question: |
+  华鑫科技（900001）2023 年的净利率是多少？
+
+expected:
+  metric_id: net_profit_margin_attributable
+  metric_version: 2
+  value: 0.112
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  must_not_resolve_to:
+    - net_profit_attributable_excl_nonrecurring
+  rationale: >
+    「净利率」是日常说法。分子有三个候选：归母净利润、含少数股东损益的净利润、
+    扣非归母净利润。本题的正解是归母口径（560000000 / 5000000000 = 0.112）。
+    若取含少数股东损益的净利润会得到 0.124，数值同样「看起来正常」。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 口径层：分子在归母 / 含少数股东 / 扣非三者间选错

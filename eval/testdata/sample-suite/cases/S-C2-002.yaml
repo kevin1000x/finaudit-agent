@@ -1,0 +1,24 @@
+# 测试专用。靶子**存在**于语义层，因此期望拒答会落空 —— 用于驱动 FAIL 分支。
+id: S-C2-002
+category: C2
+frozen_at: "2026-08-15T00:00:00Z"
+
+question: |
+  样例：靶子其实存在，用于驱动「期望拒答但实际作答」的 FAIL 路径。
+expected:
+  target_name: 毛利率
+  metric_id: null
+  value: null
+  refusal_code: METRIC_NOT_DEFINED
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: exact
+  refusal_expected: true
+  refusal_code: METRIC_NOT_DEFINED
+
+attribution_hint: 口径层
