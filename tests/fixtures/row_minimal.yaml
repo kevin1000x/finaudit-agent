@@ -1,0 +1,27 @@
+# 合成样例数据 —— **不来自任何年报、AKShare、雪球或其他第三方源。**
+#
+# 数值是为了触发/不触发特定分支而手写的，没有任何真实公司含义，不得当作事实引用。
+# D-010 只允许公开数据进入本仓库；合成数据比公开数据更安全，但仍必须标明它是合成的，
+# 否则日后有人会把它当成抽取结果。
+
+# 字段齐全，无 undefined 条件命中 —— 正常路径
+complete:
+  is.net_profit_attributable_to_parent: 1200000000
+  notes.nonrecurring_pl_net_attributable_to_parent: 80000000
+  notes.restatement_flag: false
+
+# 刻意缺失附注字段 —— 触发 UNDEFINED_CONDITION_HIT
+missing_notes:
+  is.net_profit_attributable_to_parent: 1200000000
+  notes.restatement_flag: false
+
+# 重述标记为真 —— 触发 restated flag，但不拒答
+restated:
+  is.net_profit_attributable_to_parent: 1200000000
+  notes.nonrecurring_pl_net_attributable_to_parent: 80000000
+  notes.restatement_flag: true
+
+# 归母净利润本身缺失 —— 命中第二条 undefined 条件
+missing_profit:
+  notes.nonrecurring_pl_net_attributable_to_parent: 80000000
+  notes.restatement_flag: false

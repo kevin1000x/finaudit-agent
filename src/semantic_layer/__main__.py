@@ -34,9 +34,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="放宽 R9 的 version >= 2 检查（用于检验 POC-01 的历史样本）",
     )
 
-    r = sub.add_parser("resolve", help="按指标名解析口径定义（Task 2 实现）")
+    r = sub.add_parser("resolve", help="按指标名解析口径定义并给出机读拒答（AC-02）")
     r.add_argument("name")
     r.add_argument("--metrics-dir", default="metrics")
+    r.add_argument(
+        "--row",
+        default=None,
+        metavar="PATH#KEY",
+        help="一行数据的 YAML 文件与顶层键，例如 tests/fixtures/row_minimal.yaml#complete",
+    )
     r.add_argument("--json", action="store_true", dest="as_json")
 
     s = sub.add_parser("scan", help="非公开数据扫描（AC-10 / D-010）")
@@ -77,12 +83,72 @@ def _cmd_validate(args) -> int:
     return 1 if any(results.values()) else 0
 
 
-def _cmd_resolve(args) -> int:
-    from .resolve import resolve_metric, render_refusal
+def _load_row(spec: str) -> dict:
+    """`path#key` → 该 YAML 文件里 key 对应的一行数据。键不存在是调用错误。"""
+    import yaml
 
-    outcome = resolve_metric(args.name, metrics_dir=args.metrics_dir)
-    print(render_refusal(outcome, as_json=args.as_json))
-    return 0 if outcome.resolved else 3
+    raw_path, _, key = spec.partition("#")
+    data = yaml.safe_load(Path(raw_path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise KeyError(f"{raw_path}：顶层必须是映射")
+    if not key:
+        return data
+    if key not in data:
+        raise KeyError(f"{raw_path}：没有顶层键 {key!r}，可选 {sorted(data)}")
+    return data[key]
+
+
+def _cmd_resolve(args) -> int:
+    """退出码：0 已解析 / **3 业务拒答** / 2 调用错误。
+
+    拒答用 3 而非 2：2 已被 `validate` 用作「没找到定义文件」这类调用错误，
+    而拒答是**正常业务结果**（D-003：拒答是正确行为不是降级）。
+    两者必须可区分，否则 01-07 的评测脚本无法判别「系统正确拒答」与「命令没跑起来」。
+    见 docs/agent/phase-01/open-questions.md OQ-03。
+    """
+    from .resolve import (
+        Refusal,
+        Registry,
+        active_flags,
+        comparison_scoped_flags,
+        evaluate_refusal,
+        render_refusal,
+    )
+
+    try:
+        registry = Registry.load(args.metrics_dir)
+    except ValueError as exc:
+        print(f"词表或定义目录不可用：{exc}", file=sys.stderr)
+        return 2
+
+    outcome = registry.resolve(args.name)
+    if isinstance(outcome, Refusal):
+        print(render_refusal(outcome, as_json=args.as_json))
+        return 3
+
+    deferred = comparison_scoped_flags(outcome)
+    if args.row is None:
+        print(render_refusal(outcome, as_json=args.as_json, deferred=deferred))
+        return 0
+
+    try:
+        row = _load_row(args.row)
+    except (OSError, KeyError) as exc:
+        print(f"行数据不可用：{exc}", file=sys.stderr)
+        return 2
+
+    refusal = evaluate_refusal(outcome, row)
+    if refusal is not None:
+        print(render_refusal(refusal, as_json=args.as_json))
+        return 3
+
+    flags = active_flags(outcome, row)
+    if isinstance(flags, Refusal):
+        print(render_refusal(flags, as_json=args.as_json))
+        return 3
+
+    print(render_refusal(outcome, as_json=args.as_json, active=flags, deferred=deferred))
+    return 0
 
 
 def _cmd_scan(args) -> int:

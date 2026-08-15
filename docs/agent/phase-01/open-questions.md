@@ -125,7 +125,67 @@ OPTIONS    (a) 实现 resolve.py，退出码沿用代码里的 3，改 01-06 的
                的阻塞性验收标准，resolve 就是它的执行体，不能绕。
 ```
 
-**状态：待裁决。** 倾向 **(a)**——退出码语义应当由代码这边定，
-计划文档跟着改，因为「调用错误 vs 业务拒答」的区分是实现层的既成事实且是对的。
-不在 01-03 内实现（超出本计划 `files_modified` 范围）。
-**最迟须在 wave 3 的 01-06 执行前关闭。**
+**状态：已关闭（2026-08-15，操作者裁决采纳 a）。**
+
+`src/semantic_layer/resolve.py` 已实现，27 条用例。退出码定为 **3 拒答 / 2 调用错误 / 0 已解析**。
+计划侧共 **9 处** 断言由 2 改为 3，分布在 01-01 / 01-06 / 01-07。
+
+实现覆盖 01-01 Task 2 的全部规格：`Registry`（别名冲突加载期抛错）、
+`resolve`（返回 `MetricDefinition | Refusal` 二选一，不返回 None 不抛异常——
+D-003「拒答是正确行为」在类型层的表达）、`evaluate_refusal`、`check_comparable`、
+`active_flags`、7 个 `RefusalCode`、`--row PATH#KEY`。
+
+**实测**：`resolve "现金循环周期" --json` → exit 3，`code` = `METRIC_NOT_DEFINED`。
+`pytest -q` 120 passed。
+
+---
+
+## OQ-04 — `standard_basis.version` 引用的是列表，语法上合法但语义上无解
+
+发现于 OQ-03 的实现过程（写 `active_flags` 时求值失败）。
+
+```text
+EXPECTED   metrics/net_profit_attributable_excl_nonrecurring.yaml 的
+           basis_version_mismatch 标记，触发条件写作
+             standard_basis.version != comparison_period.standard_basis.version
+           它通过了校验器，也通过了 01-02 反向核对的 17 条断言。
+
+FOUND      两层问题，第二层更值得注意：
+
+           1. `comparison_period.*` 是**两期比较**才有的语境，单期数据无从求值。
+              这一层已在 OQ-03 内解决：`comparison_scoped_flags()` 把这类标记识别出来，
+              单期 `active_flags` 推迟而非拒答，并通过 `deferred_comparison_flags`
+              在输出里显式列出——推迟不等于丢弃。
+
+           2. **`standard_basis` 是一个列表，不是一个对象。** 该定义有 3 条准则依据，
+              版本分别是 2023 / 2010 / 2014。`standard_basis.version` 作为标量引用
+              **指向哪一条是没有答案的**。这个触发条件即使给了比较期也求不出正确结果。
+
+IMPACT     直接影响有限：check_comparable() 独立实现了跨准则版本检查
+           （逐条按 name 配对比 version，返回 CROSS_BASIS_VERSION_COMPARISON），
+           所以该能力本身没缺失，缺的是那条 flag trigger 写不对。
+
+           **真正的问题在校验器**：R4 要求「触发条件 MUST 只引用已声明的字段」，
+           而元数据命名空间（standard_basis / comparison_period / metric）
+           被豁免于 source_fields 声明检查——于是任何 `standard_basis.<任意词>`
+           都能通过校验。校验器接受了一个**永远解析不出值**的引用。
+
+           这与本项目要消灭的失效模式同型：看起来有规则，实际不产生任何机械后果。
+           wave 3 的 19 份定义若照抄这个写法，会复制 19 遍。
+
+OPTIONS    (a) 给元数据命名空间定义**封闭的合法路径集**（如 metric.id / metric.version /
+               standard_basis[].version 的显式下标或聚合谓词），校验器据此拒绝越界引用。
+               需扩 DSL 与 spec R4，属权威文档变更，走 OpenSpec。
+           (b) 从词表移除 basis_version_mismatch 的 definition 域身份，改为 system 域
+               ——它本来就该由运行时在比较两期时产出，和 metric_version_mismatch 同类。
+               改动最小，且与该 flag 的实际语义相符。
+           (c) 保持现状，靠 check_comparable() 兜底。
+               否决：留一个永远不触发的 flag 在定义里，正是「散文冒充规则」的变体。
+```
+
+**状态：待裁决。** 倾向 **(b) 先做、(a) 留给 Phase 2**——
+`basis_version_mismatch` 与 `metric_version_mismatch` 语义同类而 scope 不同，
+本身就是词表里的不一致；改 scope 是小改动且立刻消除 wave 3 的复制风险。
+(a) 是更彻底的修法但要动 DSL 与规格，不该卡住 wave 3。
+
+**wave 3 开写前需要一个决定**，因为 19 份定义会照抄现有那份的写法。
