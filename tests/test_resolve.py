@@ -56,6 +56,13 @@ def test_resolve_by_alias(registry):
     assert got.metric_id == "net_profit_attributable_excl_nonrecurring"
 
 
+def test_resolve_by_display_name(registry):
+    """display_name 是规范名称，必须可解析——不该靠作者记得抄进 aliases。"""
+    got = registry.resolve("毛利率")
+    assert not isinstance(got, Refusal), got
+    assert got.metric_id == "gross_profit_margin"
+
+
 def test_resolve_by_metric_id(registry):
     got = registry.resolve("net_profit_attributable_excl_nonrecurring")
     assert not isinstance(got, Refusal)

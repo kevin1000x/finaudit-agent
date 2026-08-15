@@ -100,7 +100,11 @@ class Registry:
                     f"{definitions[defn.metric_id].path} 与 {path}"
                 )
             definitions[defn.metric_id] = defn
-            for alias in [defn.metric_id, *defn.aliases]:
+            # display_name 也是这个指标的正当名字——它是给人看的规范名称。
+            # 用户输入「毛利率」拿到 METRIC_NOT_DEFINED 是荒谬的，
+            # 而靠作者记得把 display_name 抄进 aliases 是把机械问题交给纪律。
+            names = [defn.metric_id, defn.display_name, *defn.aliases]
+            for alias in [n for n in names if n]:
                 alias = str(alias)
                 if alias in by_alias and by_alias[alias] != defn.metric_id:
                     raise ValueError(
