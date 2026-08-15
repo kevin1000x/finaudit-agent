@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: 骨架与 cninfo 延伸
-current_phase: 00
-current_phase_name: cninfo 实证结论
-status: phase-1-tracer-landed-first-production-code
-stopped_at: Phase 1 tracer 已落地（40 tests passed），wave 2-5 待执行；Phase 0 尚未开始
-last_updated: "2026-08-15T04:40:00Z"
+current_phase: 01
+current_phase_name: 语义层 semantic-layer
+status: phase-1-wave-3-done-blocked-on-freeze-checkpoint
+stopped_at: Phase 1 wave 1-3 完成（20/20 定义，310 tests）；wave 4 卡在 frozen-01 冻结检查点（one-way，待操作者确认）；Phase 0 尚未开始
+last_updated: "2026-08-15T14:30:00Z"
 last_activity: 2026-08-15
-last_activity_desc: 打通三框架（OpenSpec 完整跑通 propose→apply→archive；GSD 解析阻塞解除并产出 8 份 PLAN）；实现 Phase 1 tracer——自研受限布尔 DSL + 9 条 Requirement 校验器 + 首份 version 2 定义，40 tests passed，本项目第一份生产代码
+last_activity_desc: wave 3 落地 19 份指标定义（20/20 全部合规，advisory_only 19.0%）；关闭 OQ-01/02/03/04；补 kpi 命名空间与 derivation 承载体；评测集 20 题与运行器就位待冻结；实测跑通巨潮年报下载与 PDF 坐标取数
 progress:
   total_phases: 5
   completed_phases: 0
