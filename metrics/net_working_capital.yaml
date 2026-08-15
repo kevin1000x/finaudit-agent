@@ -1,0 +1,105 @@
+# 本批次唯一的**绝对额**指标而非比率。没有零分母问题，但有两个必须处理的点：
+#
+# 1. 两个字段都参与减法，`sign_convention` 必须声明（POC-01 C4 的同型风险）
+# 2. **结果为负是有意义的取值，不是未定义。** 很多实现会在这里犯「负值即异常」的错，
+#    把一个真实的经营信号（流动负债超过流动资产）变成拒答。
+
+metric_id: net_working_capital
+display_name: 营运资金
+aliases:
+  - 净营运资金
+  - 营运资本
+  - 净流动资产
+version: 2
+
+grain:
+  entity: stock_code
+  period: fiscal_year
+  period_type: annual
+
+source_fields:
+  - id: bs.total_current_assets
+    statement: 合并资产负债表
+    line_item: 流动资产合计 —— 期末余额
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+  - id: bs.total_current_liabilities_period_end
+    statement: 合并资产负债表
+    line_item: 流动负债合计 —— 期末余额
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+  - id: notes.restatement_flag
+    statement: 财务报表附注
+    line_item: 本期是否经追溯重述或会计政策变更调整
+    missing_representation: null
+    enum_values: [true, false]
+
+formula: >
+  bs.total_current_assets - bs.total_current_liabilities_period_end
+
+period_semantics: 时点
+
+derivation:
+  allow_from_components: false
+  note: >
+    两项均固定取**期末余额**，禁止取 bs.total_current_liabilities_period_begin。
+    禁止由流动资产或流动负债的明细项相加倒推合计。
+    本指标是绝对额，其数值随列报单位（元 / 万元 / 千元）变化，
+    单位必须随结果一并携带，不得脱离单位引用。
+
+standard_basis:
+  - name: 企业会计准则第 30 号——财务报表列报
+    issuer: 中华人民共和国财政部
+    article: 第十七条至第二十一条（流动资产与流动负债的划分）
+    version: "2014"
+  - name: 关于修订印发一般企业财务报表格式的通知（财会〔2018〕15 号）
+    issuer: 中华人民共和国财政部
+    article: 附件一 合并资产负债表格式
+    version: "2018"
+
+flags:
+  - name: restated
+    trigger: notes.restatement_flag == true
+
+undefined_conditions:
+  - expr: is_missing(bs.total_current_assets)
+    reason: 流动资产合计缺失
+  - expr: is_missing(bs.total_current_liabilities_period_end)
+    reason: 流动负债合计期末余额缺失
+  # 刻意**不**列「结果为负」——负营运资金是真实的经营信号，不是未定义。
+
+common_pitfalls:
+  - text: >
+      **结果为负是有意义的取值，不是未定义。** 流动负债超过流动资产意味着
+      短期偿债压力，这正是提问者想知道的信息。把它列为未定义会让系统
+      在最需要给出结论的时候拒答。本定义的 undefined_conditions 刻意不含该情形。
+    enforced_by: source_fields.sign_convention
+
+  - text: >
+      两项均按绝对值列报（正数），公式里作减法。若数据源已按负数提供流动负债，
+      结果会翻倍且不触发任何未定义条件——静默错误。
+    enforced_by: source_fields.sign_convention
+
+  - text: >
+      **本指标是绝对额，列报单位必须随结果一并携带。** 元与万元差四个数量级，
+      脱离单位的营运资金数值无法解读，跨公司比较前须先统一单位。
+    enforced_by: derivation.note
+
+  - text: >
+      两项均固定取期末余额，禁止取期初余额。
+    enforced_by: source_fields.id
+
+  - text: >
+      任一合计项缺失时拒答，不得由明细项相加倒推。
+    enforced_by: derivation.allow_from_components
+
+  - text: >
+      本期经追溯重述时，两项余额均建立在重述后数据上。
+    enforced_by: flags.restated
+
+  - text: >
+      **不得与流动比率互相换算后比较。** 营运资金是绝对额、流动比率是相对数，
+      规模不同的公司营运资金可比性很弱；同样的营运资金对大小公司含义完全不同。
+    advisory_only: true

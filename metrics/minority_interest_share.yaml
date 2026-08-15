@@ -1,0 +1,95 @@
+metric_id: minority_interest_share
+display_name: 少数股东权益占比
+aliases:
+  - 少数股东权益比重
+  - 少数股东权益占所有者权益比例
+version: 2
+
+grain:
+  entity: stock_code
+  period: fiscal_year
+  period_type: annual
+
+source_fields:
+  - id: bs.minority_interests
+    statement: 合并资产负债表
+    line_item: 少数股东权益 —— 期末余额
+    sign_convention: 收益记正_损失记负
+    missing_representation: null
+
+  # 分母取**所有者权益合计**，不取归母权益：本指标问的是少数股东在全部权益中的占比。
+  - id: bs.total_equity
+    statement: 合并资产负债表
+    line_item: 所有者权益（或股东权益）合计 —— 期末余额
+    sign_convention: 收益记正_损失记负
+    missing_representation: null
+
+  - id: notes.business_combination_type
+    statement: 财务报表附注
+    line_item: 本期企业合并类型（同一控制下 / 非同一控制下 / 无）
+    missing_representation: null
+    enum_values: [同一控制下, 非同一控制下, 无]
+
+formula: >
+  bs.minority_interests / bs.total_equity
+
+period_semantics: 时点
+
+derivation:
+  allow_from_components: false
+  note: >
+    分母固定取所有者权益合计，**不取** bs.equity_attributable_to_parent（归母权益）。
+    禁止用「所有者权益合计 − 归母权益」倒推少数股东权益：报表已单独列示该项，
+    倒推会在其他权益工具归属划分存在差异时静默产生偏差。
+
+standard_basis:
+  - name: 企业会计准则第 33 号——合并财务报表
+    issuer: 中华人民共和国财政部
+    article: 第五章（少数股东权益的列报）
+    version: "2014"
+  - name: 企业会计准则第 30 号——财务报表列报
+    issuer: 中华人民共和国财政部
+    article: 第十七条至第二十一条
+    version: "2014"
+
+flags:
+  - name: scope_change
+    # 枚举值须加引号作字符串字面量：不加引号时「无」被词法器当作裸标识符，
+    # 而裸标识符不是合法字段引用（字段引用必须含至少一个点）。
+    trigger: notes.business_combination_type != "无"
+
+undefined_conditions:
+  - expr: is_missing(bs.total_equity)
+    reason: 所有者权益合计缺失
+  - expr: bs.total_equity == 0
+    reason: 所有者权益合计为零，占比无定义
+  - expr: is_missing(bs.minority_interests)
+    reason: 少数股东权益缺失；不得由权益合计减归母权益倒推
+
+common_pitfalls:
+  - text: >
+      **少数股东权益（时点）与少数股东损益（时段）不是一回事。**
+      前者出自资产负债表，后者出自利润表。混用会得到一个量纲都不对的比率。
+      本定义的 source_fields 只声明 bs.minority_interests。
+    enforced_by: source_fields.id
+
+  - text: >
+      分母取所有者权益合计，不取归母权益。用归母权益作分母得到的是另一个比率。
+    enforced_by: derivation.note
+
+  - text: >
+      **合并范围变动会使该占比跳变。** 收购少数股权、处置子公司部分股权、
+      非同一控制下企业合并均会直接改变少数股东权益，与经营表现无关。
+    enforced_by: flags.scope_change
+
+  - text: >
+      少数股东权益缺失时拒答，不得由权益合计减归母权益倒推。
+    enforced_by: undefined_conditions.2
+
+  # 分母为负是资不抵债公司的真实情形，占比在数学上仍可算出但经济含义失真。
+  # 这是解释问题不是取数问题，因此不进 undefined_conditions——这是本批次
+  # 少数几个**恰当**使用 advisory_only 的地方：它确实没有机械后果。
+  - text: >
+      所有者权益合计为负（资不抵债）时，本占比在数学上仍可计算，但经济含义失真：
+      分母为负会使占比符号反转。此时应先判断持续经营能力，不宜直接解读该比率。
+    advisory_only: true

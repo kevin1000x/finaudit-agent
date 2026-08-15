@@ -1,0 +1,117 @@
+# 核心口径分歧：**速动资产扣什么。**
+#
+# 教科书有两套：只扣存货，或扣存货 + 预付款项 + 一年内到期的非流动资产 + 其他流动资产。
+# 实务中两者差异可以很大。本定义选**只扣存货**，理由是它只依赖已有字段清单里的科目，
+# 不引入需要额外核实的项目；另一套写成显式排除。两套口径的结果不可直接比较。
+
+metric_id: quick_ratio
+display_name: 速动比率
+aliases:
+  - 酸性测试比率
+  - quick ratio
+version: 2
+
+grain:
+  entity: stock_code
+  period: fiscal_year
+  period_type: annual
+
+source_fields:
+  - id: bs.total_current_assets
+    statement: 合并资产负债表
+    line_item: 流动资产合计 —— 期末余额
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+  # 存货是**减项**，符号约定必须声明 —— POC-01 C4 那类方向性风险的同型场景。
+  - id: bs.inventory
+    statement: 合并资产负债表
+    line_item: 存货 —— 期末余额
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+  - id: bs.total_current_liabilities_period_end
+    statement: 合并资产负债表
+    line_item: 流动负债合计 —— 期末余额
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+  - id: notes.restatement_flag
+    statement: 财务报表附注
+    line_item: 本期是否经追溯重述或会计政策变更调整
+    missing_representation: null
+    enum_values: [true, false]
+
+formula: >
+  (bs.total_current_assets - bs.inventory)
+  / bs.total_current_liabilities_period_end
+
+period_semantics: 时点
+
+derivation:
+  allow_from_components: false
+  note: >
+    速动资产固定为「流动资产合计 − 存货」。**不采用**另一套口径
+    （再扣预付款项、一年内到期的非流动资产、其他流动资产）——
+    两套算法的结果不可直接比较，混用会让跨来源的速动比率失去可比性。
+    分母固定取流动负债合计的期末余额，禁止取期初余额，禁止用负债合计替代。
+    禁止由流动资产明细项相加倒推流动资产合计。
+
+standard_basis:
+  - name: 企业会计准则第 30 号——财务报表列报
+    issuer: 中华人民共和国财政部
+    article: 第十七条至第二十一条（流动资产与流动负债的划分）
+    version: "2014"
+  - name: 企业会计准则第 1 号——存货
+    issuer: 中华人民共和国财政部
+    article: 全文
+    version: "2006"
+
+flags:
+  - name: restated
+    trigger: notes.restatement_flag == true
+
+undefined_conditions:
+  - expr: is_missing(bs.total_current_liabilities_period_end)
+    reason: 报表未单独列示流动负债合计期末余额
+  - expr: bs.total_current_liabilities_period_end <= 0
+    reason: 流动负债合计为零或为负，速动比率无经济含义
+  - expr: is_missing(bs.total_current_assets)
+    reason: 流动资产合计缺失
+  # 存货缺失按 0 处理会让速动比率**等于流动比率** —— 一个安静且错误的答案。
+  - expr: is_missing(bs.inventory)
+    reason: 存货缺失；按 0 处理会使速动比率等于流动比率
+
+common_pitfalls:
+  - text: >
+      **存货缺失不等于存货为零。** 缺失时拒答；按 0 处理会让速动比率等于流动比率，
+      结果看起来完全正常但答的不是这个问题。存货取值恰为 0 时正常计算，
+      两条路径由 missing_representation 区分。
+    enforced_by: undefined_conditions.3
+
+  - text: >
+      本定义只扣存货。另一套口径还扣预付款项、一年内到期的非流动资产、其他流动资产，
+      两者结果不可直接比较。跨来源引用速动比率前须确认对方口径。
+    enforced_by: derivation.note
+
+  - text: >
+      存货按绝对值列报（正数），公式里作减项。若数据源已按负数提供，
+      符号约定不符会使速动资产被高估，且不触发任何未定义条件——静默错误。
+    enforced_by: source_fields.sign_convention
+
+  - text: >
+      分母固定取期末余额，不取期初余额，不用负债合计替代。
+    enforced_by: source_fields.id
+
+  - text: >
+      分母为零或为负时拒答。
+    enforced_by: undefined_conditions.1
+
+  - text: >
+      本期经追溯重述时，各项余额均建立在重述后数据上。
+    enforced_by: flags.restated
+
+  - text: >
+      速动比率高不等于短期偿债无忧：应收账款质量差、账龄长的公司，
+      速动资产的实际变现能力低于账面。
+    advisory_only: true
