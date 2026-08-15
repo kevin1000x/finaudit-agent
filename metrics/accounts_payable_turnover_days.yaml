@@ -1,0 +1,109 @@
+# 本指标是**替换进来的**：原 20 指标清单里这个位置是现金循环周期（CCC）。
+#
+# CCC = 存货周转天数 + 应收账款周转天数 − 应付账款周转天数，需要「一个指标引用
+# 另外三个指标的结果」，而现行 schema 的 source_fields 与受限 DSL 都只支持**字段**引用。
+# 扩 schema 属权威文档变更，须走 OpenSpec，不属于本批次范围。
+# 详见 docs/agent/phase-01/open-questions.md OQ-01（2026-08-15 操作者裁决采纳方案 b）。
+#
+# 应付账款周转天数本就是 CCC 的一个分量 —— 先有分量才谈得上复合。
+# CCC 本身转为 C2 类拒答题的**真实**靶子（不是编造的），
+# `resolve "现金循环周期"` 须返回 METRIC_NOT_DEFINED。
+
+metric_id: accounts_payable_turnover_days
+display_name: 应付账款周转天数
+aliases:
+  - 应付账款周转期
+  - 应付账款付款天数
+  - DPO
+version: 2
+
+grain:
+  entity: stock_code
+  period: fiscal_year
+  period_type: annual
+
+source_fields:
+  - id: bs.accounts_payable
+    statement: 合并资产负债表
+    line_item: 应付账款 —— 期末余额
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+  # 与存货周转天数一致，用**营业成本**：应付账款由采购形成，与成本配比。
+  - id: is.operating_cost
+    statement: 合并利润表
+    line_item: 营业成本 —— 本期金额
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+formula: >
+  365 * bs.accounts_payable / is.operating_cost
+
+period_semantics: 混合
+
+derivation:
+  allow_from_components: false
+  note: >
+    **天数基数取 365**，理由是与会计年度实际天数一致，不依赖任何行业惯例。
+    采用 360 基数的口径与本定义结果相差约 1.4%，两者不可直接比较。
+
+    应付账款固定取**期末**余额，不取期初期末平均。理由是字段清单只提供单值
+    （POC-01 C9）。禁止用其他年度的期末值自行构造平均数。
+
+    **不得与应付票据合并计算。** 部分口径把「应付账款 + 应付票据」合称商业信用，
+    本定义只取应付账款。合并口径会得到更长的周转天数，两者不可混比。
+    本定义不引入应付票据字段。
+
+standard_basis:
+  - name: 企业会计准则第 30 号——财务报表列报
+    issuer: 中华人民共和国财政部
+    article: 第十七条至第二十一条
+    version: "2014"
+  - name: 关于修订印发一般企业财务报表格式的通知（财会〔2018〕15 号）
+    issuer: 中华人民共和国财政部
+    article: 附件一 合并资产负债表格式
+    version: "2018"
+
+flags: []
+
+undefined_conditions:
+  - expr: is_missing(is.operating_cost)
+    reason: 营业成本缺失
+  - expr: is.operating_cost <= 0
+    reason: 营业成本为零或为负，周转天数无经济含义
+  - expr: is_missing(bs.accounts_payable)
+    reason: 应付账款缺失；不得按 0 处理
+
+common_pitfalls:
+  - text: >
+      **不得与应付票据合并计算。** 部分口径把两者合称商业信用一并计入，
+      会得到更长的周转天数。本定义只取应付账款，source_fields 不声明应付票据。
+    enforced_by: source_fields.id
+
+  - text: >
+      **天数基数为 365。** 采用 360 基数的口径与本定义结果相差约 1.4%，不可直接比较。
+    enforced_by: derivation.note
+
+  - text: >
+      **本定义采用期末时点应付账款，常见财务数据库多用期初期末平均。**
+    enforced_by: derivation.allow_from_components
+
+  - text: >
+      应付账款缺失时拒答，不得按 0 处理。
+    enforced_by: undefined_conditions.2
+
+  - text: >
+      营业成本为零或为负时拒答。
+    enforced_by: undefined_conditions.1
+
+  # 与应收账款周转天数的含税偏差同类：无法用现有字段修正，如实标注。
+  - text: >
+      **固有偏差：分母应为采购额，本定义用营业成本近似。** 两者在存货规模变动大的
+      年度差异显著（采购额 = 营业成本 + 存货增加额）。报表不单独列示采购额，
+      该偏差无法用现有字段修正。
+    advisory_only: true
+
+  - text: >
+      周转天数长既可能是议价能力强，也可能是资金紧张拖欠货款，
+      方向相反的两种情形数值相同，须结合现金流与账龄判断。
+    advisory_only: true
