@@ -18,7 +18,13 @@ flags:
 
   - name: basis_version_mismatch
     description: 本期与比较期所依据的准则/公告版本不同，跨版本数值不可直接比较
-    scope: definition
+    # 2026-08-15 由 definition 改为 system（OQ-04）。
+    # 它与 metric_version_mismatch 语义同类——都只有在**比较两期**时才判定得出，
+    # 单份定义无从知晓比较期是什么，写在定义里的 trigger 永远求不出值。
+    # 判定改由运行时 resolve.check_comparable() 负责：把两期 standard_basis
+    # **按准则名配对**逐条比 version。必须按名配对，因为一个指标同时依据多部准则
+    # （tracer 那份就有三部，版本分别 2023 / 2010 / 2014），笼统比无意义。
+    scope: system
     affects_comparability: true
     introduced_by: POC-01 C8
 

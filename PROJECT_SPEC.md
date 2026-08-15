@@ -137,10 +137,11 @@ standard_basis:               # 结构化条目，每条须含名称 + 条号 + 
     version: "2014"
 
 flags:                        # 只能引用全局词表，不得自造
-  - name: restated
+  - name: restated            # 只声明 scope: definition 的标记
     trigger: notes.restatement_flag == true
-  - name: basis_version_mismatch
-    trigger: standard_basis.version != comparison_period.standard_basis.version
+  # scope: system 的标记（如 basis_version_mismatch / metric_version_mismatch）
+  # **不在定义文件内声明**——它们只有比较两期时才判定得出，单份定义无从知晓比较期，
+  # 写在这里的 trigger 永远求不出值。判定由运行时负责。见 OQ-04。
 
 undefined_conditions:         # 每条须可对给定数据求值；命中即拒答
   - expr: is_missing(notes.nonrecurring_pl_net_attributable_to_parent)
@@ -150,7 +151,7 @@ common_pitfalls:              # 每条须满足元规则，见下
   - text: 被减项必须是归母净利润，不是利润表底部的净利润
     enforced_by: source_fields.id            # 有可求值规则承载
   - text: 非经常性损益项目清单随证监会公告版本变化
-    enforced_by: flags.basis_version_mismatch
+    enforced_by: flags.basis_version_mismatch   # 可指向词表里的 system 域标记
   - text: 该指标在亏损年度的经济含义需结合行业判断
     advisory_only: true                      # 无机械后果，显式标注
 ```
@@ -161,6 +162,12 @@ common_pitfalls:              # 每条须满足元规则，见下
 `undefined_conditions` 条目或字段约束），要么显式标注 `advisory_only: true`。**
 
 既无 `enforced_by` 又无 `advisory_only` 的陷阱条目 → 该定义不合规。
+
+`enforced_by: flags.X` 中的 `X` 可以是**本定义声明的标记**，也可以是**词表里 `scope: system` 的标记**。
+后者是必需的，不是宽容：R4 禁止定义文件声明 system 域标记，若此处只认定义内声明的，
+那么任何「跨期不可比」类的陷阱在构造上都无法满足元规则，两条规则会直接打架。
+system 域标记的机械承载体在运行时，它确实存在，只是不在这份文件里——
+元规则问的是「有没有可求值的规则」，不是「规则写在不写在本文件」。
 
 这条规则防止「散文冒充规则」重新长回来。POC-01 的 9 条收敛缺陷中有 5 条同源于此。
 

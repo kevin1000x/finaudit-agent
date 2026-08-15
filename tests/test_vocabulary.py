@@ -72,8 +72,21 @@ def test_real_vocabulary_loads_and_is_complete():
     """真词表的 10 条必须全部写齐五键——修复之后它就是这条的证明。"""
     vocab = load_vocabulary(REPO_ROOT / "metrics" / "_flags.yaml")
     assert len(vocab.flags) == 10
-    assert len(vocab.system_scoped) == 2
     for name, flag in vocab.flags.items():
         assert flag.description, f"{name} 的 description 为空"
         assert flag.introduced_by, f"{name} 的 introduced_by 为空"
         assert isinstance(flag.affects_comparability, bool)
+
+
+def test_comparison_only_flags_are_system_scoped():
+    """OQ-04：只有比较两期才判定得出的标记，必须是 system 域。
+
+    单份定义无从知晓比较期是什么，写在定义里的 trigger 永远求不出值——
+    那就是一条永远不触发的假规则，与「散文冒充规则」同型。
+    """
+    vocab = load_vocabulary(REPO_ROOT / "metrics" / "_flags.yaml")
+    assert vocab.system_scoped == {
+        "metric_version_mismatch",
+        "basis_version_mismatch",
+        "source_disagreement",
+    }

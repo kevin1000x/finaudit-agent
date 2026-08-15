@@ -202,24 +202,50 @@ def test_active_flags_excludes_untriggered_flag():
     assert "restated" not in got
 
 
-def test_comparison_scoped_flag_is_deferred_not_refused():
-    """`basis_version_mismatch` 的触发条件引用 `comparison_period.*`。
+def test_conformant_definition_has_no_comparison_scoped_flags():
+    """OQ-04 修完之后，合规定义里不该再有引用 `comparison_period.*` 的自声明标记。
 
-    单期数据判不了它，但这**不是求值失败**——是问错了问题。
-    它由 `check_comparable()` 在比较路径上独立负责，
-    所以单期 `active_flags` 应当把它推迟，而不是整体拒答。
+    这类标记已全部归入 system 域（R4 禁止定义文件声明），由 `check_comparable()` 负责。
     """
     defn = load_definition(TRACER)
-    assert comparison_scoped_flags(defn) == {"basis_version_mismatch"}
-    got = active_flags(defn, ROWS["complete"])
-    assert not isinstance(got, Refusal), got
+    assert comparison_scoped_flags(defn) == set()
+    assert not isinstance(active_flags(defn, ROWS["complete"]), Refusal)
 
 
-def test_deferred_flags_are_surfaced_not_dropped(capsys):
+def test_comparison_scoped_flag_is_deferred_not_refused(tmp_path):
+    """安全网：万一有定义声明了引用 `comparison_period.*` 的标记。
+
+    单期数据判不了它，但这**不是求值失败**——是问错了问题，
+    所以应当推迟而非整体拒答。R4 现在基本堵住了这条路，此机制是兜底。
+    """
+    (tmp_path / "m.yaml").write_text(
+        "metric_id: m\nversion: 2\n"
+        "flags:\n"
+        "  - name: some_comparison_flag\n"
+        "    trigger: metric.version != comparison_period.metric.version\n",
+        encoding="utf-8",
+    )
+    defn = load_definition(tmp_path / "m.yaml")
+    assert comparison_scoped_flags(defn) == {"some_comparison_flag"}
+    assert not isinstance(active_flags(defn, {}), Refusal)
+
+
+def test_deferred_flags_are_surfaced_not_dropped(tmp_path, capsys):
     """推迟 ≠ 丢弃。调用方必须看得见有哪些待判项。"""
-    main(["resolve", "扣非归母净利润", "--metrics-dir", str(METRICS), "--json"])
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["deferred_comparison_flags"] == ["basis_version_mismatch"]
+    (tmp_path / "m.yaml").write_text(
+        "metric_id: m\nversion: 2\naliases: [某指标]\n"
+        "flags:\n"
+        "  - name: some_comparison_flag\n"
+        "    trigger: metric.version != comparison_period.metric.version\n",
+        encoding="utf-8",
+    )
+    defn = load_definition(tmp_path / "m.yaml")
+    from semantic_layer.resolve import render_refusal
+
+    payload = json.loads(
+        render_refusal(defn, as_json=True, active=set(), deferred=comparison_scoped_flags(defn))
+    )
+    assert payload["deferred_comparison_flags"] == ["some_comparison_flag"]
 
 
 def test_unevaluable_trigger_refuses_rather_than_dropping_flag(tmp_path):

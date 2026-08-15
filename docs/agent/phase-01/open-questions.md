@@ -183,9 +183,38 @@ OPTIONS    (a) 给元数据命名空间定义**封闭的合法路径集**（如 
                否决：留一个永远不触发的 flag 在定义里，正是「散文冒充规则」的变体。
 ```
 
-**状态：待裁决。** 倾向 **(b) 先做、(a) 留给 Phase 2**——
-`basis_version_mismatch` 与 `metric_version_mismatch` 语义同类而 scope 不同，
-本身就是词表里的不一致；改 scope 是小改动且立刻消除 wave 3 的复制风险。
-(a) 是更彻底的修法但要动 DSL 与规格，不该卡住 wave 3。
+**状态：(b) 已落地（2026-08-15，操作者裁决）；(a) 顺延 Phase 2，不可遗忘。**
 
-**wave 3 开写前需要一个决定**，因为 19 份定义会照抄现有那份的写法。
+### 已做（(b)）
+
+1. `metrics/_flags.yaml`：`basis_version_mismatch` 的 `scope` 由 `definition` 改为 `system`。
+   它与 `metric_version_mismatch` 语义同类，而后者本就是 `system`——**这原是词表内部的不一致**。
+2. tracer 定义移除该 flag 声明（R4 禁止定义文件声明 system 域标记）。
+3. **顺带修好一处 R4 与 R8 打架**：`_resolve_enforced_by` 原本只在**定义内声明的**标记里
+   查找 `enforced_by: flags.X`。而 R4 禁止定义声明 system 域标记 ⇒ 任何「跨期不可比」类陷阱
+   **在构造上都无法满足 R8**。两条 Requirement 直接冲突，而这是 01-02 引入 R4 那条新约束时
+   带出来的，此前没有 system 域标记被 `enforced_by` 引用过，所以没暴露。
+   现在 `enforced_by: flags.X` 可解析到「定义内声明的标记 ∪ 词表里 scope 为 system 的标记」。
+   规格侧无需变更：R8 原文说的是「对应到一条可求值的规则（标记触发条件、未定义条件或字段约束）」，
+   没说「规则必须写在本文件」。是实现比规格更窄，与 OQ-02 同类。
+4. `PROJECT_SPEC.md` §5.1 的示例与元规则说明同步（示例此前会把错误写法教给 19 份定义）。
+5. 回归测试：`test_comparison_only_flags_are_system_scoped`、
+   `test_enforced_by_may_point_at_system_scoped_vocabulary_flag`、
+   `test_enforced_by_pointing_at_unknown_flag_still_fails`（放宽只针对词表 system 域，不是对
+   `flags.*` 一律放行）。
+
+**验证**：`pytest -q` **124 passed**；`validate` / `scan` exit 0；冻结 5/5 OK。
+
+### 未做（(a)）——**Phase 2 必办，不得静默丢弃**
+
+**根因仍在**：`standard_basis` / `comparison_period` / `metric` 三个元数据命名空间
+豁免于 `source_fields` 声明检查，因此 `standard_basis.<任意词>` 至今仍能通过校验。
+本次只是让**这一个**错误引用不再出现在定义里，**没有让校验器有能力拦住下一个**。
+
+Phase 2 须走 OpenSpec，给元数据命名空间定义**封闭的合法路径集**，
+并处理 `standard_basis` 是列表这件事（显式下标，或定义「任一条不同即为真」的聚合语义）。
+校验器据此拒绝越界引用。
+
+判据：能让 `standard_basis.version != comparison_period.standard_basis.version`
+这条**当场被校验器判为不合规**，而不是靠人记得别那么写。
+在此之前，wave 3 的 19 份定义**不得使用元数据命名空间做 trigger**。

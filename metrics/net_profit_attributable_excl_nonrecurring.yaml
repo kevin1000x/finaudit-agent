@@ -58,8 +58,8 @@ standard_basis:
 flags:
   - name: restated
     trigger: notes.restatement_flag == true
-  - name: basis_version_mismatch
-    trigger: standard_basis.version != comparison_period.standard_basis.version
+  # basis_version_mismatch 不在此声明：它是 system 域标记（R4 禁止定义文件声明），
+  # 由运行时 check_comparable() 在比较两期时按准则名配对判定。见 OQ-04。
 
 undefined_conditions:
   - expr: is_missing(notes.nonrecurring_pl_net_attributable_to_parent)

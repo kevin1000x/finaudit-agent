@@ -78,6 +78,32 @@ def test_frozen_v1_covers_red_test_criteria_or_fails_to_load(path):
     )
 
 
+def test_enforced_by_may_point_at_system_scoped_vocabulary_flag():
+    """OQ-04：R4 禁止定义声明 system 域标记，R8 要求陷阱指向可求值规则。
+
+    若 R8 只认定义内声明的标记，「跨期不可比」类陷阱在构造上无法满足元规则——
+    两条 Requirement 直接打架。system 域标记的承载体在运行时，它确实存在。
+    """
+    defn = load_definition(METRICS_DIR / "net_profit_attributable_excl_nonrecurring.yaml")
+    refs = {p.enforced_by for p in defn.common_pitfalls if p.enforced_by}
+    assert "flags.basis_version_mismatch" in refs, "本用例的前提不再成立，需重写"
+    assert "basis_version_mismatch" not in {f.name for f in defn.flags}, (
+        "system 域标记不得在定义文件内声明（R4）"
+    )
+    findings = validate_definition(defn, VOCAB)
+    assert not [f for f in findings if f.rule == "R8"], (
+        f"指向 system 域标记的 enforced_by 被误判为不合规：{findings}"
+    )
+
+
+def test_enforced_by_pointing_at_unknown_flag_still_fails():
+    """放宽只针对词表里的 system 域标记，不是对 flags.* 一律放行。"""
+    defn = load_definition(METRICS_DIR / "net_profit_attributable_excl_nonrecurring.yaml")
+    defn.common_pitfalls[0].enforced_by = "flags.no_such_flag_anywhere"
+    findings = validate_definition(defn, VOCAB)
+    assert any(f.code == "R8.ENFORCED_BY_UNRESOLVED" for f in findings)
+
+
 def test_exactly_one_frozen_v1_is_unparseable_yaml():
     """把这个发现固化成回归断言：数量变化即说明冻结目录被动过。"""
     unparseable = [
@@ -166,4 +192,10 @@ def test_v1_version_in_metrics_dir_triggers_r9(good_definition):
 
 def test_vocabulary_shape():
     assert len(VOCAB.flags) == 10
-    assert VOCAB.system_scoped == {"metric_version_mismatch", "source_disagreement"}
+    # basis_version_mismatch 于 2026-08-15 由 definition 改为 system（OQ-04）：
+    # 它只有比较两期时才判定得出，单份定义写不出能求值的 trigger。
+    assert VOCAB.system_scoped == {
+        "metric_version_mismatch",
+        "basis_version_mismatch",
+        "source_disagreement",
+    }

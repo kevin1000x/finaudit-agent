@@ -295,7 +295,7 @@ def validate_definition(
                 )
             )
         if has_enforced:
-            err = _resolve_enforced_by(pf.enforced_by, defn)
+            err = _resolve_enforced_by(pf.enforced_by, defn, vocabulary)
             if err:
                 add(Finding("R8.ENFORCED_BY_UNRESOLVED", loc, err))
 
@@ -329,14 +329,26 @@ def _fields_compared_to_strings(node) -> set[str]:
     return set()
 
 
-def _resolve_enforced_by(ref: str, defn: MetricDefinition) -> str | None:
+def _resolve_enforced_by(
+    ref: str, defn: MetricDefinition, vocabulary: Vocabulary | None = None
+) -> str | None:
     """把 enforced_by 的点号路径解析到实际承载体。解析不到就返回错误说明。"""
     parts = ref.split(".", 1)
     if len(parts) != 2:
         return f"enforced_by={ref!r} 不是 <类别>.<标识> 形式"
     kind, ident = parts
     if kind == "flags":
+        # 定义内声明的标记，**加上**词表里的 system 域标记。
+        #
+        # 后者不是宽容，是必需：R4 禁止定义文件声明 system 域标记，
+        # 若 R8 又只认定义内声明的标记，那么任何「跨期不可比」类的陷阱
+        # 都**在构造上无法满足 R8**——两条 Requirement 会直接打架。
+        # system 域标记的机械承载体是运行时（如 check_comparable），
+        # 它确实存在，只是不在这份文件里。R8 问的是「有没有可求值的规则」，
+        # 不是「规则写在不写在本文件」。
         names = {fd.name for fd in defn.flags}
+        if vocabulary is not None:
+            names |= vocabulary.system_scoped
         return None if ident in names else f"enforced_by={ref!r} 指向不存在的 flag"
     if kind == "source_fields":
         attrs = {"id", "statement", "line_item", "sign_convention", "missing_representation", "enum_values"}
