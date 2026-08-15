@@ -7,13 +7,13 @@
 
 ## 当前位置
 
-- 阶段：**Phase 1 — 语义层 semantic-layer**，**wave 1–2 完成**，wave 3 待开始
+- 阶段：**Phase 1 — 语义层 semantic-layer**，**wave 1–3 完成**，wave 4 待开始
   （Phase 0 — cninfo 实证结论：未开始，可并行）
 - 已执行方法论阶段：DISCOVER ✅ / RESEARCH ✅ / ARCHITECT ✅ / POC-01 ✅（PASS，压线）
   / PLAN ✅（8 份 PLAN，5 个 wave）/ IMPLEMENT 进行中
-- 代码产出：**15 个 `.py`**（`src/semantic_layer/` 9 + `scripts/` 1 + `tests/` 5），**93 tests passed**
-- 指标定义：`metrics/` 下 1 份 `version: 2` 定义 + 全局 flag 词表（目标 20 份）
-- **wave 3 的阻塞项：OQ-03**（`resolve` 未实现且退出码与计划不符），见 `docs/agent/phase-01/open-questions.md`
+- 代码产出：**19 个 `.py`**（`src/semantic_layer/` 10 + `scripts/` 1 + `tests/` 8），**282 tests passed**
+- 指标定义：**20 / 20** 份 `version: 2`，全部合规；`advisory_only` 占比 19.0%（阈值 50%）
+- **无阻塞项。** OQ-01/02/03 已关闭；OQ-04 根因留 Phase 2，不阻塞 wave 4
 - 评测结果：POC-01 一份 —— H1 必要条件检验通过，见 `docs/agent/poc-01/COMPARISON.md`
 
 ⚠️ POC-01 的 PASS 是**未被证伪**，不是**已被证实**（两位回答者同源模型，错误相关）。
@@ -22,6 +22,45 @@
 ---
 
 ## 变更日志
+
+### 2026-08-15（第二会话，续）— **wave 3 完成：20 指标补齐**
+
+**19 份定义落地**，`metrics/` 达到 20/20，测试 133 → **282**，`advisory_only` 19.0%，未分类 0。
+详见 `.planning/phases/01-semantic-layer/01-06-SUMMARY.md`（合并汇总三个批次）。
+
+**先关掉两个 wave 3 的阻塞项**
+- OQ-03 `resolve` 未实现且退出码计划期望 2 而代码返回 3 → 实现，**定为 3**（操作者裁决）。
+  2 已被 `validate` 用作「没找到定义文件」这类调用错误，拒答是正常业务结果，必须可区分。
+  计划侧 9 处断言改为 3。
+- OQ-04 `basis_version_mismatch` 的 trigger 引用 `standard_basis.version`，
+  而 `standard_basis` 是**列表**（该定义有三部准则，版本 2023/2010/2014），指哪一条没有答案。
+  按操作者裁决改为 `system` 域。**顺带修好一处 R4 与 R8 打架**：R4 禁止定义声明 system 域标记，
+  而 R8 只认定义内声明的标记 ⇒ 任何「跨期不可比」类陷阱在构造上无法满足 R8。
+
+**三次同型错误，值得记**
+写 19 份定义时**三次**给 flag 编造了求不出值的 trigger（`unit_scale_mismatch` ←「收入为零」、
+`parent_only_scope` ←「流动资产为负」、`basis_version_mismatch` ← 计划原文那条）。
+共同点：**报表里没有承载该概念的字段，于是拿手边能求值的东西凑一个。**
+凑出来的是永远不会正确触发的假规则——与「`common_pitfalls` 是散文」同型，换到了 trigger 上。
+固化规则：**只有真实字段能诚实触发时才声明 flag**；否则如实标 `advisory_only` 并注明
+「本定义无法对此设可求值规则」。这也解释了为什么词表里 4 个 definition 域 flag 零引用。
+
+**01-02 的覆盖度判断被证实**：19 份定义全程**零次**新增 flag 请求，词表零改动。
+
+**途中一个 OpenSpec 变更**：`admit-kpi-namespace-and-derivation-enforcement`。
+`kpi` 前缀（01-03 的 `scan_rules.yaml` 早就允许）与 `derivation` 承载体（wave 3 计划里 4 处用到）
+都没进规格——**01-02 的反向核对只做了「规格 ↔ 实现」，漏掉「规格 ↔ 下游消费者」**。
+规格是给 19 份尚未写出的定义用的，只跟已有实现对齐，等于只验证了「规格描述了现在有什么」。
+新增的 `test_scan_prefixes_and_dsl_namespaces_agree` 把这个缺陷的形状钉死。
+
+**真实输出**
+```
+pytest -q                          282 passed
+validate（全目录 20 份）             exit 0
+scan / stats                       exit 0 / advisory_only 19.0%，未分类 0
+resolve 现金循环周期                 exit 3, METRIC_NOT_DEFINED（C2 靶子可验证）
+sha256sum -c SHA256SUMS            5/5 OK
+```
 
 ### 2026-08-15（第二会话，续）— **wave 2 完成**：语法进规格 + 两条门禁命令
 
