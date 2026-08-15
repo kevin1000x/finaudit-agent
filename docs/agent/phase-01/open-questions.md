@@ -83,5 +83,10 @@ OPTIONS    (a) 让 load_vocabulary 对缺失的必需键 fail-closed（抛错或
 这使 `lock-condition-dsl-and-flag-vocabulary` 出现**一处规格领先实现**，
 已在其 `proposal.md` §Non-goals 显式声明，不隐藏。
 
-**状态：待处理。** 倾向 (a)。关闭方式：wave 3 开始前单独提一个实现变更，
-或并入 01-03。01-08 全量门禁时若仍未关闭，须在 VERIFICATION.md 明确记录。
+**状态：已裁决，待实现（2026-08-15，操作者）。** 采纳 **(a)**，**并入 01-03**，
+在 wave 3 开写 19 份定义之前关掉——理由是此刻关掉的成本是几行代码加三条回归测试，
+而 wave 3 之后新增 flag 漏写键就会踩上静默错误。
+
+01-03 须交付：`load_vocabulary()` 对五个必需键中任一缺失 fail-closed，
+`description` / `affects_comparability` / `introduced_by` 各一条回归测试。
+01-08 全量门禁须点名核对本条已关闭。
