@@ -7,12 +7,13 @@
 
 ## 当前位置
 
-- 阶段：**Phase 1 — 语义层 semantic-layer**，wave 1 完成，wave 2 进行中
+- 阶段：**Phase 1 — 语义层 semantic-layer**，**wave 1–2 完成**，wave 3 待开始
   （Phase 0 — cninfo 实证结论：未开始，可并行）
 - 已执行方法论阶段：DISCOVER ✅ / RESEARCH ✅ / ARCHITECT ✅ / POC-01 ✅（PASS，压线）
   / PLAN ✅（8 份 PLAN，5 个 wave）/ IMPLEMENT 进行中
-- 代码产出：**9 个 `.py`**（`src/semantic_layer/` 6 个 + `scripts/` 1 个 + `tests/` 2 个），**40 tests passed**
+- 代码产出：**15 个 `.py`**（`src/semantic_layer/` 9 + `scripts/` 1 + `tests/` 5），**93 tests passed**
 - 指标定义：`metrics/` 下 1 份 `version: 2` 定义 + 全局 flag 词表（目标 20 份）
+- **wave 3 的阻塞项：OQ-03**（`resolve` 未实现且退出码与计划不符），见 `docs/agent/phase-01/open-questions.md`
 - 评测结果：POC-01 一份 —— H1 必要条件检验通过，见 `docs/agent/poc-01/COMPARISON.md`
 
 ⚠️ POC-01 的 PASS 是**未被证伪**，不是**已被证实**（两位回答者同源模型，错误相关）。
@@ -21,6 +22,43 @@
 ---
 
 ## 变更日志
+
+### 2026-08-15（第二会话，续）— **wave 2 完成**：语法进规格 + 两条门禁命令
+
+**01-02（ARCHITECT）** `d6a98b2` 提案 → checkpoint → `ab394e3` apply + archive
+- OpenSpec 第二次走完整圈。spec delta 只动 R4 / R7，`+0 ~2 -0 →0`，合并后仍是 9 条 Requirement
+- `PROJECT_SPEC.md` §5.1 的词表位置待定项填实为 `metrics/_flags.yaml`（含五键表与从属声明）；
+  新增「条件表达式的规范语法」小节，能力边界表含**不允许**一行
+- `design.md` 记三个否决方案，其中「用 `ast` 做白名单」有实测硬证据（Python 3.14 抛 SyntaxError，
+  因为 `is` 是关键字而 `is.` 是利润表前缀，且该前缀在已冻结的 `field_inventory.md` 里）
+- **反向核对在 apply 之前跑**：17 条 DSL 断言 17/17 与规格一致
+- 操作者裁决 `approve`；flag 覆盖度判断「10 条够用」已抄进 SUMMARY 供 01-08 对照
+
+**01-03（IMPLEMENT / TDD）** `7bb2616` —— 测试 **40 → 93**
+- `scan`（AC-10 / D-010）：规则全在版本化的 `scan_rules.yaml`，代码只执行不判断。
+  四组规则，其中第四组把 CLAUDE.md 那句人工自查「这个字段名是从哪来的」变成机器提问
+- `stats`（§5.1 监控）：阈值**严格大于**，两条测试分别锁 0.5 → exit 0 与 0.6 → exit 1
+- **提交前跑 `scan` 扫出 2 项，都在 `tests/test_scan.py` 上。** 这是结构性的——
+  任何模式扫描器的测试都必然携带它要找的模式。做成版本化豁免清单而非硬编码排除：
+  豁免是门禁上的洞，洞更应该在能被 diff 的地方。清单被测试钉死，增长必须同时改测试
+- `statement` 改用**前缀匹配**：真实定义写的是 `财务报表附注「非经常性损益项目及金额」`，
+  精确匹配会让计划自己的验收标准当场不成立
+
+**Open Questions**（`docs/agent/phase-01/open-questions.md`）
+- OQ-01 CCC 需要指标引用指标 —— **已裁决**（采纳 b，转 C2 靶子）
+- OQ-02 词表加载器静默补默认值 —— **已关闭**（并入 01-03，五键 fail-closed + 布尔类型校验）
+- OQ-03 `resolve` 子命令未实现，且退出码计划期望 2 而代码返回 3 —— **待裁决，wave 3 前必须关**
+
+**真实输出**
+```
+pytest -q                          93 passed
+scan                               exit 0, findings []
+scan --rules /nope.yaml            exit 2（fail-closed）
+stats --fail-over 0.5              exit 0（实际 20.0%）
+validate / verify_deps             exit 0 / exit 0
+openspec validate --all --strict   1 passed, 0 failed
+sha256sum -c SHA256SUMS            5/5 OK
+```
 
 ### 2026-08-15（第二会话）— 补救供应链门禁；D-012 修订：冻结前置门禁与作废通道
 
