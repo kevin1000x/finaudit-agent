@@ -1,0 +1,113 @@
+metric_id: gross_profit_margin
+display_name: 毛利率
+aliases:
+  - 销售毛利率
+  - 综合毛利率
+  - 毛利润率
+version: 2
+
+grain:
+  entity: stock_code
+  period: fiscal_year
+  period_type: annual
+
+source_fields:
+  # 取「营业收入」而非「营业总收入」：必须与营业成本配比。
+  # 含利息收入的金融类公司两者差异显著，混用会让毛利率失真。
+  - id: is.operating_revenue_current
+    statement: 合并利润表
+    line_item: 营业收入 —— 本期金额
+    sign_convention: 收益记正_损失记负
+    missing_representation: null
+
+  - id: is.operating_cost
+    statement: 合并利润表
+    line_item: 营业成本 —— 本期金额
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+  - id: notes.restatement_flag
+    statement: 财务报表附注
+    line_item: 本期是否经追溯重述或会计政策变更调整
+    missing_representation: null
+    enum_values: [true, false]
+
+formula: >
+  (is.operating_revenue_current - is.operating_cost)
+  / is.operating_revenue_current
+
+period_semantics: 时段
+
+derivation:
+  allow_from_components: false
+  note: >
+    禁止由已披露的毛利额倒推本指标的分子。毛利额在不同公司的口径不一致
+    （是否扣除税金及附加、是否含运输费重分类），倒推会引入无法追溯的差异。
+    亦禁止用 is.total_operating_revenue_current（营业总收入）替代分母：
+    营业总收入含利息收入等不与营业成本配比的项目，相除得到的不是毛利率。
+
+standard_basis:
+  - name: 企业会计准则第 14 号——收入
+    issuer: 中华人民共和国财政部
+    article: 全文
+    version: "2017"
+  - name: 企业会计准则第 30 号——财务报表列报
+    issuer: 中华人民共和国财政部
+    article: 第十五条、第十六条
+    version: "2014"
+  - name: 关于修订印发一般企业财务报表格式的通知（财会〔2018〕15 号）
+    issuer: 中华人民共和国财政部
+    article: 附件一 合并利润表格式
+    version: "2018"
+
+flags:
+  - name: restated
+    trigger: notes.restatement_flag == true
+  # 不声明 unit_scale_mismatch：报表未提供承载计量单位的字段，写不出能求值的 trigger。
+  # 硬写一个（例如拿收入为零去凑）就是一条永远不正确触发的假规则，与 OQ-04 同型。
+  # 单位不一致的风险改由下方 advisory_only 的陷阱承担，如实标注为无机械后果。
+
+undefined_conditions:
+  - expr: is_missing(is.operating_revenue_current)
+    reason: 营业收入缺失
+  - expr: is.operating_revenue_current <= 0
+    reason: 营业收入为零或为负，毛利率无经济含义
+  - expr: is_missing(is.operating_cost)
+    reason: 营业成本缺失；不得按 0 处理后得出毛利率 100%
+
+common_pitfalls:
+  - text: >
+      分母固定取「营业收入」，不取「营业总收入」。后者含利息收入等不与营业成本配比的项目。
+      本定义的 source_fields 不声明 is.total_operating_revenue_current。
+    enforced_by: source_fields.id
+
+  - text: >
+      营业成本缺失时拒答。按 0 处理会得出毛利率 100% —— 一个看起来正常的错误数字。
+    enforced_by: undefined_conditions.2
+
+  - text: >
+      分母为零或为负时拒答。
+    enforced_by: undefined_conditions.1
+
+  - text: >
+      营业成本按绝对值列报（正数），公式里作减项。若数据源已按负数提供，
+      符号约定不符会使毛利率翻倍且不触发任何未定义条件 —— 静默错误。
+    enforced_by: source_fields.sign_convention
+
+  - text: >
+      财会〔2018〕15 号调整一般企业财务报表格式后，部分公司将运输费由销售费用重分类进营业成本，
+      跨该次变更的年度间毛利率不完全可比。本定义不自动识别该重分类。
+    enforced_by: flags.basis_version_mismatch
+
+  - text: >
+      本期经追溯重述时，毛利率建立在重述后数据上，与未重述年度不在同一基础。
+    enforced_by: flags.restated
+
+  - text: >
+      分子分母的列报计量单位（元 / 万元 / 千元）若不一致，相除结果会差若干数量级。
+      报表未提供承载计量单位的字段，本定义**无法**对此设可求值规则，故如实标为仅供参考。
+    advisory_only: true
+
+  - text: >
+      不同行业的毛利率水平差异极大，横向比较须限定在同一行业内。
+    advisory_only: true

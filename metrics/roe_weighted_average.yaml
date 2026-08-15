@@ -1,0 +1,92 @@
+# 这一份是本批次最能体现项目立论的一个。
+#
+# 加权平均净资产收益率的加权涉及报告期内净资产增减变动的**月份权数**，
+# 年度粒度的报表数据**不足以复算**。所以本定义的立场是：只取公司已披露值，
+# 未披露即拒答，**禁止**用归母净利润除以期末或平均净资产倒推——
+# 那算出来的是全面摊薄或简单平均口径，与加权平均不是同一个数。
+#
+# 通用 Agent 在这里的典型行为是「用手头的数算一个出来」，看起来完全正常。
+# 这正是 spec Requirement 3 的 Scenario「禁止倒推时缺失即拒答」的真实实例。
+
+metric_id: roe_weighted_average
+display_name: 加权平均净资产收益率
+aliases:
+  - 加权平均ROE
+  - 加权ROE
+  - 加权平均净资产收益率
+version: 2
+
+grain:
+  entity: stock_code
+  period: fiscal_year
+  period_type: annual
+
+source_fields:
+  - id: kpi.roe_weighted_average_disclosed
+    statement: 主要会计数据和财务指标
+    line_item: 加权平均净资产收益率（%）—— 公司按编报规则第 9 号计算并披露
+    sign_convention: 收益记正_损失记负
+    missing_representation: null
+
+  - id: notes.restatement_flag
+    statement: 财务报表附注
+    line_item: 本期是否经追溯重述或会计政策变更调整
+    missing_representation: null
+    enum_values: [true, false]
+
+formula: >
+  kpi.roe_weighted_average_disclosed
+
+period_semantics: 时段
+
+derivation:
+  allow_from_components: false
+  note: >
+    **禁止倒推。** 不得用 is.net_profit_attributable_to_parent 除以
+    bs.equity_attributable_to_parent（期末归母净资产），也不得除以期初期末简单平均值。
+    前者得到的是全面摊薄净资产收益率，后者是简单平均口径，两者都不是加权平均。
+    加权平均要求按净资产各次增减变动的**月份权数**加权，年度报表不提供这些权数，
+    因此在数据层面本指标不可复算，只能取披露值。未披露即拒答。
+
+standard_basis:
+  - name: 公开发行证券的公司信息披露编报规则第 9 号——净资产收益率和每股收益的计算及披露
+    issuer: 中国证券监督管理委员会
+    article: 全文
+    version: "2010"
+  - name: 企业会计准则第 33 号——合并财务报表
+    issuer: 中华人民共和国财政部
+    article: 第五章
+    version: "2014"
+
+flags:
+  - name: restated
+    trigger: notes.restatement_flag == true
+
+undefined_conditions:
+  - expr: is_missing(kpi.roe_weighted_average_disclosed)
+    reason: 公司未披露加权平均净资产收益率；本指标不可由报表数据复算，拒答
+
+common_pitfalls:
+  - text: >
+      **不得与全面摊薄净资产收益率混用。** 全面摊薄用期末净资产作分母，加权平均按月份权数加权。
+      当年有大额增发、回购或分红时两者差异可达数个百分点。
+      本定义只取披露的加权平均值，不接受任何倒推路径。
+    enforced_by: derivation.allow_from_components
+
+  - text: >
+      未披露时拒答，不得用归母净利润除以期末净资产「先算一个出来」。
+      那个数看起来完全正常，但回答的不是提问者问的口径。
+    enforced_by: undefined_conditions.0
+
+  - text: >
+      编报规则第 9 号历经修订，跨版本年度的加权方法可能不同，两期数值不可直接比较。
+    enforced_by: flags.basis_version_mismatch
+
+  - text: >
+      本期经追溯重述时，披露的加权平均净资产收益率建立在重述后数据上。
+    enforced_by: flags.restated
+
+  - text: >
+      归属于母公司所有者权益为负时，该指标虽仍可被披露，但其经济含义需结合
+      持续经营能力判断，不宜单独作为盈利能力结论。
+    advisory_only: true

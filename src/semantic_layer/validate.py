@@ -360,6 +360,18 @@ def _resolve_enforced_by(
         if idx >= len(defn.undefined_conditions):
             return f"enforced_by={ref!r} 的下标越界（当前只有 {len(defn.undefined_conditions)} 条）"
         return None
+    if kind == "derivation":
+        # `allow_from_components` 是布尔字段、可机械读取，「本定义禁止由分项倒推」
+        # 是可判定约束不是散文。把它排除在外会迫使「禁止倒推」类陷阱只能标
+        # advisory_only —— 恰好把最该有机械后果的一类降级成仅供参考。
+        if ident not in {"allow_from_components", "note"}:
+            return (
+                f"enforced_by={ref!r} 的 derivation 属性只能是 "
+                "allow_from_components 或 note"
+            )
+        if not isinstance(defn.derivation, dict) or ident not in defn.derivation:
+            return f"enforced_by={ref!r} 指向的 derivation.{ident} 未在本定义中声明"
+        return None
     return f"enforced_by={ref!r} 的类别 {kind!r} 不被支持"
 
 

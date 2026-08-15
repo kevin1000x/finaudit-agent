@@ -57,7 +57,13 @@ class _Missing:
 MISSING = _Missing()
 
 # 数据侧根命名空间：引用的是行数据里的字段，必须在定义的 source_fields 中声明
-ROOT_NAMESPACES = frozenset({"is", "bs", "cfs", "notes"})
+#
+# 五类公开披露来源：is 合并利润表 / bs 合并资产负债表 / cfs 合并现金流量表 /
+# notes 财务报表附注 / kpi 年报「主要会计数据和财务指标」章节的**已披露值**。
+# kpi 与前四者的区别是它承载披露值而非报表行项目——这使「取披露值、禁止倒推」
+# 这条口径立场可被表达（roe_weighted_average 是其实例：加权平均涉及月份权数，
+# 年度报表不足以复算，只能取披露值）。
+ROOT_NAMESPACES = frozenset({"is", "bs", "cfs", "notes", "kpi"})
 # 定义自身的元数据命名空间：不指向行数据，无需在 source_fields 声明
 INTRINSIC_NAMESPACES = frozenset({"standard_basis", "comparison_period", "metric"})
 

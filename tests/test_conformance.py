@@ -96,6 +96,57 @@ def test_enforced_by_may_point_at_system_scoped_vocabulary_flag():
     )
 
 
+def test_kpi_namespace_is_parseable():
+    """`kpi.` 承载「主要会计数据和财务指标」章节的已披露值。
+
+    scan_rules.yaml 的 allowed_field_prefixes 从 01-03 起就含 kpi，
+    而规格与 DSL 直到本次才补上——两份版本化产物曾互相矛盾。
+    """
+    from semantic_layer import dsl
+
+    cond = dsl.parse_condition("is_missing(kpi.roe_weighted_average_disclosed)")
+    assert "kpi.roe_weighted_average_disclosed" in cond.field_refs
+
+
+def test_scan_prefixes_and_dsl_namespaces_agree():
+    """两份版本化产物对「合法数据侧前缀」必须给出同一个答案（D-009）。"""
+    import yaml
+
+    from semantic_layer import dsl
+
+    rules = yaml.safe_load((REPO_ROOT / "scan_rules.yaml").read_text(encoding="utf-8"))
+    scan_prefixes = set(rules["semantic_layer_provenance"]["allowed_field_prefixes"])
+    assert scan_prefixes == set(dsl.ROOT_NAMESPACES), (
+        f"scan_rules.yaml 允许 {sorted(scan_prefixes)}，"
+        f"而 DSL 白名单是 {sorted(dsl.ROOT_NAMESPACES)}"
+    )
+
+
+def test_derivation_can_enforce_a_pitfall():
+    """derivation.allow_from_components 是布尔字段、可机械读取，够格做承载体。"""
+    defn = load_definition(METRICS_DIR / "roe_weighted_average.yaml")
+    refs = {p.enforced_by for p in defn.common_pitfalls if p.enforced_by}
+    assert "derivation.allow_from_components" in refs, "本用例的前提不再成立，需重写"
+    assert not [f for f in validate_definition(defn, VOCAB) if f.rule == "R8"]
+
+
+def test_derivation_enforced_by_rejects_unknown_attribute():
+    """放宽只针对 allow_from_components 与 note，不是对 derivation.* 一律放行。"""
+    defn = load_definition(METRICS_DIR / "roe_weighted_average.yaml")
+    defn.common_pitfalls[0].enforced_by = "derivation.whatever"
+    findings = validate_definition(defn, VOCAB)
+    assert any(f.code == "R8.ENFORCED_BY_UNRESOLVED" for f in findings)
+
+
+def test_derivation_enforced_by_requires_the_key_to_exist():
+    """指向一个本定义没声明的 derivation 属性，仍是不合规。"""
+    defn = load_definition(METRICS_DIR / "roe_weighted_average.yaml")
+    defn.derivation = {"allow_from_components": False}  # 没有 note
+    defn.common_pitfalls[0].enforced_by = "derivation.note"
+    findings = validate_definition(defn, VOCAB)
+    assert any(f.code == "R8.ENFORCED_BY_UNRESOLVED" for f in findings)
+
+
 def test_enforced_by_pointing_at_unknown_flag_still_fails():
     """放宽只针对词表里的 system 域标记，不是对 flags.* 一律放行。"""
     defn = load_definition(METRICS_DIR / "net_profit_attributable_excl_nonrecurring.yaml")
