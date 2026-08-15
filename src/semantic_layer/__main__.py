@@ -39,6 +39,23 @@ def _build_parser() -> argparse.ArgumentParser:
     r.add_argument("--metrics-dir", default="metrics")
     r.add_argument("--json", action="store_true", dest="as_json")
 
+    s = sub.add_parser("scan", help="非公开数据扫描（AC-10 / D-010）")
+    s.add_argument("--root", default=".", help="仓库根目录")
+    s.add_argument("--rules", default=None, help="规则文件；省略则用 scan_rules.yaml")
+    s.add_argument("--json", action="store_true", dest="as_json")
+
+    t = sub.add_parser("stats", help="陷阱元规则占比统计（§5.1 监控指标）")
+    t.add_argument("paths", nargs="*", help="定义文件路径；省略则统计 --metrics-dir 下全部")
+    t.add_argument("--metrics-dir", default="metrics")
+    t.add_argument("--json", action="store_true", dest="as_json")
+    t.add_argument(
+        "--fail-over",
+        type=float,
+        default=None,
+        metavar="RATIO",
+        help="advisory_only 占比**严格大于**该值时退出码 1；省略则纯查看，恒退出 0",
+    )
+
     return parser
 
 
@@ -68,12 +85,79 @@ def _cmd_resolve(args) -> int:
     return 0 if outcome.resolved else 3
 
 
+def _cmd_scan(args) -> int:
+    import json
+
+    from .scan import DEFAULT_RULES_PATH, ScanRulesError, load_scan_rules, scan_repository
+
+    rules_path = Path(args.rules) if args.rules else Path(args.root) / DEFAULT_RULES_PATH
+    try:
+        rules = load_scan_rules(rules_path)
+        findings = scan_repository(args.root, rules)
+    except ScanRulesError as exc:
+        # fail-closed：规则不可用不是「没扫到问题」，是「门禁没生效」
+        print(f"扫描未能执行：{exc}", file=sys.stderr)
+        return 2
+
+    if args.as_json:
+        print(
+            json.dumps(
+                {
+                    "rules_version": rules.rules_version,
+                    "findings": [
+                        {"path": f.path, "rule": f.rule, "detail": f.detail} for f in findings
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    elif findings:
+        print(f"扫出 {len(findings)} 项非公开数据风险（规则版本 {rules.rules_version}）：")
+        for f in findings:
+            print(f"  {f.path}\n    [{f.rule}] {f.detail}")
+    else:
+        print(f"未扫出非公开数据风险（规则版本 {rules.rules_version}）。")
+    return 1 if findings else 0
+
+
+def _cmd_stats(args) -> int:
+    import json
+
+    from .stats import collect_pitfall_stats
+
+    paths = [Path(p) for p in args.paths] or None
+    stats = collect_pitfall_stats(args.metrics_dir, paths=paths)
+
+    if args.as_json:
+        print(json.dumps(stats.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(
+            f"陷阱条目 {stats.total} 条："
+            f"enforced {stats.enforced} / advisory {stats.advisory} / 未分类 {stats.unclassified}"
+        )
+        print(f"advisory_only 占比 {stats.advisory_ratio:.1%}（§5.1 阈值：> 50% 视为元规则失效）")
+        if stats.unclassified:
+            print(f"⚠ {stats.unclassified} 条既无 enforced_by 又无 advisory_only —— R8 不合规")
+        for name, s in stats.sorted_metrics():
+            print(f"  {s.advisory_ratio:6.1%}  {name}  （{s.advisory}/{s.total}）")
+
+    if args.fail_over is None:
+        return 0
+    # 严格大于。§5.1 写的是「> 50%」，等于阈值不算失效。
+    return 1 if stats.advisory_ratio > args.fail_over else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "validate":
         return _cmd_validate(args)
     if args.command == "resolve":
         return _cmd_resolve(args)
+    if args.command == "scan":
+        return _cmd_scan(args)
+    if args.command == "stats":
+        return _cmd_stats(args)
     return 2
 
 

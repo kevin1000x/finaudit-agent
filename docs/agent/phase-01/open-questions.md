@@ -83,10 +83,49 @@ OPTIONS    (a) 让 load_vocabulary 对缺失的必需键 fail-closed（抛错或
 这使 `lock-condition-dsl-and-flag-vocabulary` 出现**一处规格领先实现**，
 已在其 `proposal.md` §Non-goals 显式声明，不隐藏。
 
-**状态：已裁决，待实现（2026-08-15，操作者）。** 采纳 **(a)**，**并入 01-03**，
-在 wave 3 开写 19 份定义之前关掉——理由是此刻关掉的成本是几行代码加三条回归测试，
-而 wave 3 之后新增 flag 漏写键就会踩上静默错误。
+**状态：已关闭（2026-08-15，随 01-03 落地）。** 采纳 (a)。
 
-01-03 须交付：`load_vocabulary()` 对五个必需键中任一缺失 fail-closed，
-`description` / `affects_comparability` / `introduced_by` 各一条回归测试。
-01-08 全量门禁须点名核对本条已关闭。
+`load_vocabulary()` 现在对五个必需键中任一缺失即 `raise ValueError`，
+并额外拒绝 `affects_comparability` 为非布尔值——写成字符串 `"false"` 会被 `bool()` 判成 `True`，
+比漏写更隐蔽。回归测试 `tests/test_vocabulary.py`：五个键各一条参数化用例、
+布尔类型一条、坏 scope 一条，另加一条断言真词表 10 条全部写齐五键。
+
+验证：`pytest -q` **93 passed**（此前 40）。
+
+---
+
+## OQ-03 — `resolve` 子命令未实现，且计划期望的退出码与代码不符
+
+发现于 01-03 执行途中（顺手核验 `__main__.py` 时）。
+
+```text
+EXPECTED   01-06-PLAN.md 三处断言 `resolve "现金循环周期" --json` 退出码 2、
+           `.code` 为 METRIC_NOT_DEFINED。CCC 作为 C2 类拒答靶子的整个论证
+           都挂在这条命令上。
+
+FOUND      两个问题，第二个更隐蔽：
+           1. `src/semantic_layer/resolve.py` **不存在**。
+              `_cmd_resolve` 里 `from .resolve import ...` 抛 ModuleNotFoundError。
+              01-01 的 CLI 里把它标成「Task 2 实现」，但 01-01 只交付了 tracer。
+           2. 即使实现了，`_cmd_resolve` 现在 `return 3`（未解析时），
+              而 01-06 断言的是 **2**。规格与计划对不上。
+
+IMPACT     wave 3 的 01-06 会在这条断言上直接失败，且失败原因是
+           「命令不存在」而非「靶子不对」——排查会绕远路。
+           退出码 2 与 3 的分歧更值得注意：`_cmd_validate` 已经用 2 表示
+           「没找到定义文件」这类**调用错误**，用 2 表示「指标未定义」会与之撞车。
+           拒答是**正常业务结果**，不是调用错误，用不同的码是对的。
+
+OPTIONS    (a) 实现 resolve.py，退出码沿用代码里的 3，改 01-06 的三处断言为 3。
+               理由：2 已被「调用错误」占用，拒答不该复用它。
+           (b) 实现 resolve.py，退出码改成 2，与 01-06 一致。
+               代价：与 _cmd_validate 的 2 语义冲突。
+           (c) 不实现，把 CCC 的拒答靶子改用别的方式验证。
+               否决：AC-02「口径定义缺失时拒绝作答且理由可机读」是 Phase 1
+               的阻塞性验收标准，resolve 就是它的执行体，不能绕。
+```
+
+**状态：待裁决。** 倾向 **(a)**——退出码语义应当由代码这边定，
+计划文档跟着改，因为「调用错误 vs 业务拒答」的区分是实现层的既成事实且是对的。
+不在 01-03 内实现（超出本计划 `files_modified` 范围）。
+**最迟须在 wave 3 的 01-06 执行前关闭。**
