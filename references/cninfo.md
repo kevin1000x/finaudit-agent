@@ -149,3 +149,58 @@ bs.accounts_payable   ← 应付票据及应付账款   ✗ 合并列，我们�
 **对本项目的意义**：`JobForm → StreamView → ResultCard` 这个三段式，
 形态与「提问 → 流式推理过程 → 带证据链的答案卡」是**对得上的**，
 增量加页面可行，SSE 那套可直接复用。
+
+## 6. 后端 SSE 的三个正确性细节（读了 `api/main.py` 原文）
+
+`api/main.py` 318 行 / `api/runner.py` 340 行。`stream_job` 那段写得很讲究，
+三处注释解释的都是**踩过才知道**的坑，直接抄：
+
+### 6.1 快照与订阅之间不能有 `await`
+
+```python
+snapshot = list(job.history)
+already_finished = job.finished.is_set()
+queue = None if already_finished else subscribe(job)
+```
+
+原注释：「Snapshot history and register subscriber **atomically — no `await`
+between these two lines**, so a concurrent `_publish` on the loop cannot interleave
+(asyncio is single-threaded per loop).」
+
+中间只要有一次 `await`，并发的 publish 就能插进来，导致事件**既不在快照里、
+也不在订阅队列里**——静默丢事件。
+
+### 6.2 每条事件带确定性的单调 id，用于跨重连去重
+
+```python
+seq += 1
+yield {"event": event_type, "data": json.dumps(payload, ensure_ascii=False), "id": str(seq)}
+```
+
+原注释：EventSource 在浏览器侧把它暴露成 `MessageEvent.lastEventId`，
+而自动重连**总是重放完整历史**，所以前端靠这个 id 去重。
+关键是「**Numbering is deterministic across reconnects: event at history index k
+always carries id k+1**」——编号必须由历史下标决定，不能用时间戳或随机 id。
+
+### 6.3 心跳必须走协议层，不能走 generator
+
+```python
+return EventSourceResponse(event_source(), ping=15)
+```
+
+原注释：`ping=15` 在**线路层**发 SSE 注释，不经过我们的 generator，
+所以心跳流量「never enters `job.history` and never replays on reconnect」。
+并且明说：「**Required to keep Cloudflare Tunnel and other intermediate proxies
+from closing idle SSE connections.**」
+
+**对本项目**：证据链的流式推送会比这个 job 日志更长（每一步都要留痕），
+上面三条一条都不能省。特别是 6.3——本项目若也走 Cloudflare Tunnel，
+不发心跳就会在长推理时被中间代理掐断。
+
+### 6.4 后端形态对本项目的约束
+
+- **单任务设计**：并发提交返回 `429`。本项目若要支持多人同时试用，这一层要改。
+- **鉴权**：`API_TOKEN` 走 `Authorization: Bearer`，在请求时读环境变量
+  （注释说是为了让测试 fixture 能改）。浏览器**永远看不到 token**，它只存在于 Pages Function 里。
+- **路由**：`POST /jobs` → `GET /jobs/{id}` → `GET /jobs/{id}/stream` → `GET /jobs/{id}/result`。
+  本项目的问答可沿用同一形状：提问建 job、流式看推理、结果取证据链。

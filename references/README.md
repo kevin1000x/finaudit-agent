@@ -12,9 +12,9 @@
 
 | 文件 | 对象 | 读到什么程度 |
 |---|---|---|
-| `cninfo.md` | `kevin1000x/cninfo-financial-analyzer` + `cninfo-analyzer-web` | 下载链路与 PDF 抽取**实跑验证过**；pipeline / metrics 读过关键路径；web 端 README 与部署链路读完 |
-| `hello-agents.md` | `datawhalechina/hello-agents` | **16 章只读了第 7 章 + README**，严重不足，待补 Ch8 / Ch10 / Ch12 |
-| `deepseek-harness.md` | `deepseek-ai/deepseek-harness` | `docs/architecture.md` 读完；packages 清单看过；子系统文档未读 |
+| `cninfo.md` | `kevin1000x/cninfo-financial-analyzer` + `cninfo-analyzer-web` | 下载链路与 PDF 抽取**实跑验证过**；`api/main.py` SSE 端点读原文；pipeline / metrics / financial_data_sources 读关键路径；web README 与部署链路读完。未读 `text_analyzer.py`、测试、`docs/superpowers/` |
+| `hello-agents.md` | `datawhalechina/hello-agents` | **Ch12 评测（2743 行）读原文**；Ch7 只读过工具摘要（标注为二手）。Ch1-6 / 8-11 / 13-16 未读 |
+| `deepseek-harness.md` | `deepseek-ai/deepseek-harness` | `architecture.md`(129) + `subsystems/tools.md`(720) + `subsystems/session.md`(849) + `tool-execution-pipeline.md`(62) **均读原文**。Cordis primer、`agent-lifecycle.md`、源码未读 |
 
 ## 为什么建这个文件夹
 
@@ -26,3 +26,10 @@
 
 三次都是**读了几行就下结论**。这个文件夹的存在是为了把「读到哪」和「据此能断言什么」
 绑在一起：**没读到的部分不许出现在结论里。**
+
+**第二次教训（同日）**：建完这个文件夹之后，我第一版三份文件里有两份是照着
+**工具生成的摘要**写的，不是原文——然后如实标注了「只读了 1/16 章」就当交差了。
+操作者指出「我让你研读的三个项目你又随便看看吗」。
+
+**如实标注读得少 ≠ 读过。** 标注是为了防止越界断言，不是用来替代阅读的。
+本轮已补读原文，各文件的「读到什么程度」已按原文重写。
