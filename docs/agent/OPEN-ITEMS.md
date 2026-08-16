@@ -378,6 +378,78 @@ pro 是 `metric_ambiguous`（判 FAIL）。同一道题、同一厂商、相邻�
    且它是 **AC 级判据**（AC-05 的机器形态），不是一条测试用例。
 - **判据**：U-01 定稿时这三条各有对应设计，或写明为何不采纳。
 
+### D-21 — 三个外部项目的阅读进度（2026-08-16 收口台账）
+
+| 项目 | 状态 | 产出 |
+|---|---|---|
+| **cninfo**（两仓） | ✅ **代码与文档已读完** | `cninfo.md` + deep-read `part1/2/3`（16k + 479 + 438 行） |
+| **deepseek-harness** | ⚠️ **核心契约已读完，外围仍有缺口** | `deepseek-harness.md` + deep-read `part1/2/3/4`（16k + 891 + 614 + 869 行） |
+| **hello-agents** | ❌ **仍是最大缺口**：16 章只读了 Ch4/5/6/7/8/9/10 的片段 | `hello-agents.md` + deep-read（19k 行）；**Ch12 评测章至今未读原文** |
+
+**hello-agents 的续读任务 2026-08-16 派出后因 API session limit 中断，未产出任何文件。**
+不预测它会得出什么。**Ch12 是本项目脊柱相关（评测），优先级最高。**
+
+harness 仍未读且已知有价值的：`tool-catalog.md`（1873 行）、`.agents/notes/**`
+（两份文档引用了至少 12 篇，设计的「为什么」都在那里）、`docs/user/` 13 篇、
+`cordis-*`（底层框架模型，凡涉及 effect / fiber / waterfall 的转述目前都是照抄措辞）。
+
+- **判据**：hello-agents Ch12 读完并把评测设计的可借鉴点并进 `references/hello-agents.md`；
+  D-10（评测缺效率与成本维度）的处置以它为输入。
+
+### D-22 — cninfo 收尾读完，三条对本项目直接有用的结论（我已逐条核对源码）
+
+1. **Phase 0 的定义不用改：文档里确实没有任何实证结论。**
+   8 份 tracked `.md` 全读完，`README.md:225-268` 只有公式与文献，
+   `PROJECT_SUMMARY.md:292-315` 的数值列表头就写着「示例」，`data/results/` 只有 `.gitkeep`。
+   ⚠️ 但要警惕一句**伪实证声明**：`PROJECT_SUMMARY.md:328`
+   「已通过对中文财报的人工编码进行验证」——**全仓零支撑物**（我已核对该行原文）。
+   这正是 Phase 0 要补的那种东西的反面教材。
+2. **`pdf_parser.py:302` 无条件把第 0 行当表头**：`pd.DataFrame(table[1:], columns=table[0])`。
+   续页表格会**静默吃掉一行真实数据**，而 `PROJECT_SUMMARY.md:141` 宣称「支持跨页表格识别」。
+   （已核对第 302 行原文）→ Phase 1.5 的表头识别必须是**显式判定 + 留证**，不是取第 0 行。
+3. **文本路径根本没关联页码**：`pdf_parser.py:94-98` 是 `text += page_text + "\n\n"` 裸拼接。
+   （已核对）→ cninfo 的 tone/fog/TNI 全部算在一个丢了页码的字符串上，
+   **在结构上就不可能产出页级证据链**。这是 D-013「数值以年报 PDF 原文为准」的施工要求：
+   页码必须在抽取的第一步就绑定，事后补不回来。
+
+**另外两条**：`README.md:441` 自己标注了 PyMuPDF 是 AGPL v3 而顶层无条件 `import fitz`
+（**D-014 的反面证实**，已核对该行）；两个仓库**都没有 CI**
+（`.github` / `.gitlab-ci.yml` / `.circleci` / `Jenkinsfile` 均不存在，我已实 `ls` 确认），
+而其计划文档里逐字写好了 `verify.yml` 却从未创建——**计划质量与落地率无关**。
+
+### D-23 — harness 的拒绝事件形状**不能抄**（part3 的最重要结论，我已核对源码）
+
+`packages/core/tools/src/index.ts:1496` 拒绝时只填 `error: { message: denialReason }`，
+**没有 `info`**；而落盘处 `tool-calls.ts:284` 是
+`...result.error?.info ? { error: result.error.info } : {}`
+——**于是 durable 事件里连 `error` 字段都不出现**，拒绝只剩 `isError: true` 加一句自然语言。
+`ApprovalOutcome` 那个漂亮的封闭四元组在工具侧被压平成一个 `deny` + 四段措辞，受众是模型不是复核者。
+
+→ **finaudit 的 `Refuse` 绝不能是这个形状**，否则 AC-05「证据链字段齐全率 100%」
+只能靠正则匹配句子来验。拒答必须带**结构化理由码**并落盘。
+
+**同一份源码里也有该抄的**：`tool-calls.ts:288` 的 `sourceEventSeqs: [callSeq]`
+——结果事件**显式引用**调用事件的 seq，不靠时间顺序或 callId 推断（已核对）。
+证据链应同构做成显式 DAG。
+
+### D-24 — harness 的 postmortem 四篇**全是同一类事故**，且正中本项目要害
+（原任务说 5 篇，实际是 **4 篇编号正文 + 1 篇 README**，子 agent 主动更正，我已 `ls` 确认）
+
+四篇没有一篇是普通功能 bug，共同主题是：
+**「某个自证机制说通过了，但它证明的不是它声称证明的事」。**
+
+- **0001**：行覆盖率全程 100%，功能一次都没跑通。
+- **0002**：会话日志里记着 `UNKNOWN_TOOL`，快照套件却通过——**因为期望值被 refresh 成了这个错误**。
+  它证明的是「这个 regression 可确定性重放」，不是「文件系统行为正确」。
+  已落成机械门禁：扫 JSONL 日志里的 `error.code === 'UNKNOWN_TOOL'` 并断言为空。
+- **0003**：Agent 的事后报告与持久化日志直接冲突，作者写下
+  **「时间线依据这些事件，而不是从事后报告重建意图」**并逐条给出 seq。
+  → **日志是权威，自述不是。** 这正是 finaudit 复核实验该有的姿态。
+- **0004**：归因错误（子进程退出码被挂到 launcher 的信息性 stderr 上）。
+
+→ 与本项目 `rules/failure-modes.md` 是同一个物种。**建议把 0002 的门禁形式直接抄过来**：
+凡是「证明某事不会发生」的测试，都要有一条**扫真实产物**的断言，而不是只比对期望值。
+
 ### D-17 — harness 还有三处高价值未读
 - `docs/postmortem/`（5 篇）、`subsystems/tools.md`（720 行，工具执行管线主体）、
   `subagent.md`（734 行，子 agent 证据链如何与父会话关联）。
