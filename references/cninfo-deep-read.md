@@ -23,6 +23,10 @@
 
 ## ⚠️ 最高优先级：PyMuPDF 是 AGPL v3
 
+> **【事后批注，非子 agent 原文】2026-08-16 已裁决：D-014 选「换 pdfplumber」，
+> PyMuPDF 禁入本仓库。本节以下内容保持原样，作为该决策的证据来源。**
+> 本报告中一切「用 PyMuPDF 做全文定位」的技术建议**均已作废**，见 D-014 与台账 A-4。
+
 `LICENSE` 第三方段第 3 条 + `requirements.txt` 的 `PyMuPDF>=1.23.0`。
 cninfo 自己的 LICENSE 就写了「AGPL requires source disclosure for network services」。
 

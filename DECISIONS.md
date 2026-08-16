@@ -24,6 +24,7 @@
 | D-011 | 不训练、不微调 | Accepted | Phase 0–4 |
 | D-012 | 评测集在看到模型输出前冻结 | Accepted（2026-08-15 修订：加冻结前置门禁与作废通道） | 整个项目 |
 | D-013 | 财务数值以年报 PDF 原文为准；二手源只作对照，不作权威源 | Accepted（2026-08-10） | 整个项目 |
+| D-014 | PDF 抽取器不得链接 AGPL 组件；主库 pdfplumber | Accepted（2026-08-16） | Phase 1.5 起 |
 
 ---
 
@@ -276,6 +277,43 @@ case id 无重复、引用的夹具存在。
   `grain` / 缺失表示 / 符号约定在数据侧的对应物。提前暴露，不是新增。
 - 反转触发条件：若 PDF 表格抽取的准确率经实测无法达到可用水平，
   且已尝试过 camelot/tabula 等替代引擎仍不达标 → 重新评估，届时须**实测数据**支撑，不凭预期。
+
+## D-014 — PDF 抽取器不得链接 AGPL 组件；主库 pdfplumber
+
+- 状态：Accepted（**操作者决定**，2026-08-16。这是台账 A-3 的裁决，归属方是操作者不是 agent，
+  因为它是许可证/开源策略问题，不是技术选型）
+- 背景：2026-08-15 的 PDF 探测全程用 `fitz`（PyMuPDF）。深读 cninfo 时发现
+  PyMuPDF 是 AGPL v3 —— 证据是 `cninfo-financial-analyzer/LICENSE` 第三方段第 3 条
+  与 `requirements.txt` 的 `PyMuPDF>=1.23.0`，cninfo 自己的 LICENSE 就写了
+  「AGPL requires source disclosure for network services」。
+- 冲突：D-006（2026-08-15 修订）把交付形态定为 **Web 为主**，Web 演示是网络服务；
+  AGPL v3 §13 的网络条款要求向通过网络交互的用户提供对应源码。
+  而 D-005 规定主仓私有至 Phase 4。**二者不能同时成立。**
+- 决策：
+  - **Phase 1.5 起，PDF 抽取路径只使用可闭源分发的组件**：
+    主库 **pdfplumber（MIT）**，备选 **pypdfium2（BSD-3 / Apache-2.0）**。
+  - **PyMuPDF / `fitz` 禁止进入本仓库的任何依赖**，包括间接依赖。
+  - 2026-08-15 scratchpad 里的 fitz 探测代码**不进仓库**。
+    其**方法**保留（`words` + 按 y 坐标聚簇重组行），**实现**改用
+    `pdfplumber` 的 `page.extract_words()`——它同样给出 `x0/x1/top/bottom`。
+  - 连带作废 A-4 的双库方案（「PyMuPDF 做全文定位 + pdfplumber 做数字」），**收敛为单库**。
+- 为什么选 (a) 而不是 (b) 或 (c)：
+  - **(b) 演示服务开源** —— 等于让一个许可证约束反过来触发项目范围变更（提前改 D-005）。
+    用最大的代价解最小的问题。
+  - **(c) 演示只用预抽好的静态数据** —— 恰好抽掉本项目最需要当众展示的那一环：
+    从真实 PDF 抽出数字并挂上证据链。演示价值大幅缩水。
+  - **(a) 换库** —— 代价局限在一次坐标重组重写，且 `extract_words()` 提供的坐标信息
+    与 fitz 同级。这是三者中唯一不改变项目范围也不削弱交付物的选项。
+- **这是许可证决策，不是技术优劣判断。** 必须写清楚：cninfo 仓库里
+  **没有任何 pdfplumber vs PyMuPDF 的对比逻辑或测试**（见 `references/cninfo-deep-read.md`），
+  因此**不存在**「PyMuPDF 抽得更准」这种实测证据可供权衡。谁若日后想换回去，
+  要先补的是对比数据，不是重开这场许可证讨论。
+- 判据：
+  1. Phase 1.5 的 `pyproject.toml` / `requirements*.txt` 中不出现 PyMuPDF；
+  2. `scripts/verify_deps.py` 增加**许可证禁列检查**（AGPL 系一律拒绝），
+     使这条约束由机器而不是由人的记性来保证。
+- 反转触发条件：pdfplumber 实测无法完成章节定位或坐标重组（达不到 Phase 1.5 成功标准）
+  → 先试 pypdfium2；两者皆不达标才重开本条，**届时须带实测准确率数据**，不凭预期。
 
 ## 3. 未解决决策
 

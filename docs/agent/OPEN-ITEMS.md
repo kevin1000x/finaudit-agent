@@ -30,26 +30,31 @@ C2 实跑 **4/4，门成立**（存活 4 ≥ 3）。**Phase 1 门第 3 条达成
 - **判据**：抽取层区分「整行不存在 = 缺失」与「行在但格子空 = 0」，
   定义侧不改；有一条用真实茅台数据驱动的回归用例
 
-### A-3 — PyMuPDF 是 AGPL v3，与「主仓私有」冲突 🔴 **需操作者决断**
-- **归属**：**操作者**（法律/开源策略，不是技术选型）
-- **阻塞**：Phase 1.5 抽取器动工前必须定。**我 2026-08-15 的 PDF 探测全程用的 fitz（PyMuPDF）**
-- **事实**：`cninfo-financial-analyzer/LICENSE` 第三方段第 3 条 + `requirements.txt`
-  的 `PyMuPDF>=1.23.0`。cninfo 自己的 LICENSE 就写了
-  「AGPL requires source disclosure for network services」
-- **冲突点**：D-006 修订后 Web 演示是**网络服务**；AGPL v3 的网络条款要求
-  要么开源整个服务、要么买商业授权。而 D-005 规定主仓私有到 Phase 4
-- **选项**：
-  (a) **换 pdfplumber（MIT）/ pypdfium2（BSD/Apache）** —— 代价是坐标重组要重写，
-      pdfplumber 的 `extract_words()` 也给坐标，迁移量不大。**agent 倾向这个**
-  (b) 保留 PyMuPDF，演示服务开源（提前触发 D-005 变更）
-  (c) 保留 PyMuPDF 但演示只用预抽好的静态数据，抽取器不上线（削弱演示价值）
-- **判据**：Phase 1.5 的 `pyproject.toml` 里不出现 AGPL 组件，或 D-005 已相应修订
+### ~~A-3 — PyMuPDF 是 AGPL v3~~ → **已决断 2026-08-16，红色阻塞解除**
+**操作者选 (a)：换 pdfplumber（MIT）。已落为 `DECISIONS.md` D-014。**
+PyMuPDF / `fitz` 禁入本仓库任何依赖（含间接）；坐标重组方法保留，实现改用
+`pdfplumber.page.extract_words()`。**Phase 1.5 抽取器可以动工。**
+- **判据（转为待办，未完成）**：`scripts/verify_deps.py` 增加**许可证禁列检查**，
+  让「不引入 AGPL」由机器保证而不是靠人记得。→ 见 A-5
 
-### A-4 — 抽取器选型的连带影响（等 A-3 定了才能动）
-- **归属**：agent，但依赖 A-3
-- 子 agent 的技术判断是「PyMuPDF 做快速全文定位 + pdfplumber 做数字（有 char 级 bbox）」，
-  若 A-3 选 (a) 则整个方案要改成单库
-- **判据**：抽取器能在**不使用 AGPL 组件**的前提下完成章节定位 + 坐标重组
+### A-4 — 抽取器收敛为单库（A-3 已决，本条随之收窄）
+- **归属**：agent，不再被阻塞
+- **原双库方案作废**：子 agent 曾建议「PyMuPDF 做快速全文定位 + pdfplumber 做数字
+  （有 char 级 bbox）」。D-014 之后**只用 pdfplumber 一个库**做两件事。
+- **未验证的风险（如实标记，不当作已解决）**：cninfo 的 pdfplumber 调用是
+  `:81` 逐页 `extract_text()` **无 layout 参数**，深读报告判断多栏与表格密集页会串行。
+  章节定位改用 pdfplumber 之后**是否还能稳定命中**，目前**没有实测**——
+  上一轮的章节定位实测全程用的 fitz。
+- **判据**：在**同一份**真实年报（茅台 2023）上，pdfplumber 单库完成
+  ① 三张表的页码定位 ② 坐标重组行，且资产负债表行项目命中数 **≥ 上一轮 fitz 的 9/12**。
+  低于此数则触发 D-014 的反转条件，改试 pypdfium2。
+
+### A-5 — 许可证约束尚未机器化
+- **归属**：agent，随时可做
+- **背景**：D-014 禁止 AGPL 组件，但目前这条约束只写在文档里。
+  `scripts/verify_deps.py` 现在只比对 PyPI 发布件哈希，**不看许可证**。
+- **判据**：`verify_deps.py` 对每个依赖读取其 `Metadata` 的 `License` / `Classifier`，
+  命中 AGPL 系即 exit 非 0；且有一条用 PyMuPDF 作输入的负向测试证明它真的会拦。
 
 ---
 

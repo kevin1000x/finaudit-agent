@@ -38,14 +38,20 @@ POST 另加 `Content-Type: application/x-www-form-urlencoded`、`Origin`、`X-Re
 
 ## 2. PDF 取数（**已实跑，这是真正的技术内容**）
 
-### 坑一：`get_text()` 直接用是不行的
+### 坑一：整页取文本直接用是不行的
 
-PyMuPDF 的 `page.get_text()` 返回的文本流里，**表格是逐单元格一行**的：
+页面纯文本流里，**表格是逐单元格一行**的：
 「应收账款」在一行，它的本期数、上期数在另外几行。按行做正则只能抓到标签，抓不到数。
 
 **正解：按坐标重组行。**
 
+> ⚠️ **下面的实跑代码用的是 `fitz`（PyMuPDF），而 D-014（2026-08-16）已禁用该库**
+> —— AGPL v3 与 D-005「主仓私有」冲突。**方法可移植，实现必须换成 pdfplumber。**
+> 此处保留原始代码是为了让 9/12 这个数字可追溯到它实际产生的方式，
+> **不是**让人照抄进生产代码。
+
 ```python
+# 实跑版本（fitz，已禁用，仅存档）
 words = page.get_text("words")     # (x0, y0, x1, y1, word, block, line, wordno)
 buckets = {}
 for x0, y0, x1, y1, word, *_ in words:
@@ -54,7 +60,18 @@ for key in sorted(buckets):
     cells = [t for _, t in sorted(buckets[key])]                 # 行内按 x 排序
 ```
 
-40 行代码，茅台 2023 资产负债表抓到 9/12 目标行项目。
+```python
+# 迁移目标（pdfplumber，MIT）—— 结构同上，字段名不同，**尚未实测**
+for w in page.extract_words():     # dict: x0, x1, top, bottom, text
+    buckets.setdefault(round(w["top"] / 3.0), []).append((w["x0"], w["text"]))
+```
+
+`extract_words()` 默认按 `use_text_flow=False` 排序并做词切分，
+`x_tolerance` / `y_tolerance` 是它自己的参数，**与上面那个 `/3.0` 的桶宽不是一回事**，
+迁移时要重新标定，不能假设同一个容差值。
+
+40 行代码，茅台 2023 资产负债表抓到 9/12 目标行项目 —— **该数字来自 fitz 实现。
+换库后的命中数未测，见台账 A-4，判据是 ≥ 9/12。**
 
 ### 坑二：定位报表页
 
@@ -128,6 +145,13 @@ bs.accounts_payable   ← 应付票据及应付账款   ✗ 合并列，我们�
 **结论：PDF 侧的能力是「脚手架」不是「成品」。** 三条文本路径（pdfplumber / PyMuPDF / OCR）、
 表格抽取、章节抽取（`extract_mda_section`）都可借鉴思路，但「报表行项目 → 字段 id」
 这一层它没有，而那正是本项目要建的。
+
+**且这三条路径本项目只能用其中一条**：PyMuPDF 因 AGPL 被 D-014 排除，
+OCR 被 ROADMAP Phase 1.5「明确不做」排除 —— **只剩 pdfplumber**。
+注意 cninfo 的 pdfplumber 调用是 `:81` 逐页 `extract_text()` **无 layout 参数**、
+异常吞成 `""`，`:134` 的选择逻辑仅在**完全为空**时才退回 PyMuPDF。
+即：它从未在「pdfplumber 抽得不全但非空」的情形下做过任何补救，
+**那恰好是财务报表页最可能出现的失败形态**。这条路径不能照搬。
 
 ## 5. web 端与部署（决定前端怎么接）
 
