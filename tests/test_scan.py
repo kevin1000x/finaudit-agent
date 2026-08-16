@@ -140,6 +140,37 @@ def test_contact_pattern_detected(repo, rules):
     assert "CONTACT_PATTERN" in _codes(scan_repository(repo, rules))
 
 
+@pytest.mark.parametrize("addr", ["ligong@163.com", "kf@126.com", "a@1and1.de"])
+def test_numeric_domain_labels_still_detected(repo, rules, addr):
+    """163 / 126 是国内最常见的邮箱域名，纯数字标签**必须**照样命中。
+
+    修 `dsh-root@0.1.0-rc` 那个误报时，第一个想到的收紧方式是「每个域名标签
+    都必须含字母」——那会把这三个全漏掉。为了修一个误报制造一个漏报是赔本买卖，
+    所以最终改的是「TLD 必须紧接在字面点号之后」。本用例锁住这个取舍。
+    """
+    (repo / "notes.md").write_text(f"联系 {addr}", encoding="utf-8")
+    _git(repo, "add", "-A")
+    assert "CONTACT_PATTERN" in _codes(scan_repository(repo, rules))
+
+
+@pytest.mark.parametrize("spec", [
+    "dsh-root@0.1.0-rc",      # 实际误报源：deepseek-harness 深读报告里的 npm 包标识
+    "pkg@1.2.3",
+    "@anthropic-ai/sdk@2.0.0-beta.1",
+    "eslint@9.0.0-alpha",
+])
+def test_package_version_specs_are_not_contacts(repo, rules, spec):
+    """`包名@版本` 不是邮箱。
+
+    这不是假想用例：`references/deepseek-harness-deep-read-part2.md` 里的
+    `dsh-root@0.1.0-rc` 让本门禁在真仓库上红了一次。误报会让人养成绕过门禁的
+    习惯（同 T-01-16 对公网 IP 的处理），比漏报更早地毁掉门禁。
+    """
+    (repo / "notes.md").write_text(f"依赖 {spec}", encoding="utf-8")
+    _git(repo, "add", "-A")
+    assert "CONTACT_PATTERN" not in _codes(scan_repository(repo, rules))
+
+
 @pytest.mark.parametrize("host", ["10.20.30.40", "192.168.1.5", "172.16.0.1"])
 def test_network_pattern_detected(repo, rules, host):
     (repo / "notes.md").write_text(f"内网地址 {host}", encoding="utf-8")

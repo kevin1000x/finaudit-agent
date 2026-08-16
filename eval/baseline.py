@@ -280,7 +280,8 @@ def judge(case: dict, ans: dict | None, parse_note: str) -> dict:
 
 
 def run(suite: str, preset: str, model: str | None, key_file: str | None,
-        only: str | None, limit: int | None, max_tokens: int = 8192) -> dict:
+        only: str | None, limit: int | None, max_tokens: int = 8192,
+        case_ids: list[str] | None = None) -> dict:
     suite_dir = EVAL_ROOT / suite
     ok, problems = verify_freeze(suite_dir)
     if not ok:
@@ -292,6 +293,12 @@ def run(suite: str, preset: str, model: str | None, key_file: str | None,
              for p in sorted((suite_dir / "cases").glob("*.yaml"))]
     if only:
         cases = [c for c in cases if c["category"] == only]
+    if case_ids:
+        want = {c.strip() for c in case_ids}
+        cases = [c for c in cases if c["id"] in want]
+        missing = want - {c["id"] for c in cases}
+        if missing:
+            raise SystemExit(f"套件里没有这些题号：{sorted(missing)}")
     if limit:
         cases = cases[:limit]
 
@@ -376,6 +383,8 @@ def main(argv=None) -> int:
     ap.add_argument("--limit", type=int, default=None, help="只跑前 N 题（渐进式评估，D-10）")
     ap.add_argument("--max-tokens", type=int, default=8192,
                     help="推理模型会把预算全烧在 reasoning 上，给少了会返回空正文")
+    ap.add_argument("--case", action="append", default=None, metavar="ID",
+                    help="只跑指定题号（可重复）。用于补跑因预算不足而 ERROR 的单题")
     args = ap.parse_args(argv)
 
     # Windows 控制台默认 GBK，报告里的中文与符号会把 print 打崩。
@@ -388,7 +397,7 @@ def main(argv=None) -> int:
 
     print(f"对照臂 baseline —— 套件 {args.suite}，预设 {args.preset}")
     report = run(args.suite, args.preset, args.model, args.key_file, args.category,
-                 args.limit, args.max_tokens)
+                 args.limit, args.max_tokens, args.case)
 
     c = report["counts"]
     print(f"\n机械判定 {c['mechanically_scored']}/{c['asked']} 题："
