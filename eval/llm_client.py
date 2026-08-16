@@ -69,11 +69,22 @@ class Provider:
 
 # 已实测可用的预设。**不写死密钥**，密钥永远另行注入。
 PRESETS: dict[str, dict] = {
-    # 2026-08-16 实测：/models 与 /chat/completions 均 200
+    # 2026-08-16 实测：/models 与 /chat/completions 均 200。
+    # 该平台当前只有 deepseek-v4-pro / deepseek-v4-flash 两个模型
+    # （旧的 deepseek-chat 是别名，解析到 flash）。
+    #
+    # 默认选 **flash**（操作者 2026-08-16 指定）。
+    #
+    # ⚠️ 实测更正：**flash 同样是推理模型**，`completion_tokens_details.reasoning_tokens`
+    # 在 `max_tokens=12000` 下有两题被打满、正文返回空串——比 pro 还多一题。
+    # 全量 token 两者接近（pro 44,290 入 / 48,723 出；flash 41,303 / 45,197）。
+    # 所以「选 flash 是为了预算更稳」这个理由**不成立**，不要这么写在别处。
+    # 真正需要注意的是：这个平台上两个模型都会烧 reasoning 预算，
+    # `--max-tokens` 给不够就会得到空正文（本框架已把它抛成 ERROR 而非记作答错）。
     "deepseek": {
         "base_url": "https://api.deepseek.com",
         "wire": WIRE_OPENAI,
-        "model": "deepseek-v4-pro",
+        "model": "deepseek-v4-flash",
         "key_env": "DEEPSEEK_API_KEY",
     },
     # 2026-08-16 实测：需常规 UA，否则 CF 1010。qwen/minimax 走 anthropic 形状且需 x-api-key
