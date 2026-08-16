@@ -27,15 +27,68 @@ import csv
 import hashlib
 import io
 import json
+import re
 import sys
 import sysconfig
 import tomllib
 import urllib.request
 import zipfile
-from importlib.metadata import PackageNotFoundError, distribution
+from importlib.metadata import PackageNotFoundError, distribution, distributions
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# --------------------------------------------------------------------------
+# 许可证禁列（D-014）
+# --------------------------------------------------------------------------
+# D-014 禁止 AGPL 组件进入本仓库：Web 演示是网络服务，AGPL v3 §13 的网络条款
+# 要求向交互用户提供源码，与 D-005「主仓私有至 Phase 4」不能同时成立。
+#
+# 这条约束此前只写在文档里。**文档管不住 `pip install`。**
+# 台账 A-5 要求把它变成机器检查，本节就是那个检查。
+#
+# 注意 PyMuPDF 这类双授权包（AGPL v3 或商业授权）在 PyPI 元数据里只声明 AGPL。
+# 本门禁一律按 AGPL 处理并拒绝 —— 若将来真买了商业授权，那是**决策变更**，
+# 应当先修订 D-014 再把包名加进 LICENSE_EXEMPTIONS，而不是在这里放宽正则。
+DENIED_LICENSE_PATTERNS = [
+    # 只要前导词边界，**不要**尾部 `\b` —— `AGPLv3` 这种写法里 `v` 是单词字符，
+    # 加了尾边界就漏掉它（写这条测试时当场漏过一次）。
+    # 前导边界仍然保证 `LGPL` 不会被误伤。
+    re.compile(r"\bAGPL", re.I),
+    re.compile(r"affero", re.I),
+]
+
+# 显式豁免名单。**空的**，且加东西进来必须同时给出 DECISIONS.md 的条目号。
+LICENSE_EXEMPTIONS: dict[str, str] = {}
+
+
+def license_fields(meta_info: dict) -> list[str]:
+    """把一个包的所有许可证声明位置收集起来。
+
+    三个位置都要看：`license`（自由文本，常为空）、`license_expression`（SPDX，较新）、
+    以及 `classifiers` 里的 `License :: ...`。只看其中一个会漏——
+    这正是 `rules/failure-modes.md` F-1「我查的范围能不能覆盖它可能存在的位置」。
+    """
+    out = []
+    for key in ("license", "license_expression"):
+        v = meta_info.get(key)
+        if v:
+            out.append(str(v))
+    for c in meta_info.get("classifiers") or []:
+        if str(c).startswith("License ::"):
+            out.append(str(c))
+    return out
+
+
+def license_denied(name: str, fields: list[str]) -> str | None:
+    """命中禁列则返回命中的那条声明原文；否则 None。"""
+    if name.lower() in LICENSE_EXEMPTIONS:
+        return None
+    for field in fields:
+        for pat in DENIED_LICENSE_PATTERNS:
+            if pat.search(field):
+                return field
+    return None
 
 # 期望的上游仓库。project_urls 里必须出现其中之一，否则判为身份不符。
 EXPECTED_UPSTREAM = {
@@ -138,6 +191,17 @@ def check_package(name: str, interp_abi: str, platform_tokens: list[str]) -> boo
     print(f"== {name} {version}")
     meta = _get_json(f"https://pypi.org/pypi/{name}/{version}/json")
 
+    fields = license_fields(meta["info"])
+    hit = license_denied(name, fields)
+    if hit:
+        print(f"   [FAIL] 许可证命中禁列（D-014）：{hit}")
+        ok = False
+    elif not fields:
+        # 查不到 ≠ 没有。如实标 SKIP，不据此放行也不据此拦截。
+        print("   [SKIP] PyPI 元数据里没有任何许可证声明，无从判定")
+    else:
+        print(f"   [ OK ] 许可证     {fields[0]}")
+
     urls = meta["info"].get("project_urls") or {}
     expected = EXPECTED_UPSTREAM.get(name.lower())
     if expected is None:
@@ -203,6 +267,57 @@ def check_package(name: str, interp_abi: str, platform_tokens: list[str]) -> boo
     return ok
 
 
+def installed_license_fields(dist) -> list[str]:
+    """本机已装分发的许可证声明。字段名与 PyPI JSON 不同，故单列一个函数。"""
+    md = dist.metadata
+    out = []
+    for key in ("License-Expression", "License"):
+        try:
+            v = md.get(key)
+        except Exception:
+            v = None
+        if v and str(v).strip() and str(v).strip().upper() != "UNKNOWN":
+            out.append(str(v).strip().splitlines()[0])
+    try:
+        for c in md.get_all("Classifier") or []:
+            if str(c).startswith("License ::"):
+                out.append(str(c))
+    except Exception:
+        pass
+    return out
+
+
+def scan_installed_licenses() -> bool:
+    """扫本机 venv 里**所有**已装分发，不只是 pyproject 声明的那几个。
+
+    直接依赖走 PyPI 元数据检查（`check_package`），但 AGPL 也可能从**传递依赖**
+    进来 —— 声明列表看不见它。这一步覆盖那个盲区。
+
+    局限如实写清：它只看得见**本机这个 venv 此刻装了什么**。
+    别的机器、别的环境、尚未安装的包，它都看不见，因此
+    **本函数返回 True 不等于「本项目没有 AGPL 依赖」**，只等于「这个 venv 里没扫到」。
+    """
+    print("\n== 已装分发的许可证扫描（含传递依赖）")
+    hits = []
+    total = 0
+    for dist in distributions():
+        name = (dist.metadata.get("Name") or "").strip()
+        if not name:
+            continue
+        total += 1
+        fields = installed_license_fields(dist)
+        hit = license_denied(name, fields)
+        if hit:
+            hits.append((name, dist.version, hit))
+    if hits:
+        for name, ver, hit in sorted(hits):
+            print(f"   [FAIL] {name} {ver} 命中禁列（D-014）：{hit}")
+        return False
+    print(f"   [ OK ] 扫描 {total} 个已装分发，无 AGPL 系命中")
+    print("          （局限：只覆盖本机此 venv，不能据此断言项目整体无 AGPL 依赖）")
+    return True
+
+
 def main() -> int:
     interp_abi = local_interp_abi()
     platform_tokens = local_platform_tokens()
@@ -210,6 +325,7 @@ def main() -> int:
     print(f"pyproject.toml 声明的依赖：{names}")
     print(f"当前解释器 ABI：{interp_abi}，平台 token：{platform_tokens}\n")
     results = [check_package(name, interp_abi, platform_tokens) for name in names]
+    results.append(scan_installed_licenses())
     print()
     if all(results):
         print("供应链门禁：通过")

@@ -309,9 +309,14 @@ case id 无重复、引用的夹具存在。
   因此**不存在**「PyMuPDF 抽得更准」这种实测证据可供权衡。谁若日后想换回去，
   要先补的是对比数据，不是重开这场许可证讨论。
 - 判据：
-  1. Phase 1.5 的 `pyproject.toml` / `requirements*.txt` 中不出现 PyMuPDF；
-  2. `scripts/verify_deps.py` 增加**许可证禁列检查**（AGPL 系一律拒绝），
-     使这条约束由机器而不是由人的记性来保证。
+  1. Phase 1.5 的 `pyproject.toml` / `requirements*.txt` 中不出现 PyMuPDF；**待 Phase 1.5**
+  2. ~~`scripts/verify_deps.py` 增加**许可证禁列检查**~~ **已完成 2026-08-16**：
+     直接依赖查 PyPI 的 `license` / `license_expression` / `License ::` classifier 三处，
+     另加已装分发全量扫描覆盖传递依赖；命中 AGPL 系即 exit 非 0。
+     负向用例以 PyMuPDF 的真实元数据形状为输入（`tests/test_verify_deps_license.py`）。
+     **禁的是 AGPL 不是 copyleft**：GPL / LGPL 明确放行——GPL 不因网络服务触发披露义务，
+     一起禁掉会重犯 D-013 初稿对雪球一刀切的同型错误。
+     豁免名单保持为空，且有一条测试锁住这一点：往里加东西必须先修订本决策。
 - 反转触发条件：pdfplumber 实测无法完成章节定位或坐标重组（达不到 Phase 1.5 成功标准）
   → 先试 pypdfium2；两者皆不达标才重开本条，**届时须带实测准确率数据**，不凭预期。
 

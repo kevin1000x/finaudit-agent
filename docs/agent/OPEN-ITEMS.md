@@ -49,12 +49,17 @@ PyMuPDF / `fitz` 禁入本仓库任何依赖（含间接）；坐标重组方法
   ① 三张表的页码定位 ② 坐标重组行，且资产负债表行项目命中数 **≥ 上一轮 fitz 的 9/12**。
   低于此数则触发 D-014 的反转条件，改试 pypdfium2。
 
-### A-5 — 许可证约束尚未机器化
-- **归属**：agent，随时可做
-- **背景**：D-014 禁止 AGPL 组件，但目前这条约束只写在文档里。
-  `scripts/verify_deps.py` 现在只比对 PyPI 发布件哈希，**不看许可证**。
-- **判据**：`verify_deps.py` 对每个依赖读取其 `Metadata` 的 `License` / `Classifier`，
-  命中 AGPL 系即 exit 非 0；且有一条用 PyMuPDF 作输入的负向测试证明它真的会拦。
+### ~~A-5 — 许可证约束尚未机器化~~ → **已完成 2026-08-16**
+`scripts/verify_deps.py` 增加许可证禁列：直接依赖走 PyPI 元数据的
+`license` / `license_expression` / `License ::` classifier 三处；
+另加一遍**已装分发全量扫描**覆盖传递依赖。命中 AGPL 系即 exit 非 0。
+`tests/test_verify_deps_license.py` **12 passed**，含以 PyMuPDF 元数据为输入的负向用例。
+实跑 `verify_deps.py` exit 0（pyyaml / pytest 均 MIT，10 个已装分发无命中）。
+- **写这条时当场被自己的测试抓到一个洞**：`\bAGPL\b` 匹配不到 `AGPLv3`
+  （`v` 是单词字符，尾部词边界不成立）。已改为只要前导边界。
+  —— 与 F-2「凑一个求不出值的 trigger」同型：**规则写出来了不等于它会触发。**
+- **局限已写进代码输出，不许省略**：已装扫描只覆盖本机这一个 venv，
+  不能据此断言「本项目没有 AGPL 依赖」（F-1）。
 
 ---
 
@@ -177,9 +182,31 @@ PyMuPDF / `fitz` 禁入本仓库任何依赖（含间接）；坐标重组方法
 - `references/deepseek-harness-deep-read.md` —— 含证据链字段集的完整建议（U-01 的直接输入）
 - `references/cninfo-deep-read.md` —— 含 PyMuPDF AGPL、Fog 静默降级、SSE id bug
 - `references/hello-agents-deep-read.md` —— 含 HyDE/MQE 必须排除的**硬理由**（分数标定）
-- **未完成**：harness 还有约 30 篇 subsystems 文档；cninfo 还有 6 个测试实现 +
-  `metrics.py` / `utils.py` / `supabase/` / `scripts/`，且**「pipeline 有无勾稽校验」这个追问没答上**
+- **cninfo 续读已完成（2026-08-16）** → `references/cninfo-deep-read-part2.md`（479 行）。
+  harness 续读仍在跑。
 - **判据**：两个续读任务重跑完成并把增量并进对应 reference 文件
+
+### D-13 — cninfo **没有任何勾稽校验**，Phase 1.5 要从零建这一层
+- **归属**：agent，直接影响 Phase 1.5 的范围
+- **结论（2026-08-16 续读回答，我已复核三条关键断言）**：读完
+  `pipeline.py` / `metrics.py` / `financial_data_sources.py` / `utils.py` / `downloader.py` /
+  6 个测试文件，**没有任何会计恒等式校验**（资产=负债+权益、分项和=合计、
+  利润逐级推导、期初=上期期末，一个都没有）。
+- **根因比"没做"更值得记**：`pipeline.py:758` 把 `'financial_statements': {}` 硬编码，
+  `metrics_phase` 从不读它 —— **它抽了报表，却用 AKShare 的指标算结论，
+  两条路径不相交**，所以根本不存在「数字之间要自洽」的场景。
+  （已自行核对：`sed -n '750,765p' src/pipeline.py` 确认第 758 行为 `'financial_statements': {}`）
+- **顺带捞到的最高价值反面样本**：`metrics.py:131`
+  `df[primary].fillna(df.get(secondary, 0))` —— 列不存在时 `df.get` 返回**标量 0**，
+  于是 `NaN` 静默变 0，`dropna` 一行都删不掉。子 agent 用 `examples/financial_data.csv`
+  实跑复现：12 行输入，每家公司首年 `roa_change=NaN` 而 `perf_score=0.00`。
+  **掩盖它的正是 `test_metrics.py:104-111` —— 只断言长度不断言值。**
+  （已自行核对第 131 行原文）
+- **对本项目的意义**：这正是「缺失 ≠ 零」在外部项目里的真实事故现场，
+  比任何假想例子都好用。A-2（有息负债率把"格子空"当缺失）是同一枚硬币的另一面。
+- **判据**：Phase 1.5 的成功标准里增加一条勾稽校验，且它必须
+  ① 是阻断式的（不通过即拒答，不是记日志）② 有一条用真实年报数据驱动的通过用例
+  与一条构造的失败用例。ROADMAP Phase 1.5 目前六条标准里**没有这一条**，需要补。
 
 ### D-10 — 评测指标缺效率与成本维度
 - **来源**：hello-agents Ch12「单次评估成本可能数百元」+ 渐进式评估（先 5 个样本，>0.8 才扩）
