@@ -191,6 +191,13 @@ type SessionEvent<T> = {
 U-01 的证据链字段集应当照此设计：每个结论事件带一个指向其输入事件的 seq 列表，
 复核者顺着 seq 就能一路回溯到取数与口径定义，不需要读任何自然语言说明。
 
+> ⚠️ **【2026-08-16 续读更正】范围比上面写的窄得多。**
+> `sourceEventSeqs` **只挂在 3 个 surface 事件类型上**——44 个事件类型里 41 个是
+> log-only，没有这个字段。它是**模型可见历史**的骨架，不是全部审计事件的骨架；
+> log-only 审计事件之间靠业务 id（`id`/`handlerId`/`callId`）配对。
+> 上面「每个结论事件带 seq 列表」这个设计建议本身仍然成立，
+> 但**不要说成「harness 就是这么做的」**。详见 `deepseek-harness-deep-read-part2.md` Q2-C。
+
 **`ignorable` 默认为「必需」**——设计理由值得整段抄：
 
 > 读到一个不认识的 `type` 且没有这个标记时，读者 **MUST 拒绝重建会话**，
@@ -200,6 +207,19 @@ U-01 的证据链字段集应当照此设计：每个结论事件带一个指向
 
 这是 fail-closed 应用在**日志格式演进**上。本项目的证据链一旦要跨版本读取，
 这条就是现成答案：宁可拒绝重建，不可静默降级。
+
+> ⚠️ **【2026-08-16 续读更正】这道闸门的位置我记错了。**
+> 上一轮把它归到 `session-projection`。**行为属实，位置错了**：实际在
+> `packages/session/session-persistence/src/coordinator.ts` 的 load 边界
+> （`assertEventsSupported` → `SessionFormatUnsupportedError`，
+> 放行条件 `KNOWN_SESSION_EVENT_TYPES.has(type) || event.ignorable === true`；
+> 我已自行核对源码）。
+> **而 `session-projection` 的 `apply` 契约恰恰相反**：不感兴趣的事件必须返回
+> 同一个 state 引用，即静默无视。
+> 分层是：**「日志 → 内存」入口 fail-closed，「内存 → 视图」投影不拦。**
+> 对 finaudit 的直接含义：证据日志的闸门放在**读入边界**，不是放在渲染层。
+> 另注：目前 harness 里**没有任何 writer 会设置 `ignorable`**，
+> 所以这条 fail-closed 今天等价于「遇到任何未知事件类型一律拒绝」。
 
 ### 5.5 一个我们已经踩对、但应写明理由的点
 

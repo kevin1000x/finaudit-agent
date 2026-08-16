@@ -88,7 +88,7 @@ PyMuPDF / `fitz` 禁入本仓库任何依赖（含间接）；坐标重组方法
 
 | 编号 | 内容 | 归属 | 判据 |
 |---|---|---|---|
-| **U-01** | 证据链字段集未定 | Phase 2，不得提前拍板 | 复核实验数据回来后定，AC-05 字段齐全率 100% |
+| **U-01** | 证据链字段集未定（**已有输入，仍不得提前拍板**，见 D-16） | Phase 2 | 复核实验数据回来后定，AC-05 字段齐全率 100% |
 | **U-02** | 准则语料获取方式（人工整理 vs 公开数据集） | Phase 3 前专项调研 | 有一份可复现的获取方案 + 版权状态说明 |
 | **U-03** | ~~CLI/TUI 入口~~ → **内核与壳的边界画在哪** | 已重新表述（2026-08-15） | ARCHITECTURE.md 有边界图，且第二个壳的增量成本可估。不得在 Phase 1.5 提前拍板 |
 | ~~U-04~~ | ~~工时分配~~ | 已关闭（前提消失，D-008 修订） | — |
@@ -182,9 +182,64 @@ PyMuPDF / `fitz` 禁入本仓库任何依赖（含间接）；坐标重组方法
 - `references/deepseek-harness-deep-read.md` —— 含证据链字段集的完整建议（U-01 的直接输入）
 - `references/cninfo-deep-read.md` —— 含 PyMuPDF AGPL、Fog 静默降级、SSE id bug
 - `references/hello-agents-deep-read.md` —— 含 HyDE/MQE 必须排除的**硬理由**（分数标定）
-- **cninfo 续读已完成（2026-08-16）** → `references/cninfo-deep-read-part2.md`（479 行）。
-  harness 续读仍在跑。
-- **判据**：两个续读任务重跑完成并把增量并进对应 reference 文件
+- **两个续读均已完成（2026-08-16）**：
+  `references/cninfo-deep-read-part2.md`（479 行）、
+  `references/deepseek-harness-deep-read-part2.md`（891 行）。
+  harness 这次是真取到了仓库（`--filter=blob:none --no-checkout` 绕开 clone 超时，
+  克隆在 scratchpad 不在本仓库内），并核实了元信息：2026-08-13 / MIT / TS 属实，
+  **默认分支是 `master` 不是 `main`**，`SESSION_FORMAT_VERSION = 0`（官方声明预发布无兼容承诺）。
+- **判据**：达成。
+
+### D-14 — harness 续读更正了上一轮的两条断言（我已逐条核对源码）
+- **归属**：agent，已并入 references，此处只记「哪条错了」以免旧结论被再次引用
+- **① fail-closed 的位置记错了。** 上一轮写「session-projection 读到不认识的事件
+  必须拒绝重建」。行为属实，**但不在 projection 层**：实际在
+  `packages/session/session-persistence/src/coordinator.ts` 的 load 边界
+  （`assertEventsSupported` → `SessionFormatUnsupportedError`）。
+  而 session-projection 的 `apply` 契约**恰恰相反**：不感兴趣的事件必须返回同一个 state 引用。
+  **分层是「日志→内存」入口 fail-closed，「内存→视图」投影不拦。**
+  （我已自行核对：`sed -n '1055,1072p'` 见 `assertEventsSupported`，
+   放行条件是 `KNOWN_SESSION_EVENT_TYPES.has(type) || event.ignorable === true`）
+  → **对 finaudit 的影响是实质的**：闸门该放在证据日志的**读入边界**，不是放在渲染层。
+- **② `sourceEventSeqs` 的范围比我说的窄得多。** 它只挂在 3 个 surface 事件上
+  （44 个事件类型里 41 个是 log-only），是**模型可见历史**的骨架，不是全部审计事件的骨架。
+  log-only 审计事件之间靠业务 id（`id`/`handlerId`/`callId`）配对。
+- **③ 补一条上一轮没有的事实（已核对）**：`ApprovalOutcome` 是封闭四元组
+  `allowed-once | rejected | cancelled | unavailable`，源码注释写着
+  「Callers fail closed on `unavailable`」。**「被拒绝」是一等终止值，
+  「问不到人」也是**——不是异常。消费侧把四个 outcome 映射成四条不同的 deny reason，
+  意图是让模型能区分「人说不」与「没有审批通道」。
+  → finaudit 的 `Refuse` 也应当是**封闭枚举**而非自由文本 reason。
+  **但 pending 不持久化**（同 turn 内一个 `await`，崩溃不闭合），
+  finaudit 若要跨会话的「待人复核」，harness 这块没有可抄的。
+
+### D-15 — harness 有一处**不能抄**的不对称
+- 「问人要许可」（approval）被完整审计；**「问人要信息」（user-questions）在 44 个事件类型里一个都没有。**
+- 对财务审计场景这个不对称是错的：**向人确认了什么口径、人怎么答的，恰恰必须进证据链**——
+  那正是 D-003 说的第一类产物。
+- **判据**：finaudit 的事件类型表里，「向人提问 + 人的回答」与「向人要许可」同级持久化。
+
+### D-16 — U-01 拿到三条可直接落地的输入（来自 harness 续读）
+1. **条件字段用类型层强制，不靠运行时约定**：`ignorable` 与 `sourceEventSeqs` 都是三态
+   （有值 / 空 / 未知），用 `K extends SurfaceEventType ? ... : object` 在 `append()`
+   调用点就把不该有的字段挡掉。→ finaudit 的证据事件字段集应当同样在构造处封闭。
+2. **口径状态用日志 fold，不另建表**：`plan/mode` 走整值替换 + 最后一条胜出；
+   口径变更是「保留历史后追加完整快照」，**绝不回改 system prompt**。
+   → 证据链单调性：已写入的证据事件永不回改，变更只能追加。
+3. **`deriveEventMessage` 是公开导出的纯函数**，外部复核者与内部缓存调用同一个
+   ——「cannot disagree」。→ finaudit 应有 `verify_answer_reconstructable(log)`，
+   且它是 **AC 级判据**（AC-05 的机器形态），不是一条测试用例。
+- **判据**：U-01 定稿时这三条各有对应设计，或写明为何不采纳。
+
+### D-17 — harness 还有三处高价值未读
+- `docs/postmortem/`（5 篇）、`subsystems/tools.md`（720 行，工具执行管线主体）、
+  `subagent.md`（734 行，子 agent 证据链如何与父会话关联）。
+- 子 agent 自己标注：postmortem 那 5 篇**本该是对 finaudit 最高价值的部分之一**，建议单开一轮。
+- 另有两处子 agent 主动降低了自己结论的置信度，照录：
+  「不是 lint 规则」的依据是 `grep model-visible` 在 `.oxlintrc.json` 零命中，
+  **不是**逐条读完 11KB lint 配置；`.gitlab-ci.yml` 未读，
+  因此**不能断言哪些 gate 是 PR 必过、哪些是夜间**。
+- **判据**：第三轮续读完成，或明确决定不读并说明理由。
 
 ### D-13 — cninfo **没有任何勾稽校验**，Phase 1.5 要从零建这一层
 - **归属**：agent，直接影响 Phase 1.5 的范围
