@@ -16,7 +16,7 @@
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [ ] **Phase 0: cninfo 实证结论** - 不写新代码，给已有仓库补一条可复现的实证结论
-- [ ] **Phase 1: 语义层 semantic-layer** - 20 个财务指标的机器可读口径定义，本项目唯一别人抄不走的一层
+- [x] **Phase 1: 语义层 semantic-layer** - 20 个财务指标的机器可读口径定义，本项目唯一别人抄不走的一层　**（2026-08-16 收口，五条 SC 全部 VERIFIED；H1 停止条件按严格读法计 5 未触发，压线）**
 - [ ] **Phase 1.5: 数据接入层**（INSERTED 2026-08-15）- 年报 PDF 抽取器 + 数值执行，让 20 份口径定义第一次吃到真实数据
 - [ ] **Phase 2: 可信执行层与 Web 演示** - 跑通一次完整问答并产出可复核的证据链
 - [ ] **Phase 3: 知识层** - 准则 RAG（引用可追溯）+ 条件性图谱
@@ -76,14 +76,14 @@ Plans:
 （记为 SC-1…SC-5）与 `PROJECT_SPEC.md` §9 的 AC 编号替代。
 
 Plans:
-- [ ] 01-01-PLAN.md — 语义层内核 tracer：受限布尔 DSL + 9 条 Requirement 校验器 + 全局 flag 词表 + 第 1 份 version: 2 定义 + 机读拒答（wave 1）
-- [ ] 01-02-PLAN.md — OpenSpec 变更：把条件表达式语法与 flag 词表位置写进权威文档（wave 2）
-- [ ] 01-03-PLAN.md — 门禁命令：AC-10 非公开数据扫描器 + advisory_only 元规则统计（wave 2）
-- [ ] 01-04-PLAN.md — 指标批次 A：利润表与盈利能力 6 个（wave 3）
-- [ ] 01-05-PLAN.md — 指标批次 B：资产负债表与偿债 6 个（wave 3）
-- [ ] 01-06-PLAN.md — 指标批次 C：现金流与周转 7 个 + 现金循环周期的显式排除（wave 3）
-- [ ] 01-07-PLAN.md — 评测问题集 20 题与冻结（含不可逆决策检查点）+ C2 类拒答 100%（wave 4）
-- [ ] 01-08-PLAN.md — 收口验证：全量门禁实测、元规则判定、H1 停止条件判定、VERIFICATION.md（wave 5）
+- [x] 01-01-PLAN.md — 语义层内核 tracer：受限布尔 DSL + 9 条 Requirement 校验器 + 全局 flag 词表 + 第 1 份 version: 2 定义 + 机读拒答（wave 1）
+- [x] 01-02-PLAN.md — OpenSpec 变更：把条件表达式语法与 flag 词表位置写进权威文档（wave 2）
+- [x] 01-03-PLAN.md — 门禁命令：AC-10 非公开数据扫描器 + advisory_only 元规则统计（wave 2）
+- [x] 01-04-PLAN.md — 指标批次 A：利润表与盈利能力 6 个（wave 3）
+- [x] 01-05-PLAN.md — 指标批次 B：资产负债表与偿债 6 个（wave 3）
+- [x] 01-06-PLAN.md — 指标批次 C：现金流与周转 7 个 + 现金循环周期的显式排除（wave 3）
+- [x] 01-07-PLAN.md — 评测问题集 20 题与冻结（含不可逆决策检查点）+ C2 类拒答 100%（wave 4）
+- [x] 01-08-PLAN.md — 收口验证：全量门禁实测、元规则判定、H1 停止条件判定、VERIFICATION.md（wave 5）
 
 ### Phase 1.5: 数据接入层（INSERTED 2026-08-15）
 **Goal**: 把年报 PDF 变成语义层能消费的结构化字段，并让指标真的算得出数值。
@@ -181,7 +181,7 @@ Plans:
 
 ```text
 Phase 0    ──独立，可随时做
-Phase 1    ──独立，不依赖 Phase 0                                    【已完成 wave 1-4】
+Phase 1    ──独立，不依赖 Phase 0                                    【✅ 2026-08-16 全部完成】
 Phase 1.5  ──依赖 Phase 1（没有口径定义，抽出的字段不知道叫什么）
 Phase 2    ──依赖 Phase 1 与 Phase 1.5（没有真数据，H2 复核实验做不了）
 Phase 3    ──依赖 Phase 2 的 H2 判定门通过
