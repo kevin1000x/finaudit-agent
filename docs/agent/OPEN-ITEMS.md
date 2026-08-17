@@ -226,6 +226,35 @@ type PreToolDecision =
 Phase 2 的 `ARCHITECTURE.md` 应引用本条，并写清为何偏离 hello-agents 的「万物皆 Tool」
 与 harness 的 waterfall。
 
+### D-25b — 读完 `cordis-api/` 后，闸门结论**升级**（不是维持原判，是更强了）
+上一轮标注「若 `cordis-api/registry.md` 里存在加载顺序保证，会削弱理由 1」。
+**读完了，没有削弱，反而更强。** 三条我逐字核对了原文：
+
+| 设想的翻案条件 | 核实结果 | 出处 |
+|---|---|---|
+| 监听器优先级（数字 priority / order） | **不存在**。`Plugin.Base` 恰好五个字段 `name? / Config? / inject? / provide? / intercept?`，**无 priority、无 order、无 guard、无 critical** | `cordis-api/registry.md:70-83` |
+| 加载顺序保证 | **不存在**。`inject` 的语义是「所需服务可用时才加载」，且**依赖服务一变就卸载重跑** ⇒ 监听器在链条里的位置**会漂移** | `registry.md:11-19, 137` |
+| 不可卸载的 guard | **不存在**。`EventOptions` 恰好两个字段 `prepend? / global?`；`ctx.on` 返回 disposer；primer 把「注册一律可撤销」列为五大理念之一 | `events.md:178-185, 134`；`cordis-primer.md:13` |
+
+**两条上一轮没发现、进一步削弱闸门的机制：**
+
+- **`ctx.isolate()` 可以在子树里把服务整个换掉**（`context.md:41-49`，原文：
+  「a different implementation can be provided **without affecting the parent scope**」）。
+  ⇒ 闸门若实现为一个服务，任何代码都能造一个子上下文塞进自己的实现，**父作用域完全无感**。
+  **这不是绕过监听器链，是把被守卫的对象整个替换掉。**
+- **`Context.filter` 每次派发都会被查**，而 `global: true` 才无视它。
+  ⇒ 闸门监听器若忘写 `global`，在某些上下文下会**静默地根本收不到事件**
+  ——不是拒绝、不是报错，是压根没被调用。**又一个「失败被静默转成正常值」的结构性温床。**
+
+**对 finaudit 的最终判断（Phase 2 的 ARCHITECTURE 直接引用本条）**：
+证据链闸门必须放在**唯一入口的同步调用路径上**（函数调用 / 不可绕过的构造器），
+**不能放在任何「可注册 / 可卸载 / 可换实现」的插件事件链上**。
+`resolve_scope() -> ScopeSpec | Refusal` 这个形状是对的，而且理由比原先强：
+不只是「listener 可能不调 next()」，而是**连被守卫的对象本身都能被换掉**。
+
+**反过来有一条该抄的**：`fiber.getEffects()`（`fiber.md:195-210`）能列出当前所有已注册效应及其嵌套树。
+→ 证据链系统应有等价物：**能枚举当前生效的全部校验器，而不是相信它们都装上了。**
+
 ### D-26 — harness 的两条可直接抄的机制
 1. **`ts type-equiv` 门禁**（`docs/development.md:163`）：用 TypeScript parser
    把**文档里的代码块**与**源码符号**机械绑定，文档一漂移就红。
@@ -535,13 +564,30 @@ pro 是 `metric_ambiguous`（判 FAIL）。同一道题、同一厂商、相邻�
    且它是 **AC 级判据**（AC-05 的机器形态），不是一条测试用例。
 - **判据**：U-01 定稿时这三条各有对应设计，或写明为何不采纳。
 
-### D-21 — 三个外部项目的阅读进度（2026-08-16 收口台账）
+### D-21 — 三个外部项目的阅读进度（2026-08-16 末次更新）
 
 | 项目 | 状态 | 产出 |
 |---|---|---|
-| **cninfo**（两仓） | ✅ **代码与文档已读完** | `cninfo.md` + deep-read `part1/2/3`（16k + 479 + 438 行） |
-| **deepseek-harness** | ⚠️ **核心契约已读完，外围仍有缺口** | `deepseek-harness.md` + deep-read `part1/2/3/4`（16k + 891 + 614 + 869 行） |
-| **hello-agents** | ❌ **仍是最大缺口**：16 章只读了 Ch4/5/6/7/8/9/10 的片段 | `hello-agents.md` + deep-read（19k 行）；**Ch12 评测章至今未读原文** |
+| **cninfo**（两仓） | ✅ **代码与文档已读完**（操作者确认「差不多了」） | `cninfo.md` + deep-read `part1/2/3` |
+| **deepseek-harness** | ⚠️ 契约层已读透，`.agents/notes/`（200+ 篇）与部分 subsystems 仍缺 | `deepseek-harness.md` + deep-read `part1…part6` |
+| **hello-agents** | ⚠️ Ch12/13/14/15/16 已读完，**Ch3 与四个空洞仍未读** | `hello-agents.md` + deep-read `part1/2/3` |
+
+**2026-08-16 末轮派了三个 agent，全部撞上 session limit（6:30am 重置），
+但其中两个因「边读边写」留下了实质产出**（上一次同类中断是零留存）：
+
+- `hello-agents-deep-read-part3.md`（541 行）：**Ch13(1581 行)/Ch15(1899)/Ch16(1011) 三章全读完**，
+  死在 Ch14 途中。
+- `deepseek-harness-deep-read-part6.md`（345 行）：**Cordis primer + API 7/7 读完**，
+  最重要的 `registry.md` 判断已完成（见 D-25b），`subsystems/` 剩余 29 篇只开了头。
+- `.agents/notes/` 全量普查：**零产出**，agent 在写文件前就中断了。
+
+**仍未读的（下一轮的清单）**：
+harness 的 `.agents/notes/**`（200+ 篇，只读过 4 篇）、`subsystems/` 剩余约 29 篇、
+`docs/user/` 13 篇、`api-gateway` / `architecture` / `module-graph` / `config-catalog`；
+hello-agents 的 Ch3、Ch7.2、Ch8.2、Ch9.6.3、Ch10.5、Ch14 剩余部分。
+
+**「边读边写」这条指令要固化进以后所有深读任务的 prompt。** 证据：
+同样是被 session limit 中断，上一轮零留存，这一轮留下 886 行可用产出。
 
 **hello-agents 的续读任务 2026-08-16 派出后因 API session limit 中断，未产出任何文件。**
 不预测它会得出什么。**Ch12 是本项目脊柱相关（评测），优先级最高。**
