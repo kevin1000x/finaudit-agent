@@ -639,3 +639,102 @@ can be provided **without affecting the parent scope**」。
   → 与 §2 结论一致：**事件监听器不能当事务参与者，因此不能当闸门。**
 - 诚实标注两处未做（`:125`，§5.3 正面）：事件「**in-process only**；
   cross-process change push is a **recorded limitation**」。
+
+#### `workflow.md`（279 行，全读）—— 本轮最接近「真闸门」形状的一篇
+
+- **★ 策略参数对被执行体不可见不可改**（`:13`）：调用方可以为一次运行指定
+  `subagentProvider` 与更低的 `maxTotalAgents`，但
+  「**the script cannot observe or replace either policy**」。
+  → 这直接回答了 §2 遗留的问题："闸门该长什么样"。
+  答案不是"排在监听器链前面"，而是**把约束做成被约束者根本拿不到的参数**。
+  脚本无法读到自己的上限，也就无从绕过。
+- **★ 身份校验先于任何代码求值**（`:13`）：`meta` 与 `args` 是纯 JSON DATA，
+  「the engine validates `meta` against its schema and **rejects loud BEFORE anything runs**
+  — **no script text is ever evaluated to obtain it**」。
+  → 元数据绝不从待执行的代码里求值取得。对应本项目：
+  **口径声明、数据来源标注必须是外部提供的结构化数据，不能从被分析的内容里推导出来**，
+  否则"声明"与"被声明物"之间就没有独立性可言。
+- **★★ `fatal` 错误不得溶解进失败值域**（`:116`）——本轮反"静默转正常值"的最强样本：
+  > Hook misuse inside a script — bad arguments, unknown/deferred `agent()` options,
+  > a schema outside the structured-output subset, a tripped cap, a seam start failure,
+  > cancellation — throws a `WorkflowError` with `fatal: true`.
+  > The `parallel()`/`pipeline()` combinators **RE-THROW fatal errors instead of mapping the item to `null`**:
+  > a typo'd option **must kill the script loudly, never dissolve into something that reads as
+  > an ordinary child failure**. The per-item `null` is reserved for child-run failures... 
+  → **把"数据失败"与"程序错误"分进两个通道**：前者可以被聚合成 `null` 继续跑，
+  后者必须穿透组合子把整个脚本打死。
+  落到 finaudit-agent：某页 PDF 抽不出表 → 记为该页失败，可继续；
+  但口径名拼错、准则编号不存在、schema 越界 → **必须炸**，
+  绝不能记成"该口径无数据"——那会让一个拼写错误看起来像一条真实的空结论。
+- **★ 落账失败后停写整条链，保证日志是合法前缀**（`:124`）：
+  「The **first append failure disables later writes for that run**, so the log remains
+  **empty or a legal continuous prefix** and the tool result is unchanged.」
+  → 比"尽力继续写"高明：**有洞的日志比截断的日志危险得多**，因为无法判断中间少了什么。
+  直接抄进证据链：一旦某条证据写入失败，该证据链停止追加，留下可识别的截断，而不是继续记后面的步骤。
+- **★ 区分"尾部缺失"与"中间损坏"**（`:126`）：`dsh-tool-workflow/invariant`
+  「validates the same protocol **before live commit and when a Session is loaded**」，
+  五条：一次 run 一个 start、成员序号为正且唯一、成员起止配对、run 结束时无未闭合成员、
+  run 结束后无更新。关键判据：
+  「A missing member ending or run ending **at the log tail** is
+  **valid interruption evidence rather than corruption**.」
+  → 这正好补上 §3.A `commands.md` 留下的悬挂 run/done 问题：**悬挂只在日志尾部合法**。
+  这是一条可以直接落地的复核判据。
+  另注意：**同一套不变量在"提交前"和"加载时"各跑一次**——写时校验 + 读时校验，两端都不信任。
+- **观察者拿不到控制权，也拿不到可变别名**（`:120`）：
+  所有 `workflow/*` 事件负载以 `WorkflowRunInfo`（id + meta）开头，
+  「**never the live `WorkflowRun`**, so a subscriber **cannot gain `cancel`/`dispose`**」；
+  `workflow/end` **故意不带 result value**，理由是
+  「a listener observing outcomes **must not receive a mutable alias** of the caller's result」；
+  且「every listener receives **its own payload clone**」。
+  → 补充 §2：这个仓库是**清楚知道**"观察者不该有权力"的，并且在数据层面执行了（快照、克隆、剥离句柄）。
+  所以 §2 的结论应精确表述为：**不是作者不懂，而是事件系统在架构上就不适合承载强制力，作者选择在别处强制。**
+- **结果永不 reject，用封闭 stopReason 表达**（`:65`、`:95`）：
+  `stopReason: 'completed' | 'cancelled' | 'error'`（closed union，consumers may exhaust it），
+  非 `completed` 时携带 `error`，且消费者
+  「maps it to an `isError` tool result **rather than reporting partial output as success**」。
+  `result` 不 reject、`cancel` 后在有界宽限内**强制结算**、`dispose()` 「never hangs on a stuck script」。
+  → "不会卡死"被写成契约的一部分，而不是希望。
+- **⚠️ 一处降级了但没有在类型上标记的字段**（`:82-89`，记入 §5.2）：
+  `agentsStarted` 「On a graceful settlement this is the **script-side count**...;
+  on a termination path (grace force-settle, worker death) it **degrades to the host-observed count**
+  — calls queued inside a terminated script are **unknowable** then.」
+  → 语义在两条路径下不同，文档诚实说明了，**但类型仍然只是 `number`**。
+  消费者拿到 42 无法知道这是精确值还是降级值。
+  对比 §3.A `sandbox.md` 的 `SandboxEnforcement = 'full' | 'partial'`——那里把降级编码进了返回值，这里没有。
+  **同一仓库里对"部分可信的数值"处理不一致**，这是本项目要避免的：
+  凡是可能降级的计数/结论，降级标记必须与值同行。
+- 一个小而重要的一致性纪律（`:128`）：UI 折叠时
+  「preserve exact strings, including the distinction between **an omitted phase and `''`**」。
+  → "缺失 vs 空串"在本轮已第三次出现（`credentials` 空值即缺失、`storage` null 哨兵、这里）。
+  **这个仓库把"空 / 缺失 / 未写"的区分当成一等问题。**
+
+#### `extensions.md`（365 行，全读）—— 但内容 98% 是生成物，散文只有 6 行
+
+**如实标注读取边界**：本页 `:1-6` 是全部手写散文，`:7-364` 全是 `gen-cordis-catalog` 生成的
+方法签名与 JSDoc。因此：
+- **我知道方法名与参数名，不知道请求/收据类型的字段集。**
+  `DynamicCordisDefineRequest` / `DynamicCordisRunResponse` / `DynamicCordisInventoryRow` /
+  `DynamicCordisReference` / `CordisInspectProviderManifest` 等在本页**只出现类型名，没有字段展开**，
+  我不猜。沙箱行为与包生命周期本页明确外包给
+  `packages/extensions/README.md`（**我没读，见 §6 未读清单**）。
+
+在签名层面能确证的几点：
+- **⚠️ 一次审批可覆盖此后所有版本**（`:116-119`，记入 §5.4）：
+  `runHostHalf(..., approveFutureVersions: boolean)`；
+  `run()` 的 JSDoc（`:98-99`）写明「An unauthorized Client Package waits for approval;
+  **Plugin-wide authorization covers later versions**」。
+  → 即：用户看了 v1 的代码点了同意，v2/v3 的代码**无需再次审批即可运行**。
+  这是"审批一次、授权一类"的经典弱化。对本项目的意义：
+  **人工确认的粒度必须与被确认物的粒度一致**——批准某一版口径规则，不等于批准该规则的后续修订。
+- **源码与元数据分层暴露**：`listPlugins` 返回「**source-free** Plugin summaries」，
+  `inspectPlugin` 「**without returning Package source**」，
+  只有 `inspectPackage` 返回「Package metadata, **source**」（`:201-222`）。
+  → 元数据可广泛读取，源码需显式且更窄的调用。
+- **陈旧运行被拒 / 被忽略**：`invoke` 「Invoke an active Host method **while rejecting stale Client runs**」（`:245`）；
+  但 `reportRenderFailure` 返回「Null after recording **or ignoring a stale report**」（`:230`），
+  `reportClientGuardFailure` 同样「after reporting **or ignoring a stale/startup failure**」（`:240`）。
+  → **调用路径拒绝陈旧，报告路径静默丢弃陈旧。** 后者记入 §5.2：
+  一个来晚了的失败报告会被无声吃掉，调用方拿到 `null` 无法区分"记下了"与"扔了"。
+- **竞态用"首个有效者胜"解决**：`resolveClientQuery`「Accept the **first valid** Client response
+  for a pending query」，返回 `CordisInspectResolveAck`「whether this response **settled the still-pending query**」（`:54-60`）。
+  → 至少返回值告诉调用方"你是不是那个赢家"，没有把败者伪装成成功。

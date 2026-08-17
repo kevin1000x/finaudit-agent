@@ -21,7 +21,7 @@
 | Ch13 智能旅行助手 | L1–1581（全章） | 全文逐行 | ✅ 读完 |
 | Ch15 构建赛博小镇 | L1–1899（全章） | 全文逐行 | ✅ 读完 |
 | Ch16 毕业设计 | L1–1011（全章） | 全文逐行 | ✅ 读完 |
-| Ch14 自动化深度研究智能体 | L1–2152（除引用机制段） | — | ⏳ |
+| Ch14 自动化深度研究智能体 | L1–2152（全章） | 全文逐行 | ✅ 读完 |
 | Ch3 语言模型与 Transformer | L1–1022（全章） | — | ⏳ |
 | Ch7.2 | — | — | ⏳ |
 | Ch8.2 | — | — | ⏳ |
@@ -413,10 +413,14 @@ os.environ["LLM_API_KEY"] = "your_api_key_here"
 
 **③ `cd` 目录名对不上（L155 vs L158）。**
 
-```bash
-git clone git@github.com:你的用户名/hello-agents.git
+```text
+（原文是一条 SSH 形式的 git clone 命令，clone 的仓库名为小写 hello-agents）
 cd Hello-Agents
 ```
+
+> 上面第一行**照抄原文会触发本仓库的 AC-10 扫描**（SSH 形式的 `用户@主机` 与邮箱同形），
+> 故改为描述。这与 `PROGRESS.md` 里那次的处置一致：**举例改成描述，
+> 不为了文档好写而放宽门禁规则。**
 
 clone 出来的目录是 `hello-agents`。在 Linux 上 `cd Hello-Agents` 直接失败。
 （Windows / macOS 默认大小写不敏感的文件系统上侥幸能过。）小错，但又一次说明命令没在 Linux 上跑过。
@@ -537,5 +541,308 @@ README 模板（L293–298）：
   以及"主仓库只放 `sample.csv`（<1MB）+ `demo_result.png`（<1MB）"的具体形态。
   这套"小样本进仓 + 全量数据外链"的规矩对 finaudit 直接可用：年报 PDF 体积大，
   应当只入库抽取后的结构化产物与少量 fixture，原始 PDF 走外部存储 + 哈希登记。
+
+---
+
+### 第十四章 自动化深度研究智能体（全章 2152 行，本轮读完 L1–2152）
+
+> 上一轮已定的 `source_urls` 结论不重做。本节是**除该段之外**的全章通读。
+> 章节主题：TODO 驱动的研究范式，三个 Agent（TODO Planner / Task Summarizer / Report Writer）
+> + 两个工具（SearchTool / NoteTool）+ FastAPI SSE + Vue3。
+> 全章标题一路是「实现代码」「核心代码」，14.7 小结逐条宣告"我们实现了…"。
+
+#### Q3（先放最重的一条）：整套工具调用审计机制在本应用里**结构上不可能触发**
+
+这是本章最该记住的发现，比 `source_urls` 更根本。
+
+14.3.2 用整整一节（L738–835）论证为什么需要 `ToolAwareSimpleAgent`：
+
+> 在深度研究助手中，我们需要记录每个 Agent 的工具调用情况，用于：1 调试 2 日志 3 分析 4 进度展示（L742–747）
+
+14.7 小结（L2104–2112）再次宣告：
+
+> 这个 Agent 具有工具调用监听能力……**记录所有工具调用，便于调试**。这个 Agent 已经集成到 HelloAgents 框架中。
+
+但把三个服务的构造函数并排看：
+
+| 服务 | 行号 | 是否传 `tool_registry` |
+|---|---|---|
+| `PlanningService` | L1135–1140 | **否** |
+| `SummarizationService` | L1341–1346 | **否** |
+| `ReportingService` | L1437–1442 | **否** |
+
+三个 Agent 全部 `tool_registry` 缺省（=None）。而 14.5.4 开头 L1502 明确写了架构选择：
+
+> 在这里我们没有采用往常一样的使得 simpleAgent 直接调用工具的形式，而是将 SearchTool 的执行结果**通过中间层**来返回给 Agent
+
+即：搜索由 `SearchService` 在 Agent 之外执行，笔记由 `NotesService` 直接 `self.note_tool.run(...)`（L1017）调用。
+**本系统里没有任何一个 Agent 会产生工具调用**，于是 `_execute_tool_call` 永不被调用，
+`tool_call_listener` 永不触发，L822–827 那个 `_emit_event({"type": "tool_call", ...})` 永不发出。
+
+旁证（前端侧）：`useResearch.ts` 的 `switch (data.type)`（L1960–1991）只处理
+`progress / plan / task_summary / report / error / completed` —— **没有 `tool_call` 分支**。
+而 L835 写着"所有 Agent 的工具调用都会被记录，并通过 SSE 推送到前端，实时显示给用户"。
+
+**一个从设计上就收不到任何事件的观测机制，被当作系统的审计与调试能力写进正文和小结。**
+对 finaudit 的映射：证据链机制必须有"本次运行产生了 N 条证据、N=0 即失败"的自检，
+否则"我们有完整审计"和"我们的审计一条都没记到"在产物上完全同形。
+
+#### Q3（续）：监听器本身的三个设计缺陷（L792–809）
+
+```python
+def _execute_tool_call(self, tool_name: str, parameters: str) -> str:
+    parsed_parameters = self._parse_parameters(parameters)      # 独立再解析一次
+    result = super()._execute_tool_call(tool_name, parameters)  # 真正执行用的是原始串
+    if self._tool_call_listener:
+        self._tool_call_listener({... "parsed_parameters": parsed_parameters, "result": result})
+    return result
+```
+
+1. **日志里的参数不是执行时用的参数。** `parsed_parameters` 由本方法**另行解析一遍**得到，
+   真正传给 `super()._execute_tool_call` 的是未解析的 `parameters` 原始字符串。
+   两次解析若有任何差异（版本、容错分支、默认值填充），审计记录与实际执行就会分叉，
+   且**永远不会被发现**，因为没有任何一方留存对方的值。
+   **审计记录必须是执行路径上的同一个值，不能是旁路重算出来的。**
+2. **失败的工具调用不留痕。** 监听器在 `super()` 返回**之后**才调用。工具抛异常 → 直接向上传播 →
+   监听器不执行 → 事件流里没有这次调用。**这是一份只记成功的日志。**
+3. `call_info` 只有 `agent_name / tool_name / parsed_parameters / result` 四个字段：
+   没有时间戳、没有耗时、没有 call id、没有成功/失败标志。无法排序、无法配对、无法判定结果好坏。
+
+#### Q1：声称与可核验产物不一致
+
+**① 前端 `EventSource` 永远连不上后端。方法不匹配，且路由名与架构图三方不一致。**
+
+- 架构描述（L41、L55）：路由是 `/research/stream`
+- 后端实现（L1923）：`@app.post("/api/research")`
+- 前端（L1954）：`new EventSource('/api/research?topic=' + ...)`
+
+`EventSource` 只能发 **GET**，且无法携带请求体。对着一个只注册了 POST 的路由建连 → 405。
+三处名字对不上，其中前后端那一处是**协议层面**的不兼容，不是笔误。
+
+**② 报告永远不会显示在界面上；且 SSE 会自动重连，导致整轮研究无限重跑。**
+
+后端结束时发的是（L1917）：
+
+```python
+yield f"data: {json.dumps({'type': 'progress', 'stage': 'completed', 'percentage': 100, 'text': '研究完成！'})}\n\n"
+```
+
+前端的 `case 'completed':`（L1987–1990）匹配的是 `data.type === 'completed'`，
+而这条事件的 `type` 是 `'progress'`、`completed` 在 `stage` 里。于是：
+
+- 走 `case 'progress'` 分支 → 只更新百分比和文案
+- `eventSource.close()` **不执行**，`isLoading` **不置 false**
+- 服务端生成器耗尽后连接断开 → `EventSource` 语义是**自动重连** → `/api/research` 被再次请求
+  → 若第 ① 条修好，整轮研究（含全部 LLM 调用与搜索 API 调用）会**周期性重跑，无限循环**
+
+同时 `ResearchModal.vue` 里 `isLoading = ref(true)`（L1759）、`markdownContent = ref('')`（L1763）
+是组件**本地**状态，与 `useResearch()` 没有任何连接（L1744–1790 没有 import useResearch）。
+配合 L1728–1733 的 `v-if="isLoading"` 转圈 / `v-else` 渲染 Markdown，
+**转圈图标会永远转下去，最终报告一次也不会上屏。**
+
+**③ 四处 `await` 加在同步方法上。**
+
+`research_stream`（L1885/1897/1900/1911）：
+
+```python
+todo_items = await planning_service.plan_todo_list(topic)
+search_results = await search_service.search(task.query)
+summary, source_urls = await summarization_service.summarize_task(task, search_results)
+report = await reporting_service.generate_report(topic, task_summaries)
+```
+
+四个方法的定义全部是同步 `def`：`plan_todo_list`(L1142)、`search`(L1531)、
+`summarize_task`(L1348)、`generate_report`(L1444)。`await` 一个 list / tuple / str →
+`TypeError: object list can't be used in 'await' expression`。
+这段被 L1919 的 `except Exception` 兜住，前端收到的是一条 `{"type":"error"}`。
+**唯一的运行结果就是报错，而正文把它作为 14.6.2 的完整后端实现给出。**
+
+**④ 参数类型对不上，两个调用点错法一致。**
+
+`plan_todo_list(self, state: SummaryState)` 内部用 `state.research_topic`（L1154）。
+两个调用点都传裸字符串：L859 `self.planner.plan_todo_list(research_topic)`、
+L1885 `planning_service.plan_todo_list(topic)` → `AttributeError: 'str' object has no attribute 'research_topic'`。
+
+**⑤ 14.3.1 与 14.5.1 的 `PlanningService.__init__` 签名不同。**
+L497–504 只收 `llm`，且引用了一个类里不存在的 `self._on_tool_call`；
+L1126–1140 收 `(llm, tool_call_listener)`。而 L830–832 按两参数调用。
+14.3.1 那版直接 `TypeError`。同章前后两版实现不一致 —— 与 Ch13 L568/L800、Ch16 两套 Tool 接口同一模式。
+
+**⑥ 示例的"结果"注释被写反了。这是本章最干净的一处「作者没跑过」证据。**
+
+L1228–1245 的 `response1` 内容是**多模态模型**的两个任务，L1249 注释却写：
+
+```python
+tasks1 = service._extract_tasks(response1)
+# 结果：[{"title": "Datawhale的基本信息", ...}, ...]
+```
+
+L1252–1257 的 `response2` 内容是 **Datawhale** 的两个任务，L1261 注释却写：
+
+```python
+# 结果：[{"title": "什么是多模态模型", ...}, ...]
+```
+
+**两个示例的输出注释整个对调了。** 顺带 L1244 那句结尾文字"这些任务涵盖了 Datawhale 组织的
+基本信息和核心项目"贴在多模态模型的任务列表后面，也是同一次复制粘贴的残留。
+把示例的"输出"手写进注释而不是跑一遍贴回来，正是 Ch12「正文数字 vs 产物数字」问题的微观版本。
+
+**⑦ 第二个 `SearchService` 类把第一个覆盖掉了，并引用了不存在的方法。**
+L1629 重新 `class SearchService:`，只定义 `__init__ / search / _generate_cache_key`，
+其 `search` 里调 `self._execute_search(query, max_results)`（L1656）—— **全章没有这个方法**；
+同时 `_deduplicate_sources` 与 `_limit_source_tokens` 在这一版里消失了。
+正文没有任何"以下是在原类上追加"的说明，按印出来的代码就是 `AttributeError` + 去重逻辑丢失。
+
+**⑧ "1-2 小时压缩到 5-10 分钟"（L23）与"整个研究过程大约需要 1-3 分钟"（L179）互相矛盾，且都无测量。**
+全章没有任何计时、token 计数或对照实验。与 Ch15「成本降低到原来的 1/3」同类。
+
+**⑨ `NotesService` 从未被调用；L985–993 那棵 `workspace/` 目录树没有任何代码路径会产生。**
+`DeepResearchAgent.run`（L856–887）与 `research_stream`（L1873–1921）两条编排里
+都没有出现 `NotesService` / `note_tool`。而 14.7 小结 L2119 写：
+「**NoteTool**：持久化研究进度，**支持恢复和审计**」。
+- "支持恢复"：L978 也说"研究过程中断时能够从上次的进度继续"。全章**没有任何读取笔记、
+  检查断点、跳过已完成任务的代码**；`NotesService` 只有 `save_task_summary` 一个方法。
+- "支持审计"：笔记内容（L1031–1044）记了任务信息、搜索结果、总结，但**没有**记搜索后端、
+  是否命中缓存、时间戳、模型名与参数、LLM 原始响应。
+
+**一个未接线的持久化层，被小结写成两项已交付能力。**
+
+#### Q2：失败/无法判断被静默转成正常值
+
+**① 搜索失败 → `return []` → 下游照常总结、照常报「任务完成」。本章最严重的 Q2。**
+
+```python
+except Exception as e:
+    logger.error(f"搜索失败：{query}，错误：{e}")
+    return []                      # L1565-1567
+```
+
+裸 `except Exception` 把超时、401、配额耗尽、JSON 结构变化压成同一个空列表。之后：
+
+- `_format_sources` 拿到空列表 → 拼出**空字符串**
+- `task_summarizer_instructions` 里 `搜索结果：\n{search_results}` 变成 `搜索结果：`（后面什么都没有）
+- Agent 仍被要求"提取关键信息""**为每个观点添加来源引用（使用[1]、[2]等标记）**"（L562）
+
+**没有资料时要求模型输出带编号引用的总结 —— 这是在直接索取捏造的引用。**
+编排层（L1891–1905）对 `search_results` 是否为空**没有任何检查**，
+照样 `yield {'type': 'task_summary', ...}`，照样推进百分比，最后照样发 `'研究完成！'`（L1917）。
+`source_urls = []`，所以最终报告那一节的"来源"是空的，而正文里的 `[1][2]` 还在。
+
+对 finaudit 的映射极直接：**"没查到"与"查到了但没有相关内容"必须在数据层可区分，
+且必须能阻断下游生成。** 检索为空时继续生成分析结论，等同于要求模型编。
+
+**② `evaluate_plan` 的 100 分底盘：没检查的维度自动满分（L1276–1305）。**
+
+```python
+score = 100
+if len(todo_items) < 3:  score -= 20
+elif len(todo_items) > 5: score -= 10
+for task in todo_items:
+    if len(task.query.split()) < 2: score -= 10
+# 检查逻辑关系
+# （这里可以添加更复杂的逻辑检查）
+return {"score": score, "suggestions": suggestions}
+```
+
+L1266–1271 声明的四条标准是「覆盖全面 / 逻辑清晰 / 查询精准 / 数量适中」。
+实际检查的只有「数量」和「query 词数 ≥ 2」两条。
+**"覆盖全面"和"逻辑清晰"从未被检查，却因为从 100 分起扣而各自默认满分。**
+四个任务、每个 query 三个词、内容全是同义重复 —— 也会得 100 分。
+这与 Ch16 `StyleCheckTool` 把"我只查了两条"输出成"符合 PEP 8"是同一个错误的两种形态：
+**一个把未覆盖范围报成合规，一个把未覆盖范围计入满分。**
+另外 `score` 无下限，可以扣成负数。而这个函数**全章没有任何调用点**，也没有任何阈值门禁。
+
+**③ 计数式成功日志（L1561）。**
+
+```python
+logger.info(f"搜索成功：{query}，返回{len(results)}个结果")
+```
+
+搜索 API 正常返回但结果为空时，打印的是「**搜索成功**：xxx，返回 **0** 个结果」。
+与 Ch15 L465「✅ 背景对话更新完成: 2个NPC」同型：用"做了几个"冒充"做对了"，
+且不与期望数（`max_results=5`）比对。
+
+**④ Token 截断无痕迹（L1596–1597）。**
+
+```python
+if len(snippet) > max_chars:
+    snippet = snippet[:max_chars] + "..."
+```
+
+`"..."` 是唯一的信号，且它与摘要原文里本来就可能有的省略号无法区分；
+截断量、原长度都不落任何字段。下游 Agent 和最终报告都不知道自己看的是残篇。
+另外"1 个 Token 约等于 4 个字符"（L962、L1593）对中文是**大幅高估**（中文常见 1–2 字符/token），
+所以 2000 token 的预算实际会放进 8000 字符的中文内容，限流目标失效但没有任何报警。
+
+#### Q3（其余）：看起来可追溯、实际不可复核
+
+**① 搜索缓存永不过期，且缓存命中在任何产物上都不可见（L1624–1669）。**
+
+```python
+cache_key = self._generate_cache_key(query, max_results)   # md5(query_maxresults_backend)
+if use_cache and cache_file.exists():
+    logger.info(f"从缓存读取搜索结果：{query}")
+    return json.load(f)
+```
+
+缓存键 = `md5(query + max_results + backend)`，**不含日期**；文件存在即命中，**没有 TTL、没有写入时间戳**。
+而本章的核心卖点是时效性：规划提示词专门注入 `current_date`（L458），
+L490 解释"提示词包含当前日期以获取最新信息"，L23 卖点是"快速了解新的技术、概念或事件"。
+**一个半年前的缓存会被当作今天的检索结果，喂给一个被告知"今天是 {current_date}"的模型。**
+更关键的是：命中缓存只进 `logger.info`，**不进 SSE 事件、不进笔记、不进报告**。
+最终报告里那份"参考文献"无法回答"这些来源是什么时候取的"。
+
+对 finaudit 的映射：证据链必须携带 **as-of 时间**与**取数方式（实时/缓存/快照）**。
+财务数据尤其如此——同一个"营业收入"在年报原文、更正公告、数据库快照里可以是不同的数。
+
+**② 最终报告的"参考文献"是搜索结果 URL 的转储，与报告里的论断没有绑定。**
+（这是上一轮 `source_urls` 结论的下游放大，机制不同故单列：）
+`_format_summaries`（L1486–1494）把每个任务的 `source_urls` 全量列在 `**来源**：` 下，
+`report_writer_instructions`（L661）要求"保留所有来源引用"，
+最终渲染成 L2056–2065 那种按任务分组、带链接文字的「## 参考文献」。
+**外观是学术引用，实质是"这次搜索引擎返回过的 5 条链接"的清单**，
+其中有几条真正被 Summarizer 读进结论、正文里的 `[1]` 对应哪一条，全章没有任何机制建立映射。
+与 Ch13 那张「看起来可核对、实际无勾稽」的预算明细表完全同构。
+
+**③ 进度百分比在工作开始前就推进（L1893–1894）。**
+`percentage = 10 + (idx / len(todo_items)) * 70`，在循环体**顶部** yield，
+之后才执行 `search` 与 `summarize`。3 个任务时，第 3 个任务的搜索还没发起，
+界面已经显示 80% + "正在研究任务3/3：{title}"。
+比 Ch13 那个纯 `setInterval` 假进度好（至少与真实循环同步），但仍是**先报后做**。
+
+**④ `_extract_tasks` 的贪婪正则（L1193）。**
+
+```python
+json_match = re.search(r'\[.*\]', response, re.DOTALL)
+```
+
+`.*` 贪婪 + `DOTALL` = 从响应里**第一个 `[` 一直吃到最后一个 `]`**。
+`todo_planner_instructions` 自己就在提示词里给了一段含 `[` `]` 的示例（L472–480），
+模型若复述示例再给答案，匹配会横跨两段 → `JSONDecodeError` → `ValueError`。
+**这一处至少是响亮失败（raise 而不是返回默认值），是本章唯一一个失败处理做对了的地方**，
+值得与前面那些 `return []` / `return 0` / `return 2` 对照。
+
+#### 本章值得借鉴的
+
+- **笔记的两层结构（L1031–1044）**：同一个文件里先写 `## 搜索结果`（逐条 title/URL/snippet 原文），
+  再写 `## 总结`（LLM 产物）。**原始输入与派生结论同文件、可对照**，
+  正是 Ch16 提到的"报告不能是 LLM 输出的 dump"的正确形态。
+  finaudit 可直接借：每条结论旁边挂它所依据的原始抽取结果。
+  唯一的问题是这段代码**没有被接进流程**（见 Q1-⑨）——好设计写了但没接线。
+- **中间层执行工具（L1502）**：`SearchService` 在 Agent 之外执行搜索，把结构化结果喂给 Agent。
+  这个选择对可审计性其实是**有利**的（调用参数、后端、结果都在确定性代码里，不由模型即兴决定），
+  比让 Agent 自己发 `[TOOL_CALL:...]` 更容易留痕。
+  但本章选了这条路之后，**没有把审计点跟着挪过来**，还留在 Agent 侧的 listener 上（见开头那条 Q3）。
+  finaudit 的教训：**工具执行点在哪，审计点就得在哪。**
+- **搜索结果去重按 URL（L1569–1580）**：`source.get("url", "")` + 空串跳过，写法本身没问题。
+  但只按 URL 精确匹配，同一页面的 `http/https`、带 `?utm_source=` 的变体、
+  末尾斜杠差异都会被当作不同来源。对 finaudit 意义不大（数据源固定），记一笔。
+
+#### 一处语料损坏（如实标注）
+
+L1381–1402：`SummarizationService._format_sources` 的 docstring 在 L1387 之后
+代码块围栏破损，正文的「### 报告结构设计」「## 参考文献」被吃进了同一个 ``` 块里，
+到 L1402 才闭合。因此 **`SummarizationService._format_sources` 的方法体在语料里读不到**，
+我不对它下断言。（14.3.1 L620–629 有一个同名方法的早期版本，格式为 `[idx] title / URL / 摘要`。）
 
 ---
