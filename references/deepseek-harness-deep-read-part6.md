@@ -343,3 +343,299 @@ can be provided **without affecting the parent scope**」。
 - 人工覆盖是**钉死**的（`:38`、`:171-176`）：`kind:'user'` 会 pin 住标题，
   在途的自动生成被 supersede，后续消息不再排程；解钉必须显式调 `refresh()`。
   → 人工判断优先于自动判断，且「解除人工优先」也是一个需要显式动作的、可记录的事件。
+
+#### `plan.md`（88 行，全读）—— 明写「这不是门禁」的样本
+
+- **`:5` 一句话把自己降级**：「Plan mode is **soft guidance**. [Sandbox mode] and [approval policy]
+  enforce restrictions independently; **neither reads or writes plan state**, so deployments
+  configure them separately.」
+  → 这是本轮最值得抄的一条自我定位。一个在 UI 上看起来像"限制模式"的东西，
+  文档第一段就说明它只是往系统提示里插一段文字，真正的强制在两个完全不读它的子系统里。
+  对应 finaudit-agent：**提示词里写「请核对口径」不是门禁**，把它写进 prompt 与把它写成校验器
+  是两件事，文档必须像这里一样把区别写在最显眼处。
+- **未知配置键在加载期硬失败**（`:29`）：「A missing, blank, or non-string `section` and
+  **any unknown key fail at plugin load rather than being ignored**.」→ fail-closed 默认，记入 §5.1。
+- **工具面稳定 + 运行期拒绝**（`:33`）：`exit_plan_mode`「stays registered while plan mode is
+  inactive, so entering or leaving plan mode changes only the prompt section,
+  **never the request tool catalog**; execution outside plan mode fails」。
+  → 不用动态增删工具来表达模式，而是工具恒在、越界执行时失败。
+  好处是请求的工具目录跨模式恒定（可复现、可缓存），坏处要自己承担（模型看得见一个当前用不了的工具）。
+- **`set()` 返回四态而非 boolean**（`:81`）：`'committed' | 'queued' | 'cancelled' | 'noop'`。
+  → 与 sandbox 的 `SandboxEnforcement` 同构：**把"发生了什么"如实返回，不塌缩成成功/失败**。
+- **⚠️ 一处明写的静默丢失**（`:17`，记入 §5.2）：
+  「An **append failure cannot block the turn**, and the selection remains pending」；
+  且「A selection made after a turn's final accepted pre-step remains **process-local and is lost**
+  if the process exits before another accepted in-turn pre-step」。
+  → 用户的一次模式选择可以无声消失。作者把它写进 README 的 known-limitations，
+  属于"已知且已披露"，但仍是本项目要避免的形状：**证据链的写入失败绝不能"不阻塞主流程"**。
+
+#### `permission-presets.md`（131 行，全读）—— 聚合层不得拥有强制力
+
+- **`:5` 的分工声明**：preset 把 sandbox mode 与 approval policy 两个独立开关捆成一个 UI 选择器，
+  但「**it owns no enforcement**: execution, prompt narration, and replay keep reading their knob folds,
+  and a preset switch only **records intent** and **writes through each knob's canonical setter**」。
+  → 借鉴形状：**便捷聚合层只能写穿到各自的权威 setter，不能自己维护一份"当前权限状态"**。
+  否则就会出现聚合层说 A、真实开关是 B 的经典不一致。
+- **加载期硬失败两条**（`:44`）：表项名为 `custom` 抛错（保留名）；
+  **在一个不做 confine 的 bash executor 上组合本服务抛错**（缺 `sandboxMode` capability fact）。
+  → 第二条尤其好：预设承诺了 sandbox 语义，若底层执行器根本不具备该能力，
+  **拒绝加载，而不是加载后让预设变成装饰**。记入 §5.1。
+- **`custom` 是派生第三态**（`:48`）：当实际开关值不匹配任何预设时返回 `CUSTOM_PRESET`，
+  且「`custom` is derived-only: clients may display it as the current value,
+  but it is **never a switch target or an event payload**」。
+  → 与 sandbox 的 `partial` 同构：**"当前状态不属于任何已命名档位"是一个必须能表达的值**，
+  不能就近吸附到最像的那个预设上。同时它不可被写入，杜绝"把 custom 存下来"造成的假状态。
+- **⚠️ 默认表自带一个"两个门禁一起关"的预设**（`:11`，记入 §5.4）：
+  出厂 `danger-full-access` = sandbox `danger-full-access` + approval `never`。
+  即默认配置里就存在一个单击即可同时废掉沙箱与审批的选项。
+- `permission/preset` 事件是 durable log-only、不进模型 transcript（`:68`），
+  存在的唯一理由是「当两个预设共享同一 bundle 时，保留用户选的是**哪一个**」。
+  → 意图与后果分开记：后果由各 knob 事件记，意图由本事件记。**对审计极有价值的区分**。
+
+#### `attachment.md`（116 行，全读）—— 「先落盘再落账」的干净范例
+
+- **持久化先于事件**（`:5`、`:7`）：「the service publishes an immutable content-addressed reference
+  **only after the object is durable**」；「Once the host accepts a user message, its images move below
+  `<DSH_HOME>/attachments/v1` **before the user event is appended**. Structured model image output
+  follows the same **persist-before-event** rule.」
+  → 直接对应证据链：**先把证据本体固化，再写引用它的账**。反过来会产生指向不存在对象的账目。
+- **事件里绝不放易失引用**（`:5`）：session 事件与模型可见的 `ImageBlock` 里只有引用与元数据，
+  「never a browser object URL, host temporary path, provider URL, or base64 payload」。
+  → 四类被点名禁止的东西，都是"当时能解析、事后解析不了"的引用。
+- **内容寻址但标识不透明**（`:13`）：后端目前发 `sha256:<digest>`，
+  但「consumers must **neither parse that representation nor derive a filesystem path** from it」。
+  → 内容哈希用于完整性，不用于寻址约定。本项目的证据哈希应同样禁止被当路径用。
+- **读时重校验，不信任已记录的元数据**（`:49`、`:111`）：
+  「every authoritative read **still re-checks digest, media signature, dimensions, and metadata**
+  against the object」；`readImage` 「returns bytes only after integrity verification」，
+  验证失败抛 storage error。→ fail-closed，记入 §5.1。
+- **声明与验证分离**（`:59`、`:29`）：`SaveImageAttachment.mediaType` 是
+  「Caller-declared media type, **checked against fully decoded bytes**」，
+  而 `ImageAttachmentRef.mediaType` 是「Media type **verified from the stored bytes**」。
+  → 同一字段名，输入侧叫"声明"，输出侧叫"已验证"。**类型层面区分未核实与已核实**。
+- **批量的全有全无**（`:72`）：`validateImage()` 跑同一套准入检查但不落盘，
+  「batch callers validate every member through it **before saving any member**,
+  so validation rejection **leaves no partial objects behind**」。
+  → 先全验后全提交。对应我们的批量抽取：一份年报若有一页抽取失败，不应留下半份证据。
+- **诚实标注未做**（`:72`，§5.3 正面）：「The service is **deliberately retention-neutral**...
+  reference-aware garbage collection is **deferred** rather than tied to any one session's deletion.」
+  → 写明"这件事我没做，且是故意没做，理由是 resumed/forked 会话可能共享对象"。
+
+#### `session-reference.md`（109 行，全读）
+
+- **入队前快照**（`:102`）：`prepare()` 「**Snapshot all references before enqueue** and return
+  one **aggregated durable context**」。→ 跨会话引用被固化成不可变快照，而不是活链接。
+  对证据链的直接含义：**引用外部材料必须固化当时内容**，否则事后复核看到的是变化后的源。
+- **检索面被刻意收窄**（`:23`）：候选的 label 用最新会话标题，
+  但「filtering still searches **only session id and cwd** and **never transcript text**」。
+  → 显示用富信息、检索用窄信息，避免通过检索接口把 transcript 内容泄出去。
+- **跨会话内容被标记为不可信**（`:5`）：包契约里包含「the **untrusted** model prompt」。
+  → 引入的外部上下文自带不可信标签，而不是与本会话内容平权混入。
+- **失败被分成 7 个稳定错误码**（`:59-67`）：`INVALID_CONFIG` / `INVALID_REFERENCE` /
+  `SELF_REFERENCE` / `TOO_MANY` / `READ_FAILED` / `BUDGET_EXCEEDED` / `CANCELLED`。
+  注意 **`READ_FAILED` 是一个错误码而不是"跳过这个引用"**——读不到源会话是失败，不是降级继续。
+  记入 §5.1。
+
+#### `README.md`（56 行，全读）—— 分母确认 + 一条自证机制
+
+- 表格逐行列出 46 个子系统页，与 §1.1 我数出的英文 `.md` 数量一致（含本 README）。**分母核对无误**。
+- `:55` 记录第二条可执行自证（第一条是 §3.B 的 `verify-cordis-catalog`）：
+  「Type declarations and their JSDoc on these pages are **source-equivalent and drift-checked by
+  `pnpm run verify-type-equiv`**... Ordinary blocks preserve **complete declarations**;
+  `public-api` blocks preserve **body-stripped public class declarations**.」
+  → 文档里 ```ts type-equiv``` 块与源码不一致会被 CI 抓。这解释了为什么本轮引用的字段集可以当字段集用：
+  **它们不是手抄的摘要，是被机器比对过的完整声明**。§5.3 正面样本。
+  同时也界定了我的断言边界：`type-equiv` 块可下断言，散文段落不受此校验保护。
+
+#### `user-questions.md`（179 行，全读）—— 「不靠顺序推断语义」
+
+- **`approve` 按名不按位**（`:41-43`）：`AskUserQuestionIntent` 的 `approve` 字段是
+  「The option label that approves the plan; every other option declines it.
+  **Named rather than positional so no UI infers the verdict from option order.**」
+  → 直接可抄：审批/确认的肯定项必须**具名**。靠"第一个选项是同意"这种约定，
+  在任何一次 UI 重排后都会静默反转语义。
+- **运行期补齐类型表达不了的约束**（`:25`）：「`ask()` **rejects the two assertions no type can carry**:
+  an `approve` naming none of its own question's options, and an intent on a question with no `detail`.」
+  → 这句话本身是方法论：**先承认类型系统的边界，再在唯一入口处做运行期拒绝**。
+  不是"类型保证了所以不用查"。
+- **呈现意图不改协议**（`:25`、`:29-34`）：「An intent changes presentation only —
+  a UI honouring it answers with **the same option labels** a generic UI would send,
+  so the caller reads the same answer fields either way」；不认识 tag 的 UI 回退到通用选项列表。
+  → 增强呈现与答案编码解耦，旧 UI 不会因为不认识新意图而给出格式不同的答案。
+- **宁可抛错也不永久阻塞**（`:170-173`，fail-closed）：`ask()` 抛
+  `CALLER_NOT_LIVE`（传入的 agent 不是注册表里那个确切的活实例）或
+  `DELEGATED_CALLER`（该活 agent 被另一个 agent 拥有），理由原文：
+  「an owned child **has no human answerer and would block forever**」。
+  判据是「**Runtime ownership, not durable session lineage**」——
+  用运行时所有权而不是持久化血统来判断"有没有人能回答"。
+  → 对本项目：需要人工确认的环节，在无人可确认的运行形态（批处理、子 agent）下必须**立即失败**，
+  不能挂起，更不能自动放行。
+- **"跳过"是可表达的第三态**（`:89`）：「A UI may also use an item with **empty `selected` and no `custom`**
+  to preserve a **skipped** question in an otherwise completed batch.」
+  → 批量提问中"这一条没答"与"这一条答了空"被区分开。
+
+#### `commands.md`（188 行，全读）—— 一处**不对称**的落账失败处理
+
+- **先开账再执行**（`:144-151`）：「`command/run` is appended **before the handler is invoked**
+  and `command/done` **after settlement** (a thrown or aborted handler settles as `kind: 'error'`)」。
+  → 与 `session-title` 的"发请求前先记请求"同构。**执行前落账是这个仓库的通行做法，不是个例**。
+- **⚠️ 不对称的失败策略**（`:149-151`，同时进 §5.1 与 §5.2）：
+  「A `command/run` append failure **fails the execution loud**;
+  a `command/done` append failure **on the handler-failure path is contained**
+  so the handler's own error stays the reported failure.」
+  → 开账失败 = 硬失败（没记上就不许做）；结账失败在"本来就已经失败"的路径上被吞，
+  理由是不要用记账错误掩盖真正的业务错误。**这个取舍是有道理的，但后果必须认**：
+  日志里会出现**有 `run` 无 `done` 的悬挂记录**，复核方必须把"悬挂"当作一种独立状态处理，
+  不能默认"没有 done 就是没执行"。落到本项目：证据链的收尾写入失败要留下可识别的悬挂痕迹。
+- **准入未命中不记账**（`:150`）：「Admission misses (syntax or unknown name) **log nothing** —
+  they never entered a handler.」→ 记账边界 = 是否进入了执行体，定义清晰且可复核。
+- **⚠️ 一个可关掉原始输入记录的开关**（`:34-39`，记入 §5.4）：
+  `recordInput?: boolean`「Whether `command/run` records `rawInput`. **Defaults to true.**
+  A command whose domain event owns the payload sets this **false** to avoid duplicating
+  that payload in the session log.」
+  → 默认记录，可由命令作者关闭。理由正当（避免与领域事件重复），
+  但它确实是一个**由被记录方自己控制的审计开关**——谁被审计谁决定记不记。
+  本项目若引入类似开关，必须由记账方而非被记账方持有。
+- **结构化回指而非文本解析**（`:75`）：`sourceEventSeq` 只在成功时出现，指向本会话日志中更早的
+  非命令事件，`command/done` 持久化同一引用，「so a client can combine the command lifecycle
+  with that domain projection **without parsing `text` or relying on adjacent rows**」。
+  → 两条明确否定的反模式：解析人类可读文本、依赖相邻行。
+- 影子机制（`:115`）：通过 agent 上下文注册的命令**遮蔽同名全局命令**。
+  → 又一处"同名可被就近覆盖"的结构，与 §2(f) 的 `ctx.isolate` 同类。
+- `commands/change` 是 `emit`（`:174`）：「Observer failures are contained and
+  **cannot veto the registry mutation**」——观察者不能否决。与 §2 的结论一致。
+
+#### `web-server.md`（109 行，全读）
+
+- **诚实披露"没有认证"**（`:41`，§5.3 正面 + §5.4 风险）：`host` 只接受
+  `127.0.0.1`（默认姿态）与 `0.0.0.0`（deliberate network exposure），
+  「**there is no TLS, auth, or origin policy**, so a non-loopback bind
+  **exposes the server to that network**」。
+  → 一个字符串配置项即可把无认证的服务暴露到网络。文档把后果写明了，
+  但这仍是"一个配置项能削弱安全姿态"的典型。
+- **组合期冲突硬失败**（`:70`、`:78`、`:88`）：重复 `(kind, path)` 抛错、
+  重复 upgrade 路径抛错（「one socket can have only one protocol owner」）、
+  fallback 座位第二次注册抛错（「two fallbacks cannot compose」）。
+  → 三处都选了"抛错"而非"后者覆盖前者"。**冲突不是可静默解决的**。记入 §5.1。
+- **启动窗口期行为被明确定义**（`:61`）：fallback 未被认领前，
+  「the fallback handler answers anything not yet claimed during startup with **404 until its owner registers**」。
+  → 半初始化状态有确定语义，而不是未定义行为。
+- **⚠️ 一处 404→200 的转换**（`:27`，记入 §5.2）：SPA dist server
+  「**any miss falls back to `index.html` with HTTP 200** (SPA routing)」。
+  这是 SPA 惯例，但形式上就是"找不到"被回成"成功"。
+  同页其它分支反而是严的：非 GET/HEAD 为 405，越出 dist root 为 403，未知扩展名发 octet-stream。
+- 请求处理抛错「is logged as a warning and answered **400** — or the socket destroyed when
+  headers are already out — **never a process exit**」（`:47`）。
+  监听失败则相反：「a listen failure (EADDRINUSE…) **rejects initialization**」（`:45`）。
+  → 启动期失败硬、请求期失败软，边界划得很清楚。
+
+#### `settings.md`（311 行，全读）—— 四件事全部命中，本轮信息密度第一
+
+**(1) 「在写入点拒绝，而不是存下来让消费者静默失效」——这是本项目关切的正面解法**（`:29-48`）：
+`SettingsRegisterOptions.validate` 的 JSDoc 原文：
+> Reject a resolved section the owner could not act on, for constraints its schema cannot express...
+> **Throwing here refuses the *write* that produced the value**, so a caller learns at
+> `update`/`replace`/`mutate` **instead of storing something that would silently disable the owner**.
+
+→ "存了一个会让消费者悄悄失效的值"被识别为独立的失效模式，并在写入路径上堵死。
+`dsh-llm-pi-ai` 的实例（`:52`）：拒绝一个它服务不了的 provider profile，
+「rather than storing one that **would disable every route in its namespace**」。
+
+**(2) 为什么跨字段校验不并进 schema**（`:36-38`）——职责分离论证，值得抄：
+> Kept separate from the schema because the schema is also **what a configuration surface renders**
+> and **what an absent section resolves through**; folding a cross-field check into it would change both.
+
+→ 一个校验器若同时承担渲染与缺省解析，就不能自由加约束。**校验职责必须与呈现/默认值职责分开**。
+
+**(3) ⚠️ 一处明确且有理由的 fail-open，但代价很实**（`:40-45`，记入 §5.2）：
+> Once the owner is registered, a stored section that fails this **keeps the namespace's
+> last good value and warns**, exactly as a schema failure does, so an externally edited document
+> **cannot strand a running owner**. At registration there is no last good value yet,
+> so a stored section that already fails **rejects the registration itself**.
+
+→ 同一个校验，**注册时硬失败、运行中软降级**。理由（外部编辑不能搞死运行中的组件）成立，
+但后果是：**用户把配置改错了，配置界面显示的是新值，实际生效的是旧值，唯一的信号是一条 warning**。
+这是"失败被静默转成正常值"的一个变体——不是转成默认值，是**转成上一个好值**，
+比转成默认值更难被发现（因为看起来一切正常）。
+本项目若有类似机制，必须让"当前生效值 ≠ 文档中的值"成为一个**可查询的显式状态**，而不只是日志。
+
+**(4) ⚠️ 脱敏是"MUST"但实现成可选参数，默认不脱敏**（`:146-152`，记入 §5.4）：
+> Strip `role('secret')` fields... **Every wire surface MUST pass this**;
+> the verbatim default exists for same-process configuration UIs only.
+
+→ `redactSecrets?: boolean`，不传即不脱敏。一个靠调用方记得传的门禁不是门禁。
+与 §3.A `session-telemetry` 的"默认不脱敏"是同一个模式在两个子系统重复出现。
+
+**(5) 但对"部分视图"的处理是正面样本**（`:129-141`）：`SettingsPathOp` 存在的唯一理由：
+> a wholesale `replace` rebuilt from a redacted document **silently deletes every secret
+> the wire never returned**.
+
+→ 他们识别出"拿着不完整视图做整体替换会静默删掉看不见的字段"，于是提供**路径寻址写**，
+并在 `mutate` 的 JSDoc 里点明「cannot delete fields it never saw」（`:245`）。
+对应本项目：任何"拉下来改完再整体写回"的编辑流程，都会静默删掉当事人没权限看到的部分。
+
+**(6) 「值没变但来源变了」被当成必须广播的事件**（`:265`）——对审计极重要：
+`settings/document-updated` 与 `settings/updated` 是两个事件，后者 deep-equal 门控，前者不：
+> configuration surfaces... must learn that a field went from **inherited to overridden
+> (same resolved value, different meaning)** and that their held revision is stale.
+
+→ **同一个值，来源从"继承默认"变成"用户显式覆盖"，是一次实质变更。**
+落到 finaudit-agent：某个口径的取值从"内置默认"变成"人工指定为同一数值"，
+必须留痕，不能因为数值没变就不记。这条我之前没想到。
+
+**(7) 乐观并发也是可选的**（`:223-225`）：`expectedRevision?: number`，
+匹配不上则 `SettingsConflictError`「refused rather than applied over the writer that landed first」。
+但**不传就不检查**——又一个默认关闭的保护。
+
+**(8) `applies` 明说自己不是机制**（`:54`，§5.3 正面）：
+「`applies` is **a UI hint, not a mechanism**: a `restart` owner simply never watches」。
+→ 不假装一个展示字段有强制力。
+
+**(9) INVARIANT-async 陷阱在这里一字不差地重复**（`:288`）：
+与 §3.A `credentials.md:114` 完全相同的措辞——「invariant checks on this event
+**must not be async functions**」。
+→ **更正/加强上一节的判断**：这不是 credentials 一处的特例，而是这套事件系统的**通用语义**。
+凡是 `emit` 模式的事件，不变量检查写成 `async` 就永远不会向上传播。
+一个跨子系统重复出现的语义陷阱，说明它是框架级的，且**只能靠人记住**——没有类型或 lint 拦它。
+
+#### `storage.md`（230 行，全读）—— 「内存永不领先于介质」
+
+- **★ 写序纪律，本轮最该直接抄的一条**（`:98`）：
+  「Every write — `put`, `delete`, `update`, `global.set` — queues on one per-domain chain and
+  **reaches backend durability first, then mutates memory, then emits `domain/changed`**;
+  a **rejected backend write leaves memory untouched, so reads never diverge from the medium**.」
+  → 落盘 → 改内存 → 发事件，顺序不可换。写失败则内存不变，因此**读到的永远是真实落盘的值**。
+  与 `attachment` 的 persist-before-event、`commands` 的 run-before-handler 是同一族纪律。
+- **哨兵值与合法值冲突在声明期就被禁止**（`:67`）：`defineDomain` 会拒绝
+  「a global schema that accepts `null`」，理由是
+  「`null` is the medium's **"never written" sentinel**, so a stored nullable global
+  **could not round-trip**」。
+  → 这是 `credentials` 的"空值即缺失"在**类型声明层**的对应物：
+  既然介质用 `null` 表示"从未写过"，就不允许业务把 `null` 当合法值存进去。
+  **凡是用某个值当哨兵，就必须在 schema 层禁止该值作为业务值。** 直接可抄。
+- **打开即全量校验，并报出具体位置**（`:102`、`:174`）：`open(spec)` 的严格序列中，
+  「load and **validate every stored record** against the spec's zod schemas
+  (`invalid-record` **with the offending table and key**)」。
+  → 不是懒校验、不是抽样，是全量；且错误定位到表与键。fail-closed，记入 §5.1。
+- **能力缺失硬失败**（`:33`、`:102`）：backend 不支持某类数据就省略该 facet，
+  「**resolution fails loud instead**」（`facet-unsupported`）。
+  `form(form)` 在拥有它的插件加载前抛 `form-not-mounted`，
+  「assemblies order plugins accordingly **rather than silently deferring**」。
+  → 两处都拒绝"先放行、以后再说"。
+- **没有迁移就直说没有**（`:47`，§5.3 正面）：版本不符 `version-mismatch`，
+  解析不了 `malformed-medium`，括号里写「**no migration, pre-release stance**」。
+- **契约有可执行的一致性套件**（`:47`）：`backend.ts` 是「normative clause-by-clause contract」，
+  且 `tests/contract.ts` 的共享套件「**checks every clause against each backend**」。
+  → 第三条真实自证机制（前两条见 §3.B `verify-cordis-catalog`、README `verify-type-equiv`）。
+  **契约不是散文，是逐条可跑的测试**，且每个实现都要过同一套。
+- **同一问题在两个子系统里选了不同强度**（值得注意的不一致）：
+  `settings` 的 resolved value 是「**deep-frozen** snapshots」（`settings.md:63`），
+  而 `storage` 返回的是「the **stored objects themselves, not copies** —
+  replace via `put`/`update`, **never mutate in place**」（`storage.md:98`）。
+  → 前者有机制保护，后者只有文档约定。**一条只靠注释维持的不变量迟早会破。**
+- `domain/changed` 是提交后通知（`:125`）：「the commit point **has passed** at emission,
+  so a synchronously throwing listener is contained with a logged warning
+  rather than rejecting the already-durable write」。
+  → 与 §2 结论一致：**事件监听器不能当事务参与者，因此不能当闸门。**
+- 诚实标注两处未做（`:125`，§5.3 正面）：事件「**in-process only**；
+  cross-process change push is a **recorded limitation**」。
