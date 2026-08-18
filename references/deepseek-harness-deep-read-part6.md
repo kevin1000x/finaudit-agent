@@ -738,3 +738,205 @@ can be provided **without affecting the parent scope**」。
 - **竞态用"首个有效者胜"解决**：`resolveClientQuery`「Accept the **first valid** Client response
   for a pending query」，返回 `CordisInspectResolveAck`「whether this response **settled the still-pending query**」（`:54-60`）。
   → 至少返回值告诉调用方"你是不是那个赢家"，没有把败者伪装成成功。
+
+#### `filesystem.md`（496 行，全读）—— ★ 本轮最重要的一篇，包含仓库对 §2 结论的**自认**
+
+**(1) ★★ 仓库自己写下了「这个槽位不是被强制的不变量」**（`:185`，直接印证 §2）：
+> `fs/write-intent` and `fs/edit-intent` are **single-slot decision waterfalls**: the tool dispatches
+> each with a default thunk returning `undefined` (the bare provider), and a listener fully decides
+> without calling `next()`. The slot is **first-wins by registration order** — the policy plugin
+> owning it is **a deployment convention, not an enforced invariant**.
+
+→ §2 我是从 Cordis API 反推出"waterfall 不能作闸门"。这里作者在一个具体子系统里**明说了同一件事**：
+谁占住这个决策槽由注册顺序决定，而注册顺序是部署约定，不是被强制的不变量。
+**§2 的结论不仅维持，现在有了仓库内的直接自认。** 这一句应当写进本项目的 DECISIONS 依据。
+
+**(2) ★★ 整个 read-before-write 门禁是一个可以不装的可选插件**（`:7`，记入 §5.4，最强实例）：
+> `dsh-fs-observation-policy` is **optional**. **Without it**, the `FileSystem` Service Definition,
+> a provider, and the `dsh-tool-fs` Consumer form the complete, **unconstrained** filesystem seam:
+> `write` **unconditionally creates or overwrites**, and `edit` **unconditionally replaces literal text**.
+> ... Removing it **does not break the tool** because the tool calls `ctx.fs` and dispatches events;
+> it does not call policy methods. A deployment that loads `dsh-tool-fs` **is expected to also load**
+> `dsh-fs-observation-policy` so the default behavior is read-before-write/edit.
+
+→ 「is expected to」= 期望，不是强制。**不装门禁，工具不报错、不降级、不警告，只是静默地变成无条件覆写。**
+这就是任务书第 4 条问题的教科书答案：**一个能被"不加载"关掉的门禁不是门禁。**
+对本项目的直接推论：证据链校验器**不能做成可选插件**，必须在唯一入口的同步调用路径上，
+且缺失时构造失败（对照 §3.A `permission-presets` 在缺 `sandboxMode` capability fact 时拒绝加载的做法）。
+
+**(3) ★ 「没读过就不许改」被编码成状态机，不是提示词**（`:242`）：
+观察状态 `WeakMap<owner, Map<targetKey, FsObservation>>`，三态 unseen / absent / present：
+| 状态 | write 决策 | edit 决策 |
+|---|---|---|
+| unseen（无记录） | `createIfAbsent` | **拒绝** `FS_NOT_OBSERVED` |
+| absent（确认不存在） | `createIfAbsent` | **拒绝** `FS_NOT_FOUND` |
+| present（观察到版本 v） | `replaceIfVersion(v)` | 版本守卫 |
+→ 这正是本项目要的形状：**"没有证据就不许下结论"是一个状态机判定，不是一句提示。**
+且 `FsObservation` 的 absent 分支有明确语义（`:192`）：
+「an absent observation **authorizes only a guarded create, never an edit**」——
+"确认不存在"授权创建但不授权修改，两种授权被分开。
+
+**(4) ⚠️ 但授权粒度粗于观察粒度**（`:224`、`:270`，记入 §5.4）：
+> there is **no `full`/`partial` view** — authorization is freshness-based (the tool emits a present
+> `fs/observed` directly with the stat's version), so **any windowed read can authorize a later
+> write/edit** when the file is unchanged.
+> ... Freshness authorization has **no partial/full distinction**, so there is **no `FS_PARTIAL_OBSERVATION`**.
+
+→ 读了第 1–10 行即产生 present 观察，随后可以用**全新内容整体替换**这个文件（`writeText` 是全文件写）。
+判据是"文件没变"，不是"我看全了"。
+**这与 §3.A `sandbox.md` 的 `SandboxEnforcement='full'|'partial'` 哲学正好相反**——
+那里坚持"部分成立必须是第三态"，这里明确拒绝第三态。
+两处都是深思熟虑的（这里的理由是新鲜度守卫足以防止丢失并发修改），但**同一仓库对同一问题给出了相反答案**，
+说明"要不要 partial 态"取决于**你保护的是什么**：
+sandbox 保护的是"约束是否真的生效"（必须三态），fs 保护的是"内容是否被别人改过"（二态够用）。
+落到本项目：证据链保护的是"结论是否被完整支持"，**属于前者，必须有 partial 态**。
+
+**(5) ★ 超限是失败，不是截断；且上限是必填参数**（`:55`、`:377-387`）：
+> The bound lives at this seam so a backend **can never buffer an unbounded file**: a target known or
+> discovered to exceed `maxBytes` **fails with `FS_TOO_LARGE` instead of returning a truncated result**.
+
+`readBytes(target, signal, maxBytes)` 的 `maxBytes` 是**必需参数**（不是可选、不是有默认值）。
+→ 对比 §3.A `settings.md` 的 `redactSecrets?: boolean`（可选、默认关）——
+**同一作者知道什么时候该做成必填**。凡是"忘了传就失去保护"的参数，都应该做成必填。
+另注（`:55`）：`stat` 提供 `size` 的理由是让消费者选 `readText` vs `streamText`
+「**without probing by failure**」——不用"试着失败"来探测能力。
+
+**(6) ★★ 拒绝提供一个自己兑现不了的保证**（`:272-274`，整节标题就是 "No timeouts on file IO"）：
+> `read`/`write`/`edit` take **no** `timeoutMs`, and the provider contract arms no deadline —
+> unlike bash and web... those are process-backed, where a deadline can really kill the work.
+> A local syscall is best-effort-abortable at most — a timeout could not force an in-progress
+> `fsync`/`rename` to stop, so a `timeoutMs` here would be **a deadline the seam cannot enforce**,
+> and **an implicit default in the exact place explicit-over-implicit forbids**.
+
+→ ★ 这是"声称通过但实际没证明"的**预防性反面**：
+**宁可不提供这个参数，也不提供一个看起来有、实际不生效的参数。**
+判据讲得极清楚：进程支撑的操作可以真杀掉（bash/web/glob/grep 有 timeout），
+本地 syscall 只能 best-effort（fsync/rename 停不下来）→ 所以不给。
+本项目直接可用：**任何"限制/超时/上限"参数，若底层无法真正执行，就不要暴露它。**
+
+**(7) ★ 校验顺序决定错误归因的可解释性**（`:151`）：
+`editText` 有版本守卫时「verifies the expected version **BEFORE** literal matching
+(so a stale edit reports `FS_STALE_VERSION`, **not a match failure against newer content**)」。
+→ 若先做字面匹配，用户会收到误导性的"没匹配上"，而真实原因是"你手上的版本过期了"。
+**错误归因的顺序也是设计**，不是实现细节。
+同时 `editText` 是 provider 级原子操作而非 read+write 组合：
+「keeping matching, line-ending handling, the stale check, and atomic replacement
+**inside one mutation critical section**」。
+
+**(8) ★ 错误码 13 个，且把"谁拒绝的"分了层**（`:254-270`）：
+`FS_NOT_FOUND` / `FS_NOT_DIRECTORY` / `FS_NOT_TEXT` / `FS_NOT_REGULAR_FILE` / `FS_TOO_LARGE` /
+`FS_PERMISSION_DENIED` / `FS_SANDBOX_DENIED` / `FS_IO_ERROR` / `FS_STALE_VERSION` /
+`FS_NOT_OBSERVED` / `FS_AMBIGUOUS_EDIT` / `FS_EDIT_NOT_FOUND` / `FS_ABORTED`。
+关键区分（`:270`）：`FS_SANDBOX_DENIED` 是**策略拒绝**（沙箱模式栅栏），
+`FS_PERMISSION_DENIED` 是**内核拒绝**——两者绝不合并。
+→ 直接对应本项目的失败归因分层：**"规则不让"与"环境不让"必须是两个码**，
+否则复核时无法判断该改规则还是该改环境。
+
+**(9) ⚠️ 记录层的抛错会污染业务层结论**（`:185`、`:459`，记入 §5.2）：
+`fs/observed` 是 `emit`，「its listener **MUST be synchronous and side-effect-only**,
+because the tool does **NOT guard the emit** — a throwing listener can **replace a read error**
+or **surface as the tool's `isError` result after a mutation already succeeded**」。
+→ 两个后果都很坏：①记录监听器的错误**替换掉**原始读错误（真实原因被覆盖）；
+②**写已经成功了，却报成工具失败**。
+这与 §3.A `credentials` / `settings` 的 INVARIANT-async 陷阱同族：
+**记录层与业务层的错误通道没有隔离，且靠"监听器必须是同步的"这条人肉约定维持。**
+本项目的证据写入必须与业务结果走两条独立通道，且记录失败不得改写业务错误。
+
+**(10) 「给不出基线」被诚实表达为 null**（`:136-147`）：
+`FsWriteOutcome.before` 为 `null` 的两种情形：文件本不存在（create），
+或**backend 主动拒绝给出上下文基线**（前一版是二进制/非 UTF-8，或任一侧触及独占上限）。
+消费者据此「falls back to a whole-file diff」。
+→ "我算不出增量基线"是一个可表达的返回值，不是给一个空字符串假装有基线。
+
+**(11) 列目录的分级失败**（`:93`）：单个子项坏掉/消失可以返回为 `other` 且无元数据，
+但「permission or backend I/O failures while listing or resolving child metadata
+**fail the whole listing**」。→ 单项降级可以，整体权限/IO 失败必须整体失败。分级明确。
+
+#### `shell.md`（304 行，全读）—— ★「退出码 0 不等于成功」
+
+- **★★ 正交结果各占一个字段**（`:107`）：
+  > Orthogonal outcomes are reported **independently** — a process can **both time out AND exit 0**
+  > because it trapped the signal — so `timedOut`, `aborted`, `signal`, and `exitCode` are each
+  > their own field; **a caller never reads a cut-short run as a clean success**.
+
+  → 与 §3.A `sandbox.md:106`「**Exit status alone never proves runner failure**」是同一条纪律的两面。
+  **成功标志与完成标志必须是独立字段。**
+  落到 finaudit-agent：「抽取器返回了内容」≠「抽对了」；
+  一次被中途截断的抽取绝不能因为返回了非空结果就被当成成功。
+- 但 `timedOut` 与 `aborted` **互斥**（`:117-129`）：一个融合 deadline 同时驱动超时与取消，
+  报告「the single **first-cause**」而不是两个都报。→ 归因到第一原因，不重复计数。
+- **三类失败被分开**（`:148-163`）：`ShellSandboxInfo` 的
+  `mode` / `denied` / `enforcement` / `runnerFailed`，
+  「Facts are reported **independently of process exit status** so callers can distinguish
+  **command failures from policy denials and runner failures**」。
+  → 命令自身失败 / 策略拒绝 / 沙箱运行器故障，三条独立通道。
+- **前台 fail-closed，后台记录**（`:145`、`:165`）：`runnerFailed` 时
+  「foreground execution **throws `SANDBOX_UNAVAILABLE`**, while a settled background process
+  **has only its facts channel**」。→ 不对称，但明说了。
+- **★ 放宽权限的正确形状**（`:165`，对照 §5.4）：模型可以请求一次性放宽，条件是
+  ①`strictly wider`（只能更宽，且是一次性）②必须附 `justification`
+  ③「**`ctx.approval` must grant that exact call before anything executes**」——逐调用审批，先批后跑。
+  → 这是"可配置放宽"的**正面样板**：放宽不是改一个配置开关，而是一次带理由、被逐次审批、只对本次调用生效的例外。
+  与 §3.A `extensions` 的 `approveFutureVersions`（一次审批覆盖后续所有版本）形成鲜明对比。
+- **★ 丢弃继承来的同名事实，防止"不可用"沿用旧值**（`:56-62`）：
+  > Executors **discard ambient `DSH_*` entries** before merging this snapshot last, so
+  > **an unavailable current fact cannot inherit a stale value** from the harness process
+  > and a caller `env` entry **cannot displace** a managed one.
+
+  → ★ 直接对应 §5.2：**"这一项现在取不到"必须表现为缺失，不能表现为上一次的值。**
+  实现手法是先清空整个受管命名空间，再整体注入当前快照。可直接抄进本项目的口径/元数据注入。
+- **request / spec 分离**（`:15`）：模型面 `ShellExecRequest` 的 `workdir`/`timeoutMs`/`stdoutMaxBytes` 可选，
+  `resolve()` 填充并 **cap**，产出的 `ShellExecSpec` 这些字段全部必填。
+  依据是「the repo's "**explicit > implicit at package boundaries**" rule」。
+  → 可选值只存在于最外层入口，跨包边界后一律显式。
+- **权限分层做在 schema 层**：`stdin` / `env` / `stdoutMaxBytes` 是 trusted-plugin-only，
+  「the model-facing bash tool **does not expose it as a parameter**」（`:35`、`:43`、`:52`）。
+  → 不是靠运行时检查调用方身份，而是**根本不把参数放进模型能看到的 schema 里**。
+- 异常 / 返回值的两分（`:239`）：「run rejects **only for infrastructure failures**.
+  Nonzero exits, timeout kills, and abort kills **resolve with a `ShellRunResult`**」。
+  → 业务失败进返回值、基础设施失败进异常。边界清楚。
+
+#### `subprocess.md`（325 行，全读）
+
+- **★★ 「this seam applies no defaults」**（`:91`）：
+  > every disposition, limit, and directory is **explicit** on the spec, so **the caller's own config
+  > — not a hidden subprocess-service default — decides them**.
+
+  → 最底层的 seam **一个默认值都不提供**，把每个限额都逼到上层显式声明。
+  **隐藏的默认值是审计的敌人**：事后没人说得清那次运行到底用的什么上限。
+  本项目的抽取/校验参数应同样在底层拒绝默认值。
+- **★ 基准未定义时拒绝猜测**（`:298-300`）：`resolveExecutable`
+  「**Relative paths containing separators are rejected**: the resolution base is undefined,
+  so providers **fail loud instead of guessing**」。
+- **★ 不完整的溢出文件被丢弃，而不是留下残片**（`:63-66`）：
+  `SubprocessCollect.spill.maxBytes` —「Whole-stream byte cap;
+  a larger stream **discards its now-incomplete spill**」。
+  → **宁可没有证据文件，也不要一个看起来完整的残片。**
+  这条可以直接写进证据链落盘策略：超出上限时删除半份产物并标记，而不是保留。
+- **截断被显式标记并给出恢复路径**（`:29-36`、`:196-207`）：
+  `CollectedOutput{text(TAIL), truncated, spillPath?}`；
+  增量读的 `lossy` 表示「the requested offset **slid out of** the in-memory tail window」，
+  且「the gap is **only recoverable from the spill file**」。
+  → 丢了就说丢了、说丢了多少、说去哪儿找。
+- **★ 底层只报事实，不做归因**（`:221-238`）：`SubprocessOutcome` 只有 `exitCode` 与 `signal`，
+  「**Deliberately carries NO timeout or cancellation classification**
+  (the caller reads the signal it owns to classify causes) **and NO output**」。
+  → 谁拥有 deadline 谁负责归因。**观察层不许推断原因**——
+  这与 §3.A `sandbox.md` 的「分类不改写 stderr」是同一条：**事实层与判定层分离。**
+- **⚠️ 同一问题在两层选了不同模型**（值得记的不一致）：
+  底层 `SubprocessOutputReader` 是**非消费型**（offset 由调用方持有，
+  「independent readers **cannot consume one another's output**」，`:178-181`）；
+  而上层 `ShellProcess.readOutput()` 是**消费型**
+  （「consuming — consecutive reads **never re-deliver**」，`shell.md:191`）。
+  → 上层的消费型语义意味着两个读者会互相偷数据。底层已经提供了更安全的模型，上层没有沿用。
+- 树范围终止（`:137-144`、`:166-172`）：`terminate()` 是唯一的终止动词，
+  SIGTERM→grace→SIGKILL，POSIX 打进程组、Windows 用 `taskkill /T`，
+  「helper processes **cannot outlive the handle unnoticed**」；
+  `waitForExit()` 观察**整棵树**而非直接子进程。
+  → **"清理干净"被定义为整树静默**，不是直接子进程退出。
+- ⚠️ 小项（`:121-128`，§5.4）：`SubprocessSpawnSpec.env` 的字符串值是
+  「a **deliberate caller opt-in**, so a forwarded **credential-shaped entry** or current `DSH_*` fact
+  **survives the scrub**」——显式传入可以绕过凭据清洗；`undefined` 是移除 ambient 项的墓碑值。
+- 本页还生成出一个与标题无关的服务：`ctx.e2b` — `E2BRuntime`（`:259-274`），
+  只有 `getSandbox()` 一个方法，「deletes the sandbox at timeout or disposal」。
+  **我只见到这一个签名，不知道其配置字段集**，不评。

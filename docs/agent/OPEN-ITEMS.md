@@ -226,6 +226,56 @@ type PreToolDecision =
 Phase 2 的 `ARCHITECTURE.md` 应引用本条，并写清为何偏离 hello-agents 的「万物皆 Tool」
 与 harness 的 waterfall。
 
+### D-29 — harness 的 `.agents/notes/` 制度本身就是一套「决策证据链」，与本项目同构
+
+普查把分母数清楚了：`find` 出 **1985 个文件 / 679 个英文正文**，
+差额来自每篇笔记的三元组（`X.md` + `X.zh.md` + `X.i18n.yaml`）。
+除去 5 个体系文件，**674 篇是正式笔记**。
+（我此前说的「200+ 篇」是低估，已更正。）
+
+**五条可以直接搬的机制**（我逐条核对了 `.agents/notes/README.md` 原文）：
+
+1. **路径即元数据，且 class 是被 gate 强制的封闭集合**：
+   `{lifecycle}/{class}/yyyy-mm-dd-topic.md`，
+   「classification gate rejects other folders」——目录结构本身是封闭枚举。
+2. **`Status:` 三选一且必须与所在目录一致，gate 交叉校验**。
+   只有 `rejected` 带一行理由，因为「a rejected Agent Note's verdict is the fact readers come for」。
+3. **`## Alternatives considered` 是强制段，且「Alternatives are recorded, never invented」**
+   （`README.md:113` 逐字）。2026-07-05 格式化之前、确实重建不出备选方案的老笔记，
+   必须写死一行 `<!-- agent-note-format: alternatives-not-recorded (pre-format Agent Note) -->`，
+   **gate 只对旧文件放行**。
+   → **这是「不许编造证据、宁可显式标注缺失」的制度化实例**，
+   与本项目 F-2「只有真实字段能诚实触发时才声明 flag」是同一条原则的两种落地。
+4. **归档 = 冻结 + 哈希 + append-only manifest**，且归档笔记
+   **「不得作为当前行为的依据」**。→ 与 D-012 同构，但比我们多了「冻结件不得被引用为现状」这一条。
+5. **「git history 不算证据留存」**（`README.md:50` 逐字：
+   「Consolidation must not rewrite the old file into its opposite or **rely on git history
+   as the only copy of rationale**」）。合并删除前必须逐项保留
+   rationale / alternative / consequence / required verification / named coverage gap。
+   → 我们的 `PROGRESS.md` 是 append-only，方向一致；但**「删除前必须逐项保留」这条我们没有**。
+
+### D-30 — 我们自己的台账交叉引用是「裸编号」，机器查不了
+
+`README.md:17` 逐字：
+
+> Cross-references between Agent Notes use relative markdown links
+> —— **never bare prose or numbers** —— so they are **mechanically checkable**
+> and survive moves between folders.
+
+**本仓库通篇违反这一条。** `OPEN-ITEMS.md` / `DECISIONS.md` / `rules/` 里
+`A-4`、`D-13`、`F-2`、`U-01` 这类交叉引用全是裸编号：
+- 机器无法校验它们是否指向真实存在的条目；
+- 条目改名或移动后引用会**静默失效**，没有任何东西会红。
+
+这与本项目正在收集的那条模式同型：**看起来可追溯，实际不可复核。**
+而我们是在一个以「可复核」为卖点的项目里这么做的。
+
+- **归属**：agent 可做，但**改法影响面较大**（涉及三份权威文档的书写约定），需操作者点头
+- **判据**：交叉引用改为可机械校验的形式（锚点链接或带校验的编号），
+  且有一条门禁能在引用指向不存在的条目时**非零退出**；
+  该门禁要有一条负向测试（故意写一个不存在的编号，验证它真的会红）
+- **注**：这条不阻塞 Phase 1.5
+
 ### D-25b — 读完 `cordis-api/` 后，闸门结论**升级**（不是维持原判，是更强了）
 上一轮标注「若 `cordis-api/registry.md` 里存在加载顺序保证，会削弱理由 1」。
 **读完了，没有削弱，反而更强。** 三条我逐字核对了原文：
