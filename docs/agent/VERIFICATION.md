@@ -38,16 +38,16 @@
 
 | # | 验收标准 | 验证方法 | 实际命令 | 期望结果 | 实际结果 | 证据 | 状态 |
 |---|---|---|---|---|---|---|---|
-| SC-1 / AC-01 | 20 指标字段齐全 | 自动校验 | `python -m semantic_layer validate --json` | 20/20，findings 空 | `definitions_checked: 20`、`definitions_failing: 0`、`findings: []`，EXIT=0 | 附录 A-3 | `VERIFIED` |
-| SC-1 补 | 指标数量确为 20 | 文件计数 | `ls metrics/*.yaml \| grep -v '_flags' \| wc -l` | 20 | `20`，EXIT=0 | 附录 A-1 | `VERIFIED` |
-| SC-2 | 存在机械校验器（非 Agent） | 全量测试 | `python -m pytest -q` | 全绿 | `350 passed`，EXIT=0 | 附录 A-2 | `VERIFIED` |
-| SC-3 / AC-02 | C2 拒答准确率 100% | 评测 C2 类 | `python -m eval.run --suite frozen-01 --category C2` | 4/4，门成立 | `C2 拒答准确率：4/4　门成立：True　存活题数满足下限`，EXIT=0 | 附录 A-7 | `VERIFIED` |
-| SC-4 / AC-04 | 问题集 ≥20 题且已冻结 | 哈希 + 时间戳 | `cd eval/frozen-01 && sha256sum -c SHA256SUMS` | 21 行 OK | 21 行 `OK`，无非 OK 行，EXIT=0 | 附录 A-6、`eval/frozen-01/FREEZE.md` | `VERIFIED` |
-| SC-5 / AC-10 | 仓库零非公开数据 | 自动扫描 | `python -m semantic_layer scan --json` | findings 空 | `rules_version: 2`、`findings: []`，EXIT=0 | 附录 A-4 | `VERIFIED` |
-| §7 门 5 | 构造错误作废率 ≤10% 且作废清单公开 | 评测运行器 | 同 SC-3 | ≤10% | `构造错误作废率 0.0%（上限 10%，未超限）`，作废 0 题 | 附录 A-7 | `VERIFIED` |
-| §5.1 元规则 | `advisory_only` 占比 ≤50% | 统计 + 阈值门 | `python -m semantic_layer stats --json --fail-over 0.5` | 退出码 0 | `advisory_ratio: 0.19008264462809918`（19.0%），`unclassified: 0`，EXIT=0 | 附录 A-5 | `VERIFIED` |
-| D-012 | POC-01 冻结产物未被改动 | 哈希 | `cd docs/agent/poc-01 && sha256sum -c SHA256SUMS` | 5 行 OK | 5 行 `OK`，EXIT=0 | 附录 A-6 | `VERIFIED` |
-| T-01-41 | VERIFY 模式未顺手改实现 | git 状态 | `git status --porcelain metrics/_flags.yaml eval/frozen-01/ docs/agent/poc-01/` | 输出为空 | 空，EXIT=0 | 附录 A-8 | `VERIFIED` |
+| SC-1 / AC-01 | 20 指标字段齐全 | 自动校验 | `python -m semantic_layer validate --json` | 20/20，findings 空 | `definitions_checked: 20`、`definitions_failing: 0`、`findings: []`，EXIT=0 | 附录 §A.3 | `VERIFIED` |
+| SC-1 补 | 指标数量确为 20 | 文件计数 | `ls metrics/*.yaml \| grep -v '_flags' \| wc -l` | 20 | `20`，EXIT=0 | 附录 §A.1 | `VERIFIED` |
+| SC-2 | 存在机械校验器（非 Agent） | 全量测试 | `python -m pytest -q` | 全绿 | `350 passed`，EXIT=0 | 附录 §A.2 | `VERIFIED` |
+| SC-3 / AC-02 | C2 拒答准确率 100% | 评测 C2 类 | `python -m eval.run --suite frozen-01 --category C2` | 4/4，门成立 | `C2 拒答准确率：4/4　门成立：True　存活题数满足下限`，EXIT=0 | 附录 §A.7 | `VERIFIED` |
+| SC-4 / AC-04 | 问题集 ≥20 题且已冻结 | 哈希 + 时间戳 | `cd eval/frozen-01 && sha256sum -c SHA256SUMS` | 21 行 OK | 21 行 `OK`，无非 OK 行，EXIT=0 | 附录 §A.6、`eval/frozen-01/FREEZE.md` | `VERIFIED` |
+| SC-5 / AC-10 | 仓库零非公开数据 | 自动扫描 | `python -m semantic_layer scan --json` | findings 空 | `rules_version: 2`、`findings: []`，EXIT=0 | 附录 §A.4 | `VERIFIED` |
+| §7 门 5 | 构造错误作废率 ≤10% 且作废清单公开 | 评测运行器 | 同 SC-3 | ≤10% | `构造错误作废率 0.0%（上限 10%，未超限）`，作废 0 题 | 附录 §A.7 | `VERIFIED` |
+| §5.1 元规则 | `advisory_only` 占比 ≤50% | 统计 + 阈值门 | `python -m semantic_layer stats --json --fail-over 0.5` | 退出码 0 | `advisory_ratio: 0.19008264462809918`（19.0%），`unclassified: 0`，EXIT=0 | 附录 §A.5 | `VERIFIED` |
+| D-012 | POC-01 冻结产物未被改动 | 哈希 | `cd docs/agent/poc-01 && sha256sum -c SHA256SUMS` | 5 行 OK | 5 行 `OK`，EXIT=0 | 附录 §A.6 | `VERIFIED` |
+| T-01-41 | VERIFY 模式未顺手改实现 | git 状态 | `git status --porcelain metrics/_flags.yaml eval/frozen-01/ docs/agent/poc-01/` | 输出为空 | 空，EXIT=0 | 附录 §A.8 | `VERIFIED` |
 | **H1** | 20 指标里 >5 个无法给出无歧义口径 → 停止 | 逐份三迹象核查 | 见 §判定二 | 计数 ≤5 | **操作者 2026-08-16 裁决取严格读法 → 计 5，不 > 5，停止条件不触发** | §判定二 + §Task 3 复核记录 | `VERIFIED`（**压线**，见判定二末段） |
 | AC-02 全貌 | C1/C3/C4/C5 四类的口径正确性 | 评测 | — | — | 本阶段**未执行**（能力缺口） | `eval/frozen-01/FREEZE.md` | `UNVERIFIED` |
 | AC-05 证据链完整率 | — | — | — | — | 证据链在 Phase 2，本阶段零实现 | — | `UNVERIFIED` |
@@ -62,7 +62,7 @@
 `unclassified: 0`，`--fail-over 0.5` 退出码 0。**19.0% < 50%，元规则成立。**
 
 占比最高的两份是 `accounts_payable_turnover_days` 与 `accounts_receivable_turnover_days`
-（各 `0.2857142857142857`，7 条中 2 条 advisory）。逐份分项见附录 A-5。
+（各 `0.2857142857142857`，7 条中 2 条 advisory）。逐份分项见附录 §A.5。
 **这两份占比高有其实质原因**（采购额不单列、增值税与收入不配比），
 不是写得潦草——见 `docs/agent/phase-01/flag-vocabulary-review.md` §4。
 
@@ -83,7 +83,7 @@
 |---|---|
 | `net_profit_attributable_excl_nonrecurring` | OQ-04：该定义有三部准则版本（2023/2010/2014），`standard_basis.version` 是列表，标量引用无解。裁决为把 `basis_version_mismatch` 移到 system 域 |
 
-`docs/agent/phase-01/` 下**没有任何 `flag-requests-*.md`**（附录 A-9）。
+`docs/agent/phase-01/` 下**没有任何 `flag-requests-*.md`**（附录 §A.9）。
 OQ-01（现金循环周期）**不计入**——它已被移出 20 指标，换入应付账款周转天数，
 现为 C2 拒答靶子。OQ-02 / OQ-03 是基础设施问题，不指向任何具体定义。
 
@@ -229,19 +229,19 @@ flag 词表评审见 `docs/agent/phase-01/flag-vocabulary-review.md`。
 
 ---
 
-### Phase 1 · 附录 A —— 逐字命令输出
+### Phase 1 · 附录 §A —— 逐字命令输出
 
 全部执行于 2026-08-16，工作目录为仓库根（除非命令自带 `cd`），
 解释器为 `.venv/Scripts/python`（本机 Python 3.14；默认 `python` 是 3.8.5，**不可用**）。
 
-**A-1 指标数量**
+**§A.1 指标数量**
 ```
 $ ls metrics/*.yaml | grep -v '_flags' | wc -l
 20
 EXIT=0
 ```
 
-**A-2 全量测试**
+**§A.2 全量测试**
 ```
 $ .venv/Scripts/python -m pytest -q | tail -3
 ........................................................................ [ 82%]
@@ -250,7 +250,7 @@ $ .venv/Scripts/python -m pytest -q | tail -3
 EXIT=0
 ```
 
-**A-3 定义校验（AC-01）**
+**§A.3 定义校验（AC-01）**
 ```
 $ .venv/Scripts/python -m semantic_layer validate --json
 {
@@ -264,7 +264,7 @@ $ .venv/Scripts/python -m semantic_layer validate --json
 EXIT=0
 ```
 
-**A-4 非公开数据扫描（AC-10）**
+**§A.4 非公开数据扫描（AC-10）**
 ```
 $ .venv/Scripts/python -m semantic_layer scan --json
 {
@@ -276,7 +276,7 @@ EXIT=0
 > `rules_version` 于 2026-08-16 由 1 升为 2：`CONTACT_PATTERN` 原式把 npm 的
 > `包名@版本`（`dsh-root@0.1.0-rc`）误判为邮箱。已收紧并补回归测试。
 
-**A-5 元规则统计（§5.1）**
+**§A.5 元规则统计（§5.1）**
 ```
 $ .venv/Scripts/python -m semantic_layer stats --json --fail-over 0.5
 {
@@ -313,7 +313,7 @@ EXIT=0
 > `per_metric` 在原始输出中是逐行展开的 JSON，此处**仅压缩了缩进以便阅读，数值一字未改**。
 > 原始未压缩输出可由上述命令原样重跑得到。
 
-**A-6 两处冻结校验（D-012）**
+**§A.6 两处冻结校验（D-012）**
 ```
 $ cd docs/agent/poc-01 && sha256sum -c SHA256SUMS
 definitions/net_profit_attributable_excl_nonrecurring.yaml: OK
@@ -328,7 +328,7 @@ $ cd eval/frozen-01 && sha256sum -c SHA256SUMS
 EXIT=0
 ```
 
-**A-7 C2 类评测（AC-02 / §7 门 2、门 5）**
+**§A.7 C2 类评测（AC-02 / §7 门 2、门 5）**
 ```
 $ .venv/Scripts/python -m eval.run --suite frozen-01 --category C2 --report eval/runs/
 套件 frozen-01   运行于 2026-08-16T12:20:59Z
@@ -367,14 +367,14 @@ C2 拒答准确率：4/4   门成立：True   存活题数满足下限
 EXIT=0
 ```
 
-**A-8 VERIFY 模式未改动冻结产物与词表（T-01-41 / T-01-44）**
+**§A.8 VERIFY 模式未改动冻结产物与词表（T-01-41 / T-01-44）**
 ```
 $ git status --porcelain metrics/_flags.yaml eval/frozen-01/ docs/agent/poc-01/
 （无输出）
 EXIT=0
 ```
 
-**A-9 flag 新增请求（判定三）**
+**§A.9 flag 新增请求（判定三）**
 ```
 $ ls docs/agent/phase-01/flag-requests-*
 ls: cannot access 'docs/agent/phase-01/flag-requests-*': No such file or directory

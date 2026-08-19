@@ -55,7 +55,9 @@ How the engineering skills should consume this repo's domain documentation when 
 ## 不建 `docs/adr/` 的后果与补偿
 
 代价：`/domain-modeling` 等技能若要「懒创建 ADR」，在本仓库应改为**向 `DECISIONS.md` 追加条目**，
-编号续 D-014、D-015…，并同步更新文件顶部的决策索引表。
+编号在现有最大决策号之后顺延，并同步更新文件顶部的决策索引表。
+（此处刻意不写具体的下一个编号——写死会变成一处指向不存在条目的引用，
+交叉引用门禁 `scripts/check_xrefs.py` 会当场判它悬空。）
 
 补偿：`DECISIONS.md` 已具备 ADR 的全部要素——状态词汇（Accepted / Provisional / Deferred /
 Rejected）、背景、决策、被拒方案、主要风险、反转触发条件。它就是本项目的 ADR，只是集中成一份。

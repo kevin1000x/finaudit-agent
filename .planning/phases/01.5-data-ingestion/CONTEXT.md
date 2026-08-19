@@ -23,7 +23,7 @@ Phase 2 的 H2 复核实验要求复核者看着**真实数字与证据链**判�
 
 八条成功标准见 `.planning/ROADMAP.md` Phase 1.5 节，此处不复制（避免第二份权威）。
 其中 **SC-7（阻断式勾稽校验）与 SC-8（验收看取到的值而非命中数）是 2026-08-16 新增的**，
-理由分别在台账 D-13 与 A-4。
+理由分别在台账 N-13 与 A-4。
 
 ---
 
@@ -35,7 +35,7 @@ Phase 2 的 H2 复核实验要求复核者看着**真实数字与证据链**判�
 | **D-014** | **禁止 AGPL 组件**。主库 **pdfplumber（MIT）**，备选 pypdfium2。`PyMuPDF` / `fitz` 禁入任何依赖（含间接） | `DECISIONS.md`；已由 `scripts/verify_deps.py` 机器强制 |
 | **D-010** | 仅公开数据，不可协商。任何雇主/客户数据一律禁止，包括脱敏后的 | `AGENTS.md` / `DECISIONS.md` |
 | **D-012** | `eval/frozen-01/` 与 `docs/agent/poc-01/` 是冻结产物，**一个字节都不许动** | `DECISIONS.md` |
-| **台账 D-3** | **抽完就删 PDF**，默认不保留；落库的是「结构化行 + PDF 的 SHA-256 + 巨潮源 URL + 页码」。`--keep-pdf` 是显式开关 | `OPEN-ITEMS.md` |
+| **台账 N-3** | **抽完就删 PDF**，默认不保留；落库的是「结构化行 + PDF 的 SHA-256 + 巨潮源 URL + 页码」。`--keep-pdf` 是显式开关 | `OPEN-ITEMS.md` |
 | **台账 U-03** | 内核与壳的边界**不得在本阶段提前拍板**，等 Phase 2 的 `ARCHITECTURE.md` | `OPEN-ITEMS.md` / `DECISIONS.md` |
 
 **环境**：Python 3.11+（`.venv` 由本机 3.14 建）。**默认 `python` 是 3.8.5，不可用于生产代码**
