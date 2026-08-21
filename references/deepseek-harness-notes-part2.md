@@ -4,6 +4,14 @@
 > 本轮阅读日期：2026-08-19。语料快照（只读）：
 > `C:\Users\Kevin\AppData\Local\Temp\claude\C--Users-Kevin-Desktop-excel----------07-finaudit-agent\e42d96be-821c-4748-aada-cf8e97e4a4a6\scratchpad\deepseek-harness\.agents\notes`
 >
+> **语料版本（重要）**：本文与 `deepseek-harness-notes-survey.md` 的**全部行号引用**，
+> 都指向该 clone 的 commit **`47f9438`**（全哈希
+> `47f943859bef60e4160492346772ded9b24f765a`，由另一 agent 从 `.git/objects/pack` + reflog
+> 取到并交叉验证）。**本轮结论引自该 commit。**
+> 之所以要写死版本：这份语料在本项目里**已经丢失过一次**（`survey/` 目录连同
+> `inventory.tsv`、`read-full.txt` 被清空），`路径:行号` 只有绑定到具体 commit 才能回指。
+> 换 commit 后行号可能全部漂移，复核时请先 checkout 到 `47f9438`。
+>
 > **诚实标注约定**：每篇标「全文」= 从第 1 行读到最后一行；标「部分（Lxx–Lyy）」= 只读了该行段。
 > 凡笔记原文没有写「Alternatives considered」的，一律写「原文未记录备选」，**不替作者补**。
 > 引用格式 `路径:行号`，行号来自 `cat -n` / `sed -n` 的原始行号。
@@ -49,7 +57,99 @@
 
 ### 0.2 `implemented/architecture` + `implemented/process` 主题命中篇目
 
-<!-- READ-LEDGER-IMPLEMENTED -->
+这两个目录**不做全量**（125 + 69 = 194 篇，远超本轮预算），做**主题筛选**：
+先用 `grep -ril` 在这两个目录里筛七个主题词族，再对命中篇目全文读。
+
+七个主题（下表「主题」列用 (1)-(7) 指代）：
+(1) 证据链与审计留痕 (2) append-only / 不可变追加 (3) 事件字段形状
+(4) 拒绝如何建模为封闭类型 (5) 模块边界与「谁拥有某个事实」
+(6) schema 与结构化字段 vs 自由字符串 (7) gate 在什么边界执行
+
+**行数经 `wc -l` 实测**（commit `47f9438`）。「全文」= 从第 1 行读到最后一行。
+**本表只列正文里真有条目的篇目**；本文档分批增写，每批先落正文再补本表。
+
+#### `implemented/architecture`（本轮命中并读完 32 篇 / 共 125 篇；其中 31 篇全文、1 篇部分）
+
+| # | 路径（相对 `.agents/notes/`） | 行数 | 主题 | 读到什么程度 | 本文位置 |
+|---|---|---|---|---|---|
+| 1 | `implemented/architecture/2026-06-11-event-sourced-sessions.md` | 28 | (2)(3) | **全文** | I-A1 |
+| 2 | `implemented/architecture/2026-07-05-reconstructable-requests.md` | 55 | (1)(3) | **全文** | I-A2 |
+| 3 | `implemented/architecture/2026-07-31-goal-owned-durable-events.md` | 33 | (2)(5) | **全文** | I-A3 |
+| 4 | `implemented/architecture/2026-07-30-settings-write-path-integrity.md` | 35 | (5)(7) | **全文** | I-A4 |
+| 5 | `implemented/architecture/2026-07-20-unified-json-value-schema-dsl.md` | 37 | (6) | **全文** | I-A5 |
+| 6 | `implemented/architecture/2026-08-10-message-feedback-sidecar.md` | 43 | (2)(5) | **全文** | I-A6 |
+| 7 | `implemented/architecture/2026-08-10-session-log-version-mechanism.md` | 30 | (2)(6) | **全文** | I-A7 |
+| 8 | `implemented/architecture/2026-07-28-api-browser-trust-boundary.md` | 31 | (5)(7) | **全文** | I-A8 |
+| 9 | `implemented/architecture/2026-08-04-configuration-source-ownership.md` | 73 | (5) | **全文** | I-A9 |
+| 10 | `implemented/architecture/2026-07-30-session-end-seed-log-boundary.md` | 55 | (2)(5) | **全文** | I-A10 |
+| 11 | `implemented/architecture/2026-07-02-tool-render-intent-union.md` | 82 | (4)(6) | **全文** | I-A11 |
+| 12 | `implemented/architecture/2026-07-19-package-owned-invariant-service.md` | 105 | (5)(7) | **全文** | I-A12 |
+| 13 | `implemented/architecture/2026-06-26-file-context-as-event-gate.md` | 173 | (3)(7) | **全文** | I-A13 |
+| 14 | `implemented/architecture/2026-06-11-structured-error-taxonomy.md` | 26 | (4)(6) | **全文** | I-A14 |
+| 15 | `implemented/architecture/2026-06-11-runtime-arg-validation.md` | 24 | (6)(7) | **全文** | I-A15 |
+| 16 | `implemented/architecture/2026-06-11-microkernel-event-taxonomy.md` | 31 | (3)(5) | **全文** | I-A16 |
+| 17 | `implemented/architecture/2026-06-11-content-block-vocabulary.md` | 28 | (3)(6) | **全文** | I-A17 |
+| 18 | `implemented/architecture/2026-06-30-event-domain-semantics.md` | 39 | (3)(5) | **全文** | I-A18 |
+| 19 | `implemented/architecture/2026-07-05-windows-jsonl-durable-publish.md` | 35 | (2)(7) | **全文** | I-A19 |
+| 20 | `implemented/architecture/2026-07-19-zstandard-jsonl-session-logs.md` | 57 | (2)(6) | **全文** | I-A20 |
+| 21 | `implemented/architecture/2026-07-26-packed-chunk-rows-by-default.md` | 59 | (2)(6) | **全文** | I-A21 |
+| 22 | `implemented/architecture/2026-08-06-agent-event-payload-objects.md` | 27 | (3)(6) | **全文** | I-A22 |
+| 23 | `implemented/architecture/2026-07-20-canonical-tool-output-contract.md` | 79 | (4)(6) | **全文** | I-A23 |
+| 24 | `implemented/architecture/2026-08-11-repository-naming-contract-and-rename-ledger.md` | 386 | (1)(5) | **部分（`:1`–`:111` + `:340`–`:386`）** | I-A24 |
+| 25 | `implemented/architecture/2026-07-28-identified-immutable-message-values.md` | 50 | (2)(3) | **全文** | I-A25 |
+| 26 | `implemented/architecture/2026-06-11-dev-invariants-over-deep-readonly.md` | 60 | (2)(7) | **全文** | I-A26 |
+| 27 | `implemented/architecture/2026-06-14-session-persistence.md` | 36 | (2) | **全文** | I-A27 |
+| 28 | `implemented/architecture/2026-06-18-shared-persistence-write-coordinator.md` | 47 | (5) | **全文** | I-A28 |
+| 29 | `implemented/architecture/2026-08-09-cordis-event-walk-backstop.md` | 38 | (3)(7) | **全文** | I-A29 |
+| 30 | `implemented/architecture/2026-07-29-terminal-llm-stream-failures.md` | 37 | (4) | **全文** | I-A30 |
+| 31 | `implemented/architecture/2026-06-20-branded-ids.md` | 69 | (6) | **全文** | I-A31 |
+| 32 | `implemented/architecture/2026-06-21-mandatory-app-attribution-headers.md` | 82 | (1) | **全文** | I-A32 |
+
+#### `implemented/process`（本轮命中并全文读完 17 篇 / 共 69 篇）
+
+| # | 路径（相对 `.agents/notes/`） | 行数 | 主题 | 读到什么程度 | 本文位置 |
+|---|---|---|---|---|---|
+| 1 | `implemented/process/2026-06-11-quality-gates.md` | 30 | (7) | **全文** | I-P1 |
+| 2 | `implemented/process/2026-07-26-frozen-agent-note-archive.md` | 45 | (1)(2) | **全文** | I-P2 |
+| 3 | `implemented/process/2026-08-09-committed-artifact-citations.md` | 37 | (1) | **全文** | I-P3 |
+| 4 | `implemented/process/2026-08-08-browser-gif-evidence-chain.md` | 37 | (1) | **全文** | I-P4 |
+| 5 | `implemented/process/2026-08-09-concrete-prose-names-actors-and-recorded-facts.md` | 35 | (1) | **全文** | I-P5 |
+| 6 | `implemented/process/2026-07-14-typescript-program-backed-semantic-gates.md` | 65 | (7) | **全文** | I-P6 |
+| 7 | `implemented/process/2026-07-27-explicit-change-scope-report.md` | 41 | (1)(5) | **全文** | I-P7 |
+| 8 | `implemented/process/2026-07-05-uniform-agent-note-format.md` | 30 | (1)(6) | **全文** | I-P8 |
+| 9 | `implemented/process/2026-06-20-agent-note-classification.md` | 48 | (1)(5) | **全文** | I-P9 |
+| 10 | `implemented/process/2026-07-19-require-agent-notes-for-non-trivial-changes.md` | 46 | (1)(7) | **全文** | I-P10 |
+| 11 | `implemented/process/2026-07-19-remove-generated-agent-note-index.md` | 31 | (1)(5) | **全文** | I-P11 |
+| 12 | `implemented/process/2026-07-06-parallel-pre-push-gates.md` | 41 | (7) | **全文** | I-P12 |
+| 13 | `implemented/process/2026-08-06-coverage-uncovered-locations.md` | 42 | (1)(7) | **全文** | I-P13 |
+| 14 | `implemented/process/2026-07-10-readme-known-limitations-gate.md` | 29 | (1)(7) | **全文** | I-P14 |
+| 15 | `implemented/process/2026-07-30-cordis-config-source-plane-resolution-gate.md` | 27 | (5)(7) | **全文** | I-P15 |
+| 16 | `implemented/process/2026-08-09-md-fragment-anchor-gate.md` | 32 | (7) | **全文** | I-P16 |
+| 17 | `implemented/process/2026-06-20-core-data-structures-catalog.md` | 61 | (6) | **全文** | I-P17 |
+
+**合计**：`implemented/` 本轮读完 **49 篇**（architecture 32 + process 17），
+其中 **48 篇全文、1 篇部分**（I-A24，386 行的命名台账，只读了 Problem/Decision/
+Alternatives/Verification/Consequences，中间 14 组逐条重命名映射表未逐行读）。
+连同 `proposed/` 22 篇，本文正文共 **71 条**笔记条目。
+
+**「原文未记录备选」的篇目**（正文中已按 `alternatives-not-recorded` 标记如实标注）：
+I-A14、I-A15、I-A18 —— 共 3 篇，均为 2026-07-05 格式决策（I-P8）之前的旧笔记，
+带原文的 `<!-- agent-note-format: alternatives-not-recorded (pre-format Agent Note) -->` 注释。
+其余 46 篇原文均写有 `## Alternatives considered` 段，本文逐篇转录了被否决方案与理由，
+**未替作者补写任何一条**。另有 I-A31 的「Out of scope / possible extensions」
+按原文标注为**延后而非否决**（原文自称 "deferred with a reason, not a commitment"）。
+
+**⚠️ 两篇与第一轮重复（如实记录）**：
+
+| 路径 | 第一轮 | 第二轮 |
+|---|---|---|
+| `implemented/architecture/2026-06-14-session-persistence.md` | survey §3 **C-4** | 本文 **I-A27** |
+| `implemented/architecture/2026-08-09-cordis-event-walk-backstop.md` | survey §3 **C-3** | 本文 **I-A29** |
+
+第一轮的已读记录只存在于 survey §3 的散文里（机器可读的 `survey/read-full.txt` 已随语料丢失），
+主题筛选按内容 `grep` 命中时没能自动排除它们。两份条目切入角度不同，都保留；
+但在 `deepseek-harness-notes-survey.md` §1.3 的覆盖度计数里**只算一篇**
+（两轮合并去重后全文读完 = **91 篇 / 674**）。
 
 ---
 
@@ -2077,3 +2177,1194 @@ publish 阶段**只读那些 tarball 与它们的 manifest，被禁止重新构�
 | 在命令里查 GitHub 拿 base | 把一个**本地只读报告**耦合到某一个 forge 与网络凭据，**而且仍然解决不了没有 PR 的分支** |
 | 从变更路径生成必须跑的测试 | **路径无法确立通过配置、动态加载、子进程、worker、构建产物或 provider 到达的行为**。证据选择仍然是判断题 |
 | 报告当前分支与 upstream 并维护一个平行的人类可读渲染器 | 调用方在调用前已核实分支与 base，**没有消费者使用那些字段**，且**格式化散文复制了 JSON schema 却没有改善路径完整性** |
+
+---
+
+## 6. `implemented/` 第二批 —— 事件形状 / 封闭类型 / append-only 物理层
+
+> 本节 10 条为本轮第二批（2026-08-22 续读），主题集中在
+> 「事实用什么形状存」「失败怎么变成可路由的类型」「append-only 在文件系统上到底怎么落」。
+
+---
+
+### I-A14 `implemented/architecture/2026-06-11-structured-error-taxonomy.md`（26 行，**全文**）
+**主题 (4)(6) —— 「失败不能是裸字符串」**
+
+- `:9` **问题一句话**：
+  > 「Failures crossed seams as bare strings. A tool error flattened to a text block —
+  > **name, code, and stack lost** — so a future sandbox/retry plugin **couldn't tell ENOENT from EACCES**」
+
+  同行还有更狠的一句：`LlmError` 曾是系统里**唯一**的类型化错误，没有共享基类，
+  于是消费方**没有任何东西可以 `instanceof`**。
+- `:13` **对策**：一个 `HarnessError extends Error` 基类，放在 `dsh-llm`——
+  「the leaf package every other imports — **no new dependency edge**」。
+  三个字段：**稳定的 `code`（与 `message` 分开）**、`cause` 链、`name` 默认取子类名。
+  `isHarnessError` 在 seam 上做窄化。
+- `:16` **结构化字段随事实一路走到日志**：`ToolExecutionResult` 增加可选
+  `error: { name, code }`，agent loop 把它转发到 `tool/result` 会话事件上，
+  「so the **structured failure survives into the log** for retry/sandbox plugins and replay.
+  The model-facing text block is unchanged.」
+- `:17` **连「抛错抛错了」都要有码**：非 Error 抛出被包成 `HarnessError`（`code: 'UNKNOWN'`，
+  原值挂 `cause`），「so **even a bad throw carries a routable code**」。
+- `:21` Consequences 的核心收益：
+  > 「a plugin can **branch on `error.code` rather than substring-matching a message**.」
+- `:23` **一条刻意的不对称**（本篇最值得抄的取舍）：
+  `deriveMessages` **不把 `error` 送进模型历史**——模型看到的仍是文本块，
+  **结构化字段是给代码和 replay 用的**。
+  → **同一个失败事实有两个受众，两套表示，谁也不冒充谁。**
+
+**备选**：`:26` 带 `<!-- agent-note-format: alternatives-not-recorded (pre-format Agent Note) -->`
+标记，**原文未记录备选**。
+
+**对 finaudit 的输入**：审计失败（口径不匹配、科目缺失、期间不可比）必须是**带稳定 code 的封闭类型**，
+不是「数据有问题」这种字符串。而且要**双表示**：给人看的自然语言 + 给证据链存的 `{name, code}`。
+
+---
+
+### I-A15 `implemented/architecture/2026-06-11-runtime-arg-validation.md`（24 行，**全文**）
+**主题 (6)(7) —— 「编译期类型是对运行时值的一个声称」**
+
+- `:9` **本篇最有迁移价值的一句**：
+  > 「that type is a **compile-time claim about a value that arrives at runtime as model-generated JSON**:
+  > nothing forced the model to honor the schema, so a malformed call … reached `execute`
+  > **typed-in-name-only**.」
+
+  → **「类型上写了」≠「运行时是」。** 模型产出的东西一律当外部输入。
+- `:13` **校验点选在哪**：`defineTool` 在**定义时**快照编译后的参数 schema，
+  在**跑 typed body 之前**执行校验；违例抛 `ToolArgsError`（`INVALID_ARGS`），
+  registry 把它变成**模型可以自己纠正的 error result**，不是崩溃。
+- `:15` **校验器与编译器共享精确语义**（列了 7 条：隐式参数根是 open object、
+  required 只来自 `required: true`、default 只是注解、显式嵌套对象各自决定开闭、
+  数组走 `items` 递归、标量字面量约束类型正确、`oneOf` 恰好匹配一支）。
+  最后一句划边界：「**Raw-registered tools own their input validation.**」
+- `:20` **漂移风险被机械封住**：一个 property test 生成满足 spec 的参数、断言过校验，
+  并用**定向 corruption** 断言被拒——
+  「closing that drift risk **mechanically**」。
+  → **两套实现要一致时，别靠人盯，靠生成式测试对拍。**
+
+**备选**：`:24` 带 `alternatives-not-recorded` 标记，**原文未记录备选**。
+
+---
+
+### I-A16 `implemented/architecture/2026-06-11-microkernel-event-taxonomy.md`（31 行，**全文**）
+**主题 (3)(5) —— 「扩展点是有 dispatch 语义的类型化事件」**
+
+- `:13`–`:18` **四种 dispatch 模式，各自有明确用途**（这是本篇最可抄的部分）：
+
+  | 模式 | 语义 | 用在哪 |
+  |---|---|---|
+  | **waterfall**（around-middleware） | 插件可 transform / **short-circuit** / recover / wrap | `agent/pre-step`、`agent/request`、`tools/pre-execute`、`tools/execute`、`tools/post-execute`、`llm/stream`、`system-prompt/assemble` |
+  | **serial**（按监听顺序 await） | 有序检查点 | `agent/turn-stopping` |
+  | **parallel**（fan-out 全部 await） | **每个监听者都必须拿到独立机会** | `session/flush` 持久化检查点 |
+  | **emit**（同步 fire-and-forget） | 通知 | inbox 状态迁移、生命周期、错误、`tools/result` 观察 |
+
+  `:18` 末句划死了归属：「**Durable session events own turn and step boundaries.**」
+- `:20` **词表归属**：事件词表住在 contract 包里（`dsh-agent` 声明 `agent/*` 事件），
+  `dsh-agent-loop` 是**唯一**的具体 loop 插件，且**它自己也可替换**——
+  「**nothing outside it may depend on it**」。
+- `:28` **一条证明义务**：每个 MVP 特性都要映射到一个 listener，
+  「the feature → mechanism map **is the proof obligation, kept current**」。
+  → **不是文档，是义务：说好了「一切皆插件」，就要能逐条指出每个特性落在哪个 listener。**
+- `:30` 诚实记下代价：waterfall 语义（调 `next()` 还是短路）**不直观、必须教**。
+
+**它否决了什么备选**（原文 `:24`）：
+「purpose-built middleware stack（koa-compose 风格）」与「显式 phase 状态机」——
+两者都会**重新实现 Cordis 原生事件系统已经提供的 dispatch / disposal / reload 语义**；
+作为 Cordis effect，listener 免费获得 HMR 与 disposal。
+
+---
+
+### I-A17 `implemented/architecture/2026-06-11-content-block-vocabulary.md`（28 行，**全文**）
+**主题 (3)(6) —— 「自己拥有内部语言，映射成本推给适配器」**
+
+- `:9` 目标一句话：harness 需要**一种内部语言**，让 loop、会话日志、所有插件都讲同一种话。
+- `:13` **决策**：消息 = 类型化 content block 数组（`text` / `reasoning` / `tool-call` / `tool-result`），
+  联合类型由 merge-extensible 的 `ContentBlockMap` 导出，插件靠声明合并加块类型。
+  **同一个 merge-extensible-map 模式给每一个「stringly」字段上类型**——
+  `MessageSource`、`FinishReason`、`TurnTrigger`、`TurnEndReason`。
+  > 「Adapters translate to provider wire formats — **mapping cost lives in adapters, where it belongs**.」
+- `:15` **一个被后来推翻的设计，原文诚实留痕**：会话内上下文注入与中途 steering
+  最初渲染成**带标签的 user-role 信封**（system-reminder 模式），
+  现在改成**纯 user content、无包装**；并指向 `simplification/2026-07-20-unwrap-injected-content-envelopes.md`。
+  同句还写明：这个渲染是**用实时 adapter 验证过的**，
+  「a future provider-specific mismatch **belongs in that adapter rather than a new canonical role**」。
+- `:28` **跨包边界的 ID 一律 branded**（`CallId`、共享的 `SessionId`）——
+  「nominal typing at **zero runtime cost**」。
+
+**它否决了什么备选**（原文 `:19`–`:20`）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 直接照搬 DeepSeek/OpenAI chat-completions 形状 | 第一家 provider 零映射成本，但**对富内容（reasoning、结构化 tool result）很别扭** |
+| 原样采用 Anthropic Messages 块结构 | 久经考验，但**规范类型会去镜像一个本项目并不首要面向的第三方 API** |
+
+---
+
+### I-A18 `implemented/architecture/2026-06-30-event-domain-semantics.md`（39 行，**全文**）
+**主题 (3)(5) —— 本轮最重要的一条：「一个事实只能有一个来源」**
+
+- `:15` **问题的两个动机，第一个直击证据链**：
+  好几个 turn/step 边界**同时**以持久 `SessionEvent` 和镜像 `agent/*` emit 存在，
+  > 「A consumer had **two sources of truth for the same fact**, and every lifecycle change
+  > had to update both.」
+- `:21`–`:25` **三个域，各一份职责**：
+  - **`session/*` —— 持久、可重放的 FACT 日志**。每条都是 **JSON-only（无活对象）**。
+    每次 append 一个 `session/event` emit，外加 `session/flush` 并行持久化检查点。
+    关键的一句：**它同时是实时 transcript 源**——
+    「so **live rendering and replay projections share one path**」。
+  - **`agent/*` —— LIVE 运行时面**。总是携带活的 `Agent`。拦截 waterfall 可 transform / reject / recover。
+    「Turn and step BOUNDARIES are **NOT here**」。
+  - **`tools/*` —— 工具注册与执行流水线**。
+- `:27` **边界规则（一句话，可直接搬）**：
+  > 「a **durable, replayable fact is a `SessionEvent`**; a **live interception or a transient/live-object
+  > signal is an `agent`/`tools` Cordis event**.」
+- `:29` **规则被真的执行了**：四个边界镜像事件（`agent/turn-start` / `turn-end` / `step-start` / `step-end`）
+  **全部删除**。判据是**实证的**：「**No production consumer needs the live `Agent` at a boundary**」，
+  并逐一点名 ACP bridge 如何改用 `session/event` 的 `turn/start`/`turn/end` 配对。
+- `:33` **失败包容的边界画得极细**：`Session.append` 拥有 post-commit 观察者包容，
+  所以**一个抛异常的边界观察者不能改变 turn 结果，也不能饿死后续消费者**；
+  但**acceptance 或内部校验失败仍然在边界进入日志之前逃逸**。
+  → **「进日志之前可以拒；进日志之后不许改」。**
+- `:34` **测试跟着行为一起搬家或一起死**：
+  观察被删 emit 的测试改读持久事件（**被钉住的行为不变，只是换了 feed**）；
+  而那些专门测「抛异常的 turn-boundary emit 监听器」的测试**被删除**，因为**那条代码路径不存在了**。
+  原文引 AGENTS.md：「**tests document behavior, not golden truth**」。
+- `:35` **一个精确到令人不适的细节**：loop 只在 `append('step/start')` **返回之后**
+  才把 step 标记为 open，所以「The marker therefore represents **exactly the committed boundary
+  that owes a later `step/end`**」。
+  → **标志位表示的是「已提交的、欠一个闭合的边界」，不是「我打算开始了」。**
+
+**备选**：`:39` 带 `alternatives-not-recorded` 标记，**原文未记录备选**。
+
+**对 finaudit 的输入（本轮最强的一条）**：
+证据链事件必须是 **JSON-only 的持久事实**，实时 UI 与事后复核**读同一条流**。
+凡是「为了界面方便」而镜像出来的第二份事实，迟早两边不一致——
+deepseek-harness 的做法是**把镜像全删掉，并先证明没有生产消费者需要它**。
+
+---
+
+### I-A19 `implemented/architecture/2026-07-05-windows-jsonl-durable-publish.md`（35 行，**全文**）
+**主题 (2)(7) —— 「append-only 的耐久承诺不许因为平台不同而偷偷降级」**
+
+- `:9` POSIX 的发布协议：写临时文件 → fsync → link 到最终名 → **fsync 父目录** → 删临时 link。
+  父目录 fsync **是耐久性契约的一部分**：崩溃后不能出现
+  「lose the committed final name **while leaving callers believing the session log materialized**」。
+- `:11` **本篇的判断点**：Windows 有原子命名空间操作，但 Node 在那里**没有暴露等价的父目录 fsync 契约**。
+  > 「**Treating Windows directory sync failures as success would silently weaken a durable backend.**」
+
+  → 所以不是在 `syncDir` 里加个 `if`，而是**换一条发布原语**。
+- `:19` Windows 路径：在常量前缀 `.dsh-mkdir-` 下建随机同级目录，
+  再用 `MoveFileExW(..., MOVEFILE_WRITE_THROUGH)` 发布，
+  **不带 `MOVEFILE_REPLACE_EXISTING`，也不带 `MOVEFILE_COPY_ALLOWED`**。
+  → **不许替换、不许退化成复制。**
+- `:31` **对外契约跨平台唯一**：
+  > 「first append **either publishes a complete log at the final name or fails without overwriting
+  > an existing log**.」
+
+  平台差异是实现细节。
+- `:33` **对「能证明什么」极度诚实**（值得整段抄）：
+  > 「**Power-loss behavior remains an API-contract property rather than something unit tests can prove**」
+
+  ——于是列出**真正可测的**不变量：Windows materialization 上不调用目录 fsync、
+  最终路径冲突会失败、最大长度路径分量仍可 materialize、临时日志在发布前已 fsync、产出的日志能正常加载。
+- `:35` 回滚也是 append-only 的一部分：失败的 append **关掉 append-only 句柄、以读写重开、
+  截断回到 append 前的字节数、fsync 这次回滚**——因为 Windows 拒绝对 append-only 句柄做 `ftruncate`。
+
+**它否决了什么备选**（原文 `:23`–`:27`）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 忽略 Windows 目录 sync 失败 | **把首次 append 报告成 durable，却没有把已发布的命名空间条目强制写到稳定存储** |
+| 用 `CreateHardLinkW` | 硬链接**依赖具体文件系统、无法发布目录、没有 write-through 选项** |
+| 用替换类或事务类 API | `ReplaceFileW` 的替换语义**与「同 id 冲突必须拒绝」相冲突**；Transactional NTFS **不推荐用于新设计** |
+
+---
+
+### I-A20 `implemented/architecture/2026-07-19-zstandard-jsonl-session-logs.md`（57 行，**全文**）
+**主题 (2)(6) —— 「压缩不许动 append/fsync 提交边界」**
+
+- `:9` **约束先行**：压缩必须保留既有的 append/fsync 提交边界、冲突安全的首次 materialization、
+  崩溃修复、**仅读元数据的 listing**；
+  > 「rewriting a whole compressed file after every turn **would discard those properties**.」
+- `:11` **编码必须在部署边界显式**：
+  > 「a backend **cannot safely guess** between compressed and raw artifacts in one root
+  > or **silently migrate** pre-release session data.」
+- `:19` **fail-closed 的目录级不变量**：**每个持久化根只属于一种编码**。
+  一次性 discovery preflight **拒绝任何反向后缀**；load / live-adoption / listing / materialization
+  各路径在 preflight 初始为空时**再查一次**。
+  错误信息**点名那个不兼容的 artifact**，并指向匹配配置或另建一个根。
+  > 「There is **no migration, dual read, dual write, or extension-based fallback**.」
+- `:23` **物理帧边界 = 逻辑提交边界**：一个 checksum 帧只装 header 行，
+  之后**每个 durable append batch 一帧**。
+  「Normal loop batches are turn commits, so frame boundaries **preserve the existing persistence
+  checkpoint without making the storage layer depend on turn event types**.」
+  → **存储层对齐提交边界，但不认识业务事件类型。**
+- `:33` **专用 header 帧换来的能力**：listing 只读到第一个完整帧可用为止，
+  「**never reads an event frame**」——超大日志也能只读元数据。
+- `:35` **撕裂尾部的修复协议**（本篇最精细的部分）：文件末帧内 EOF 视为**可恢复的撕裂尾**；
+  专用前缀解码器用 `finishFlush: ZSTD_e_flush`，**不要求帧或校验和完整**就吐出可得明文；
+  **每一条完整的、以换行结尾的事件都被保留**。修复从该帧起始字节截断，
+  追加一个新的 checksum 帧，内含恢复出的完整事件 + **协调器合成的 tool / step / turn 闭合子**。
+  若撕裂发生在任何完整事件可解码之前，**丢弃该部分帧，保留此前全部完整帧**。
+- `:31` **什么算腐坏、直接拒**：任一完整帧的 checksum/解压失败、完整帧的 JSONL 尾部畸形、
+  帧结构非法——「**is corruption and rejects**」。
+
+**它否决了什么备选**（原文 `:45`–`:49`，5 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 每条 JSONL 记录一帧 | 对高频 chunk 事件**成倍增加帧头与校验和**，且**让物理边界与 durable append batch 无关** |
+| 每次 append 后重写整个压缩流 | **成本随日志增长**，且替换会**放弃 append/fsync 回滚与冲突安全的 materialization 机制** |
+| 跨 append 用流式压缩器 | **被中断的编码器状态留不下「各自独立校验的 append 单元」**，使有界 listing 与帧起点修复复杂化 |
+| 引入外部原生 Zstandard 依赖 | Node 版本下限**已自带所需编解码器**；再加原生产物只**放大安装与打包风险**而不带来必需行为 |
+| 暴露压缩级别 / 保持 raw JSONL 为默认 | **没有部署证据支持第二套调参策略**；而 `'none'` 已经保住了 fixture 与集成需要的可逐行读路径 |
+
+---
+
+### I-A21 `implemented/architecture/2026-07-26-packed-chunk-rows-by-default.md`（59 行，**全文**）
+**主题 (2)(6) —— 「逻辑事件与物理行分离」**
+
+- `:9` **不可动摇的部分先说清楚**：日志必须**把每个 chunk 保留为不同的逻辑事件**——
+  实时 `session/event` 投递、序号、`sourceEventSeqs`、replay、**取消证据**、UI 流式，全都依赖那些边界。
+- `:11` **可动的部分**：连续三条及以上同 block 的 delta 事件可以压进一个存储行，
+  「decoding **reconstructs every original event, timestamp, and sequence number**」。
+- `:11` **一条关于「默认值怎么才算可信」的判断**（很好用）：
+  > 「A credible default must cover runtime writers, app-level config, snapshot producers,
+  > and committed fixtures **together; otherwise tests avoid the layout that deployments write**.」
+
+  → **测试如果不走生产默认布局，那个默认值等于没被测。**
+- `:17` **读永远与布局无关**：packed / unpacked / 混合文件加载成同一个连续 `SessionEvent[]`，
+  所以默认值切换**不需要会话格式版本变更，也不需要磁盘迁移**。
+  「The option controls newly appended batches only; **it never selects a reader mode.**」
+- `:21` **词表归属划得很干净**：
+  > 「A packed row is **storage vocabulary, not a `SessionEventMap` member**:
+  > it **never enters `Session.events` or fires `session/event`**.」
+- `:27` **canonical fixture 用无路径清单的门禁保证**：脚本**发现**仓库内所有被跟踪的 `*.jsonl`
+  （加上未被 ignore 的未跟踪新增），挑出首记录是 `session` header 的，解码全部 body，
+  **与 `packChunkRuns()` 输出不同即拒**。
+  「The inventory therefore includes … **future fixture names without a maintained path list**.」
+  → **门禁靠发现，不靠维护清单。**
+- `:35` **过渡工具自带死期**：迁移脚本存在的唯一理由是在飞的分支；
+  删除提案**在实测的 open-PR 清单显示所有受影响分支已合并/关闭/已规范之后**才执行。
+  「The shared canonicalizer and snapshot gate **remain permanent**.」
+
+**它否决了什么备选**（原文 `:45`–`:53`，5 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 只翻 backend schema 的默认值 | wrapper 默认、TUI/web 序列化器、既有 fixture、未来 fixture 策略**会不一致**。「A default is meaningful only when **shipping compositions and the tests representing them share it**」 |
+| 为了可读性让快照保持 unpacked | packed 行**显式保留每个片段与时间戳**，共享解码器提供逻辑检视；让**最大的已提交消费者用另一种布局**会使快照覆盖**绕开生产写路径** |
+| 干脆删掉 `packChunks` 永远 pack | 一行一事件对**诊断**与**混合布局兼容测试**仍有用；显式 opt-out 保住这些消费者而不削弱默认 |
+| 把 chunk 批成逻辑会话事件 | 会**延迟或改变实时投递**、**重排 assistant 消息引用的 chunk seq**，并要求每个 UI/replay 消费者理解又一种流式单元 |
+| 永久保留分支迁移器 | 只读的 canonicalizer 与快照门禁拥有持续执行；**变更类命令的价值有明确到期** |
+
+---
+
+### I-A22 `implemented/architecture/2026-08-06-agent-event-payload-objects.md`（27 行，**全文**）
+**主题 (3)(6) —— 「事件签名用一个具名 payload，不用位置参数」**
+
+- `:9` **问题**：agent 域事件曾用位置参数（前导 `agent` subject + 事件字段 + 尾部 `next`）。
+  加一个字段或退休一个 context 类型，就要**改写所有包里的每个 listener 与 emitter**，
+  而且「the contract **stayed spread across the parameter list instead of one named payload**」。
+- `:13` **决策**：每个 agent 域事件**恰好一个 payload 对象作为第一参数**，
+  payload 永远携带 subject（`agent`）、事件字段、以及**有取消语义时的 `signal`**；
+  `next` 仍是 waterfall/serial 的最后一个参数。适用范围被数清楚了：12 个 `agent/*` 事件、
+  `agent-loop/config-start-failed`（**唯一没有 subject 的**）、`goal/changed`。
+- `:17` **本篇最值得抄的机制**：**dispatch 是融合的**。
+  `agentEvents(ctx, agent)` 注入 subject，「so the **scope carrier key and the payload's `agent`
+  cannot diverge**」，而且**注入的 subject 胜过 payload 里碰巧带的 `agent` 字段**。
+  → **两个地方都写着「这是谁」时，让其中一个在结构上不可能说了算。**
+
+**它否决了什么备选**（原文 `:21`–`:23`）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 保持位置参数签名 | 加字段/退休 context 类型会**继续改写每个 listener 与 emitter**，契约继续散在参数表里 |
+| 在每个 dispatch 处手工构造 subject | loop 的中间设计手写 `{ agent: this, … }`，**避免了每次分发的分配开销，但重复了 subject 注入，并且让 scope key 与 payload subject 可能发散** |
+
+---
+
+### I-A23 `implemented/architecture/2026-07-20-canonical-tool-output-contract.md`（79 行，**全文**）
+**主题 (4)(6) —— 本轮第二重要：「一个被校验的值，两个确定性投影」**
+
+- `:9` **问题**：工具体过去直接写模型可见的 `ContentBlock[]`，
+  于是「a programmatic caller **had no stable domain value**」——
+  Code Mode 把块压回字符串、动态工具重复内容形状，
+  而且**策略替换了「呈现」和替换了「结果」这两件事根本区分不开**。
+- `:11` **拒绝把富值持久化的理由（三条，很干净）**：会**放大日志**、
+  会**把实现数据暴露给压缩与迁移**、会**错误地把一个执行局部的 API 变成会话格式**。
+- `:15`–`:27` **决策形状**：每个工具**必须**声明规范输出
+  （`schema` + 纯 `render(args, value)` + 可选 `presentationMeta`），
+  工具体**只返回该 schema 描述的值**。
+  注册时**拒绝缺声明或不支持的 raw schema**——「there is **no content-return compatibility path**」。
+  每次成功分发，registry 依次做：**快照成无损 `JsonValue` → 用 `output.schema` 校验 → 深冻结 →
+  调纯渲染器**。渲染器/投影器/schema/无损 JSON 失败**都被包容成普通的 `ToolOutputError` 结果**。
+- `:27` **反重放/反串用的机制**：每个 canonical result 都**绑定到创建它的那个不可变 dispatch token**，
+  「so returning a **cached result from another call or tool** triggers normalization
+  under the active declaration **rather than bypassing it**」。
+- `:35` **三条互斥的后处理语义，写得极清楚**：
+  替换 `content` → **只改呈现**，保留 canonical 值与元数据；
+  替换 `value` → **重新校验并重算两个投影**；
+  block → **移除值，变成失败**。然后一句斩钉截铁的安全声明：
+  > 「Content replacement is therefore **not a confidentiality mechanism**: policy that must
+  > prevent programmatic access **blocks the call or replaces the value**.」
+- `:37` **执行局部 vs 持久事实的分界**：loop 只用 `content`、`error`、可选 `meta` 持久化 `tool/result`；
+  「Neither event stores the canonical intermediate value, so **replay reproduces presentation
+  but cannot reconstruct the programmatic result**.」
+  → 这是**明写出来的能力缺失**，不是漏洞。
+- `:41`–`:62` 一张表逐个列出第一方工具的 canonical 值形状
+  （如 `read` → `{ path, offset, lines: [{ number, text }], totalLines }`、
+  `write` → `{ path, operation, before, after }`），
+  **可直接作为 finaudit 工具返回值的形状模板**。
+- `:63` **一条容易忽略但很关键的区分**：
+  > 「**Formatting-only limits belong in `render`**」
+
+  ——`glob`/`grep` 把每一个取到的条目都留在 `value` 里，只有 Native 投影保留配置的首页。
+  → **「取到多少」和「显示多少」是两件事，别让显示上限污染事实。**
+- `:79` **最后一段把边界重申为属性而非缺陷**：
+  「These are **explicit properties of the execution-local contract, not accidental gaps**.」
+
+**它否决了什么备选**（原文 `:69`–`:73`，5 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 给 Code Mode 返回渲染后的文本 | 调用方会**继续从散文里刮 job id、mount id、路径与结构化结果** |
+| 把 canonical 值持久化到 `tool/result` | 嵌套执行值**不是模型历史**、**不需要在 replay 中存活**，会造成与 Native 重建无关的**会话格式与存储承诺** |
+| 让工具同时返回 value 和 content | **两个作者自定的结果会互相矛盾，策略无法声明哪个权威**。渲染器让呈现成为被校验值的**确定性投影** |
+| 把替换 content 当作值脱敏 | 呈现与程序访问是**不同的消费者**；只藏前者会**造出一个假的安全边界** |
+| 要求工具输出必须是对象根 | 标量、数组、null **都是合法的 JSON API**；对象根是**调用方规则**（subagent/workflow 的结构化输出），不是通用规则 |
+
+**对 finaudit 的输入**：这就是「答案 + 证据链」的形状原型——
+**一个被 schema 校验过、深冻结的 canonical 值**（指标口径、取数、计算中间量），
+**两个确定性投影**：给人看的叙述、给机器核的结构化记录。
+且必须明写**哪些中间量不进日志**，而不是含糊地「都记下来」。
+
+---
+
+## 7. `implemented/` 第三批 —— 制度本身：笔记格式、分类、门禁、命名契约
+
+> 本节 11 条为本轮第三批（2026-08-22 续读）。
+> 与第二批不同，这批读的是**这套制度怎么自己管住自己**——
+> 「什么时候必须写笔记」「笔记格式谁来查」「不写清备选算不算违规」「名字算不算契约」。
+> 对 finaudit 而言，这批的迁移价值高于任何具体架构决策：
+> **我们要建的也是一套「必须留下可复核痕迹」的制度。**
+
+---
+
+### I-P8 `implemented/process/2026-07-05-uniform-agent-note-format.md`（30 行，**全文**）
+**主题 (1)(6) —— 「格式不被机器查，就会烂」**
+
+- `:9` **问题**：路径已经编码了生命周期与类别，但**文件内容仍然混着**各种标题、状态格式、
+  ADR 与 proposal 模板，`implemented/` 里还留着提案期的段落。
+  > 「Authors copied whichever neighbor they found, and **lifecycle moves could skip the required
+  > rewrite because no gate enforced an in-file contract**.」
+- `:13` **文件内契约的完整形状**（可直接照抄成 finaudit 的证据文档契约）：
+  - 头块：`# Agent Note: <title>` + **不带日期、且与所在文件夹一致**的 `Status:` 枚举
+    （其唯一允许的内容是 rejection reason）；
+  - 按生命周期的正文骨架：**到处都以 `Problem` 开头**；
+    `proposed/` 用 `Proposal`/`Acceptance criteria`/`Risks`；
+    `implemented/` 用**现在时**的 `Decision`/`Consequences`，**提案期标题被禁**；
+    `rejected/` **冻结提案形状**；
+  - **强制的 `Alternatives considered` 段**；
+  - 规范段落词表之间，**定制技术段落保持自由格式**。
+
+  执行者是 `pnpm run verify-agent-note-format`，作为 `doc-sync` 的一员，
+  > 「so a lifecycle move that skips its rewrite **now fails CI instead of review memory**.」
+- `:15` **本篇最关键的一段，也是本轮任务的直接依据**：
+  整个语料在**定义格式的同一次变更里**被规范化——
+  「the pre-release stance: **no transition period, no dual-format tolerance**」。
+  唯一的 grandfather **是内容而不是格式**：
+  > 「**alternatives are recorded, never invented**, so a pre-format Agent Note whose alternatives
+  > are not reconstructible from the record carries the exact
+  > `agent-note-format: alternatives-not-recorded` comment, which the gate accepts **only for files
+  > dated before this Agent Note**.」
+
+  → 这就是本文所有「原文未记录备选」标注的**制度来源**：
+  **宁可在记录上留一个诚实的洞，也不补一段编造的理由。**
+- `:30` Consequences 把「强制备选段」明说成**刻意的摩擦**：
+  > 「a decision recorded without what it beat **invites the re-litigation Agent Notes exist to prevent**.」
+
+  同段还写：把笔记在生命周期文件夹之间移动，现在是**移动时的真实工作**
+  （那次移动本就欠的正文重写），而不是**没人跟踪的延后清理**。
+  最后一句是实证：39 个债务标记消失了。
+
+**它否决了什么备选**（原文 `:19`–`:26`，**8 条**，本轮见过最完整的一份）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 完全刚性的模板（每个生命周期一个固定段落序列） | 大型设计笔记带着 **8–15 个定制技术段**（包拓扑、wire 契约、schema），那些是**承重内容而不是漂移**；刚性序列会**现在强迫破坏性重写、以后永远跟模板打架** |
+| 只规范化头部（H1 与 Status，正文不动） | 债务标记指向的**正是正文的体裁分裂**；让 `Context`/`Decision` 与 `Problem`/`Proposal` 无限期并存**什么都没解决** |
+| 不要 `Status:` 行（文件夹本身就是状态） | 否决，改为**保持文件自描述**：促使删掉它的漂移风险，**用「把该行对着文件夹做门禁」来中和** |
+| 带日期的状态（`Status: implemented (accepted YYYY-MM-DD)`） | 接受日期是**写作规则要求排除在文档之外的叙事史**；文件名带首次提出，git 带其余，**而门禁能查日期格式却永远查不了它是否属实** |
+| 光秃秃的 `# <title>` | `Agent Note: ` 前缀让文件**被拿到树外阅读时仍自描述体裁** |
+| 用 `## What we give up` 作为 implemented 的收尾 | 它**只点出代价**；诚实的 consequences 段**也要记下这个取舍换来了什么** |
+| 有约定但不设门禁 | slop 清单早就用约定禁止了 `implemented/` 里的规格腔，**19 个文件说明了光靠约定能达到什么效果** |
+| 单独一个 `FORMAT.md` 契约文件 | **一个入口同时承载布局、分类、格式**，比两个契约文件更容易发现与维护 |
+
+---
+
+### I-P9 `implemented/process/2026-06-20-agent-note-classification.md`（48 行，**全文**）
+**主题 (1)(5) —— 「文件夹就是标签，标签与存储是同一个东西」**
+
+- `:11` **本篇给出的判断准则**，直接引用了 quality-gates 那条立场：
+  > 「the repo's standing bias is **mechanical quality gates over prose guidelines**:
+  > **a convention that isn't machine-checked rots**. So a classification scheme here had to be
+  > enforceable, **not an honor-system header**.」
+- `:15` **决策**：加第二根轴——笔记的**类别**，并**编码进路径**：
+  `{lifecycle}/{class}/yyyy-mm-dd-topic.md`。
+  > 「**The folder *is* the label.**」封闭集合是「这些文件夹，没有别的」。
+- `:19`–`:27` **六个类别的封闭集**（finaudit 可以照这个结构划自己的决策类别）：
+  `feature` / `bug-fix` / `simplification` / `architecture` / `process` / `testing`。
+  `:28` 特意把最容易混的一条线讲清楚：
+  > 「**architecture** is about **the source we ship**; **process** is the surrounding tooling and workflow.」
+
+  然后**当场自证**：本篇自己是 `process` 决策，所以它住在 `implemented/process/`。
+- `:32`–`:35` **两个门禁**，都是 `doc-sync` 成员，都遵循
+  「tsx ESM、**verify-don't-generate**、首个违例即非零退出」的风格：
+  - `verify-agent-note-classification.ts` —— 断言每个文件都在规范集里的类别文件夹下
+    （生命周期根目录下的散装 `.md`、或未知类别文件夹，**都失败**），并**拒绝集中式 `INDEX.md`**；
+  - `verify-doc-refs.ts` —— **扫源码注释里引用的文档路径**。
+    理由很实在：Agent Note 路径不仅被 Markdown 引用，也被 TypeScript 文档注释引用，
+    「`verify-md-links` **does not see those**, so a reorganization **could silently orphan them**」。
+    该门禁**要求 `.md` 扩展名**，好让无扩展名的散文不被误伤。
+- `:47` **加一个类别是刻意行为**：要改 `scripts/agent-note-tree.ts` 里的 `const`
+  和 README 的分类段，**而不是 `mkdir` 一个文件夹**。门禁拒绝未知文件夹，
+  「so an **ad-hoc class can't slip in**」。
+
+**它否决了什么备选**（原文 `:39`–`:41`，3 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 每个文件里写一行 `Classification:` 由门禁解析 | 可行，但**把路径已经能承载的事实复制进文件**，而**一行字可以和它所在的文件夹不一致**。路径编码让**标签和它的存储成为同一个东西——没有东西需要保持同步** |
+| 增加 `refactor` 类 | 与 `simplification` **几乎完全重叠**；唯一有人想到的判别式是「可观察行为是否改变」，而 `simplification` **已经编码了这一点**（不变）。**一个类，不是两个** |
+| 生成或手工维护的语料索引 | 生命周期/类别树**才是权威**；集中式清单**制造合并热点**，而不提供树导航或仓库搜索给不了的发现能力 |
+
+---
+
+### I-P10 `implemented/process/2026-07-19-require-agent-notes-for-non-trivial-changes.md`（46 行，**全文**）
+**主题 (1)(7) —— 「什么时候必须留痕」的边界，以及它为什么不设门禁**
+
+- `:9` **问题**：一个「看起来是否持久、有争议、令人意外」的**选择性门槛**，
+  会让实质变更在**不保留其理由**的情况下落地。
+  > 「Code and tests show **what** changed, but they cannot consistently preserve
+  > **why an approach won, which alternatives lost, or what costs maintainers accepted**.」
+- `:13` **规则**：每个非平凡变更**在同一个 PR 里**至少新增或更新一条 Agent Note。
+  非平凡的范围被逐项数清楚：行为、架构、跨文件/跨包契约、流程与工具、测试策略、
+  **磁盘格式 / wire 格式 / 配置格式**、以及维护者**可能合理重访**的其他决策。
+- `:15` **两个减负条款**：更新**已经拥有该决策的那条笔记**即满足规则，
+  只有在**没有笔记拥有它**时才需要新建；纯机械或纯局部编辑豁免。
+- `:17` **「合并一条已被完全取代的笔记」的前置条件**（这段可以直接搬去做 finaudit 的档案合并规则）：
+  只有在新的拥有者**保留了每一条独有的理由、备选、后果、验证契约、以及点名的覆盖缺口**之后，
+  才允许删除旧笔记。同一次变更还要修好入链、删掉中文对照件与一致性记录。
+  最后一句是硬约束：
+  > 「consolidation **neither rewrites an old decision into its opposite nor leaves git history
+  > as the only copy of rationale**.」
+- `:19` **「删掉一个特性」时，谁成为当前拥有者**——判据是**可核验的缺席**：
+  该特性在**生产代码、配置、schema、持久或 wire 格式、迁移与兼容行为**中都不存在；
+  没有当前文档把它呈现为可用；没有测试把它当作被支持行为来跑。
+  且删除拥有者必须保留六件事：原始动机、**为什么该动机不再证成这份表面**、
+  全量删除之外的备选、**放弃了什么能力**、**重新引入的条件**、以及**完全缺席的验证**。
+  一条精细的限定：只删掉某一种 transport / 默认值 / 实现 / 呈现，**仍属部分取代**。
+- `:21` **本篇最值得抄的一句克制**：
+  > 「Review enforces the semantic boundary. **No automated gate attempts to classify a diff as
+  > trivial or non-trivial**, so this policy **adds no gate stage or runtime**.」
+
+  → **该由人判断的语义边界，不要假装能自动化。**
+
+**它否决了什么备选**（原文 `:25`–`:37`，**7 条**）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 只对「持久、有争议、令人意外」的决策要求写笔记 | 门槛**主观到足以让一个实质变更被当成显而易见或纯局部**，丢掉笔记存在的意义 |
+| 每次变更都要求新建一条笔记 | 在已有笔记已拥有该决策时**制造重复**，并给纯机械编辑**加空仪式** |
+| 无限期保留每一条被完全取代的笔记 | 部分决策仍现行时交叉引用是必要的；但**完全过时的 implemented 笔记与「当前状态」契约矛盾**，且复制了本该只有一个拥有者的理由 |
+| 增加 `superseded/` 生命周期 | 又一个生命周期会**保留过时记录并扩大树、格式门禁与维护规则**，却**不减少重复** |
+| 把旧笔记改写成替代决策 | 这会**抹掉决策边界及其被否决的备选**。合并的做法是**先把这些事实保存进当前拥有者**再删旧文件 |
+| 保留被删特性的每一处实现与测试细节 | 那是**在替代者内部重建了那条过时笔记**；删掉的机制**在 git 历史里仍可取得** |
+| 增加一个 CI diff 分类门禁 | 机械检查**无法可靠判定一个语义变更是否平凡**，还会**增加运行时并招来假阳性或表面合规** |
+
+---
+
+### I-P11 `implemented/process/2026-07-19-remove-generated-agent-note-index.md`（31 行，**全文**）
+**主题 (1)(5) —— 「派生清单是合并热点」**
+
+- `:9` **问题**：已提交的索引**复制了每个文件的生命周期/类别路径、文件名日期与 H1 已经编码的事实**。
+  > 「Every branch that adds, moves, or renames an otherwise unrelated Agent Note rewrites the same
+  > generated file, making that artifact a **predictable merge hotspot**.」
+- `:15` **决策**：**文件系统树本身就是清单**。README 仍是**经过策展的入口与契约**，
+  发现靠普通的树导航与仓库搜索。
+- `:17` 门禁只做「验证不渲染」：`verify-agent-note-classification` 校验树、
+  拒绝历史遗留位置与根 `INDEX.md`，「**it does not render or freshness-check a centralized list**」。
+- `:31` **诚实记下失去了什么**：
+  > 「Readers **give up a single chronological page** and use the lifecycle/class tree or
+  > repository search instead.」
+
+**它否决了什么备选**（原文 `:21`–`:25`，3 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 保留已提交的生成索引，冲突时重新生成 | 重新生成让冲突解决变机械，但**不能阻止无关分支修改同一个产物**，也不减少它造成的评审噪声 |
+| 提供一个不提交的按需索引命令 | 避免了提交冲突，但**为一条已被树导航与仓库搜索服务的发现路径保留了渲染器与命令** |
+| 恢复手工维护的索引 | 同样的共享文件争用，**再加上生成本可避免的完整性与顺序错误** |
+
+**对 finaudit 的输入**：证据台账、`OPEN-ITEMS.md`、`DECISIONS.md` 这类文件天然是合并热点。
+这条笔记给的判据是：**问这份清单里有没有一条事实是别处推不出来的**；
+如果全都推得出来，它就只是热点，不是资产。
+
+---
+
+### I-P12 `implemented/process/2026-07-06-parallel-pre-push-gates.md`（41 行，**全文**）
+**主题 (7) —— 「门禁调度器：先拒绝非法图，再启动任何子进程」**
+
+- `:7` **一条格式上值得注意的做法**：文件在正文之前先写一句**取代声明**——
+  「The local-hook portion of this record **is superseded by** [Fast local Git hooks]…
+  The bounded gate scheduler and package-level `publint` parallelism **remain in force**」。
+  → **部分取代要写在被取代者的开头，而不是只在取代者里提一句。**
+- `:11` **问题**：聚合任务隐藏着**长串顺序执行**的只读独立成员；
+  而在 workflow YAML 里复制它们的叶子清单，会**给未来的脚本变更留下多个漂移点**。
+- `:15` **调度器的能力清单**（每一项都对应一个具体故障模式）：
+  展开命名模式为叶子门禁、**在启动任何子进程之前拒绝空图或有歧义的依赖图**、
+  尊重产物依赖、**缓冲可归因的输出**、**独立报告退出码与信号**、接受 `DSH_GATE_CONCURRENCY`。
+- `:17` **一条很具体的排序理由**：lint 必须等 invariant 校验，
+  因为「the invariant verifier **temporarily stages package views that the linter must not traverse**」。
+  → **并行度不是越高越好；有些等待是正确性要求，不是性能妥协。**
+- `:19` **并行不许打乱日志**：`publint-all.ts` 每个包缓冲结果，
+  **按确定的包顺序打印**，「so parallel execution does not scramble each package's log block」。
+- `:37` Consequences 一句总结：
+  > 「Invalid graphs **fail before partial execution**.」
+
+**它否决了什么备选**（原文 `:29`–`:33`，5 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 聚合任务保持串行 | 执行简单，但**墙钟时间等于各独立检查之和**，还重复命令包装的启动开销 |
+| 每个叶子门禁一个 CI job | 暴露最大 workflow 并行度，但**重复 checkout/setup/install 开销**，并**把调度器清单复制进 YAML** |
+| 在 shell 脚本里后台化子命令 | 能并行，但**失去逐门禁计时、确定性的失败分组与直截了当的信号处理** |
+| 每个包一个 `publint` job | 暴露最大包级并行度，但**造出一份手工维护的包清单**，包一变就漂移 |
+| `publint` 无界并发 | 只在小仓库上把耗时压到最低，代价是**拿进程数、内存压力、包 tarball 创建与日志可读性去赌** |
+
+---
+
+### I-P13 `implemented/process/2026-08-06-coverage-uncovered-locations.md`（42 行，**全文**）
+**主题 (1)(7) —— 「一次红色的 CI 必须自足」**
+
+- `:9` **问题描述得极准**：覆盖率门禁失败时，vitest 只给**文件级**错误行——
+  「you learn **which file** fell short, **not which lines**」。
+  内置 `text` 报告确实有 Uncovered Line #s 列，但它是**横跨数百个文件的一张巨表**：
+  列宽截断、**只有行号没有列号**、**不区分 statement / branch / function**、
+  而且**通过的文件照样占行**。净效果：
+  > 「a red coverage run on CI **is not directly actionable**; the only way to locate the specific gap
+  > is to **rerun the html report locally**.」
+- `:13` **对策**：自定义 istanbul reporter，对每个未达 100% 的文件，
+  为**每个未覆盖语句、未走到的分支路径、未调用函数**各发一条**自足的单行记录**——
+  `<path>:<line>:<col> uncovered <kind> …`，**终端与 CI 日志里可直接点击，也易于 grep**。
+  全部通过时**什么都不打印**。而且排序有讲究：istanbul 报告生成**在阈值校验之前**运行，
+  「so the records land **exactly above the existing ERROR lines**」。
+- `:19`–`:22` **输出约定里的四个细节**（每一个都是「让证据可被机器和人同时用」的实例）：
+  0-based 列号转成 **1-based**（编辑器与终端链接的约定）；
+  v8 对整行语句报 `end.column = Infinity`，**跨行 span 降级成只带行号的 `(to <line>)` 后缀**；
+  **隐式分支臂**（比如缺失的 else）可能没有位置，则**回退到分支自身的 span 以保持可点击**，
+  并标注分支类型与 `path k/n`；文件内按行、再按列排序，**不设条数上限**。
+- `:36` **Verification 段是本轮见过最诚实的一份**：
+  本地矩阵用**故意植入的失败**验证三种记录都出现且位置与植入缺口吻合；
+  混合运行只对失败文件出记录；全绿运行**零输出、退出码 0**。
+  CI 证据写明了受控条件：在 `clampTimeout` 里临时植入一个不可达语句/分支/函数后，
+  **在「全部测试通过（632 文件 / 10326 用例）、只有阈值失败」的隔离条件下**，
+  打印出那 4 条记录在 ERROR 行之上；并明确声明
+  > 「the planted failure **is not in the committed tree**.」
+
+  → **这是「完成必须有证据」的模板：说清楚测了什么、在什么隔离条件下、以及植入物已移除。**
+- `:42` **不设上限是刻意的**：零覆盖文件会产出与语句数同量级的输出，
+  「the gate demands zero gaps, so **the full listing is the action list**」。
+
+**它否决了什么备选**（原文 `:30`–`:32`，3 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 依赖内置 `text` 报告的 Uncovered Line #s 列 | **这正是问题本身**：一张仓库级巨表、列宽截断、只有行号、不分种类、通过的文件同列——**在 CI 日志里不可行动** |
+| 加 `json` reporter + 失败后读 `coverage-final.json` 的包装脚本 | 纯 ESM/TS 可行，但包装器要**同时包住两个入口**并**改变它们的命令形状**；自定义 reporter 只碰一处配置，**在两个入口自动生效** |
+| 用 TypeScript/ESM 写这个 reporter | istanbul 用**管线之外的裸 `require`** 加载，排除了这条路；**为一个报告文件换掉加载机制不成比例** |
+
+---
+
+### I-P14 `implemented/process/2026-07-10-readme-known-limitations-gate.md`（29 行，**全文**）
+**主题 (1)(7) —— 「区分『审计过的缺席』与『忘了写』」**
+
+- `:9` **本篇最有迁移价值的一句**：
+  > 「Without a shared shape, **an omitted section cannot distinguish an audited absence from
+  > forgotten documentation**, and variant headings prevent a repository-wide search.」
+
+  → **这正是 finaudit 要解决的同一类问题**：「这项没有」和「这项没查」在纸面上长得一样。
+- `:13` **决策**：每个包 manifest 旁必须有 README，内含规范的
+  `## Known Limitations and Deferred Work` 段。门禁**从 manifest 推导包集合**、拒绝缺失的 README、
+  **要求恰好一个规范 h2 且至少一个顶层 bullet**。
+  近似标题（`Limitations`、`Deferred`、`What is NOT here`、`Non-goals`）**一律失败**。
+- `:15` **「真的没有限制」怎么表达**：列进 `NO_LIMITATIONS` 允许列表并省略该段。
+  **新增一条限制就必须移除该条目**；重命名与删除都会失败，因为
+  「**every entry must name a scanned package**」。
+  → **允许列表本身是被门禁校验的，不是一份会腐烂的白名单。**
+- `:17` **门禁与评审的分工写得极清楚**：
+  > 「The gate checks **presence, shape, and the allowlist**. Review … owns **coverage and accuracy**.」
+
+**它否决了什么备选**（原文 `:21`–`:23`，3 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 自由格式标题 | **无法统一搜索**，而且仍然需要做近似标题检测 |
+| 要求写一个空段或写「None.」 | **包后来有了限制时样板可能还留在那儿**；允许列表让**缺席变成显式且可评审的** |
+| 设字数上限 | 合理的限制条数本就不同，所以这一层 README **由评审治理、不设预算** |
+
+---
+
+### I-P15 `implemented/process/2026-07-30-cordis-config-source-plane-resolution-gate.md`（27 行，**全文**）
+**主题 (5)(7) —— 「CI 从来没跑过那条路径」**
+
+- `:9` **这是本轮最好的一个「门禁盲区」案例**，值得完整复述：
+  一个配置项缺了 tsconfig `paths` 映射；通配符把整段替换进不存在的候选路径，
+  于是源码启动**回退到 package `exports`**，解析到了 `lib/prompt.js`——**一个产物平面的文件**。
+  结果是：**任何有已构建 `lib/` 的环境（`pnpm build` 之后的开发树）都启动正常**，
+  而 e2e workflow 跑 TUI PTY 冒烟用的是 `lib` 模式，
+  > 「so **CI never exercises the source vector at all** — while **every clean checkout failed**
+  > `pnpm dsh` at startup」。
+
+  一句话总结：「No gate checked the source plane, so the breakage **shipped silently and surfaced
+  only in fresh worktrees**.」
+  → **「测试通过」可能只说明测试和 bug 同处一个盲区。**
+- `:13` **对策是静态门禁**：要求**每一个被配置的本地工作区包 specifier**
+  都必须**经由 tsconfig `paths` 门面解析到 `.ts`/`.tsx` 源文件**。
+  解析失败，或**命中 `.d.ts`（即 `exports` 回退进 `lib/types`）**，都判失败，并**点名配置文件与 specifier**。
+  最后一句是自证：「**removing it reproduces the gate failure**」——
+  **门禁被验证过它真的会红。**
+- `:27` 诚实记下边界：门禁只用 `tsconfig.base.json` 的选项解析，
+  一个需要 client-only 编译选项才能解析的 specifier **会被它判失败**——
+  而这**符合该门面「作为 tsx 与 vitest 的唯一解析面」的角色**。
+
+**它否决了什么备选**（原文 `:17`–`:21`，3 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 依赖 keyless TUI PTY 冒烟 | 默认源码模式下**确实能抓到**，但**只在干净树上**；CI 只跑 `lib` 模式，**没有一条 CI 线跑源码向量**，本地有陈旧 `lib/` 的开发树也被掩盖。加一条源码模式 CI 冒烟**每次只证明一种组合**；静态门禁**覆盖每一份已发布与示例配置** |
+| 把 `dsh-source-launch-smoke` 兼容测试扩成完整启动 | 该冒烟**只断言 TTY 拒绝，发生在插件加载之前**；每条矩阵线跑一次完整无密钥启动**成本更高**，且同样**只证明一种组合** |
+| 用 `@deepseek-ai/dsh-*/prompt` 式通配映射 | **修好这一个子路径但修不好这一类**；下一个单文件子路径导出会**同样回归** |
+
+---
+
+### I-A24 `implemented/architecture/2026-08-11-repository-naming-contract-and-rename-ledger.md`（386 行，**部分**）
+**读到什么程度（诚实标注）**：**读了 `:1`–`:111`（Problem / Decision 全部 + 命名台账前两组）
+与 `:340`–`:386`（Alternatives considered / Verification / Consequences 全部）。
+中间 `:112`–`:339` 是逐组的重命名映射表（另外 14 组），只看了 `grep '^#'` 得到的小节标题，未逐行读。**
+**主题 (1)(5) —— 「名字是契约」**
+
+- `:11` **问题一句话**，把「命名」提升成架构问题：
+  > 「These names are not harmless. **A name tells a contributor where a responsibility starts and stops.**
+  > `Store` suggests data access. `Registry` suggests registrations and lookup. `Runtime` suggests live
+  > execution and lifecycle. **When one word is used for all three, callers cannot tell which object
+  > owns policy, work, or state without reading the implementation.**」
+- `:15` **为什么现在做**：最后一个 pre-release 窗口让全仓库重命名很便宜。
+  > 「Keeping weak names would have **turned accidental vocabulary into a compatibility contract**.」
+- `:19` **范围被死死钉住**（这条纪律本身值得抄）：
+  > 「This decision **changes names only**; package responsibilities, service boundaries, behavior,
+  > defaults, and data models **stay the same**. A name that exposes a bad boundary requires
+  > **a separate proposed Agent Note** for that boundary change.」
+- `:21`–`:23` **一个词表，没有第二套**：
+  > 「**No alias, compatibility package, duplicate service key, dual event name, or fallback parser
+  > remains. The repository rejects the old name.**」「**No family exposes two public vocabularies.**」
+- `:35` **命名规则的四句话**：用**普通、具体的名词**；命名**稳定的职责**，
+  不是第一个实现、不是当前文件夹、不是可能的未来扩展；
+  **不要加不携带信息的词**；**不要靠删掉那个区分作用域的词来缩短名字**。
+- `:39` **一条极其具体、可直接迁移的规则**：
+  单数 `ctx` key 给单个 engine/runtime/policy/controller/resolver/store/当前配置；
+  复数 key 给 registry 或拥有多个具名成员的服务。**类的角色与 key 的单复数必须一致。**
+  但紧跟一句反向澄清：
+  > 「**A plural key does not by itself make an object a registry; its operations and ownership do.**」
+- `:45`–`:63` **「角色词就是契约」表**——15 个词，每个都写明「什么时候用 / 什么时候不许用」。
+  这是本篇对 finaudit 最直接的资产（下面摘 5 行，其余同格式）：
+
+  | 词 | 什么时候用 | 什么时候**不许**用 |
+  |---|---|---|
+  | `Store` | 拥有一个数据集，主要提供 CRUD / 快照 / 订阅 | 它**校验状态机、仲裁权威、分派工作、拥有 provider 优先级、或协调多个域**。「**A map inside a class does not make the class a store.**」 |
+  | `Registry` | 拥有一组具名注册，定义查找、重复/优先级规则、注册生命期与销毁 | 主要调用契约是**分派、执行、取消、策略执行或编排**。（runtime 可以内含 registry） |
+  | `Runtime` | 跑活的工作，拥有跨调用的分派、取消、provider 协调或操作生命周期 | 只存记录、只返目录、只解析一个值、或只持有配置。「**`Runtime` is not a generic replacement for `Service`.**」 |
+  | `Policy` | 决定**什么被允许、被选中、被限制、被观察** | 它去**执行**那个决定所许可的机制。「**Keep policy and executor names separate.**」 |
+  | `Service` | 拥有一个内聚的域服务，其权威**无法诚实地归入上面任何一个更锐利的角色** | 名字之所以叫 Service，只是因为类继承了 Cordis `Service`，**或者因为想清楚真正的角色太费劲** |
+
+- `:65` **判别方法是「看调用方主要在调什么」**：主要调 `register()` 并拿回 disposer → `Registry`；
+  主要调 `run()`/`dispatch()`/`cancel()`/`execute()` → `Runtime`/`Engine`/`Executor`；
+  主要在浏览选项 → `Directory`；只把域数据映射成 UI 数据 → `Presenter`，
+  「**If it also changes state, it is not a presenter.**」
+- `:69` **限定词必须携带信息**：不要把 `LLM` 放进压缩后端名里，因为**当前每个后端都已经走 LLM seam**；
+  `basic` 是**在出现更具体算法名之前诚实的中性名**。
+- `:79` **理由与规则分家**：「**This Agent Note owns the rationale and rejected alternatives;
+  the guide owns the rule contributors follow.**」
+  → **决策记录写「为什么」，操作指南写「怎么做」，不要互相复制。**
+- `:380` Consequences 第一段是 fail-closed 的命名版：
+  > 「Old on-disk names, wire values, tool names, and configuration entries named in the ledger
+  > **do not work**. An owning parser that can identify stale configuration **fails clearly instead of
+  > accepting both forms**.」
+- `:382` **对「长名字」的辩护与反辩护写在同一段**：
+  「The extra word is intentional **when it prevents a false claim about authority or mechanism**.
+  A long name **remains wrong when every word does not constrain the role**.」
+- `:384` **不许把角色后缀当成免检**：
+  > 「**Role suffixes do not replace inspection of behavior.**」
+
+**它否决了什么备选**（原文 `:344`–`:366`，**12 条**；下表摘其中 6 条最可迁移的）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 保持现名 + 加一份术语表 | **术语表无法让 `BashExecutor` 在 PowerShell 也实现它时变得属实**，也无法让 `ToolRegistry` 承认它其实在执行与强制。**区分必须由标识符本身承载** |
+| 给每个 npm 包名加上组前缀 | 扁平 npm 名**不需要目录树的副本**；机械前缀**只加长度不解释角色** |
+| 把整个仓库称为 SDK | 项目是 agent harness；SDK 是那套受支持的 JSON-RPC 客户端/服务端栈。**两个含义会让包名与产品散文都变歧义** |
+| 给每个 Cordis service 类都用 `Service` | **Cordis 继承是实现事实**；类名必须告诉调用方它是注册、存储、解析、控制还是执行 |
+| 一律偏好最短的名字 | **短只有在作用域已经清楚之后才有用**。`JobId` 短是因为 `Job` 已承载域，`BgTaskId` 短却晦涩 |
+| 用宽泛的名字为可能的未来特性留位 | **给当前每一位读者收取一个未建成的未来的费用**。命名当前稳定角色；真要变边界，发布前再改名或发布后走新提案 |
+| 保留旧名别名 | **没有已发布的消费者需要它们**；别名会保住两套词表，**让首个版本背上一次从未有过用户的迁移** |
+| 在应用台账的同时顺手重命名或拆分边界 | **评审者必须能看出行为没变**。真正的边界缺陷需要它自己的提案、测试与后果 |
+
+---
+
+### I-A25 `implemented/architecture/2026-07-28-identified-immutable-message-values.md`（50 行，**全文**）
+**主题 (2)(3) —— 「身份不是路由的副作用，是值的不变量」**
+
+- `:11` **问题的精确表述**（本条是本轮排得上号的一句）：
+  > 「This made **identity a routing side effect rather than a message invariant**.」
+
+  同段还点出**不可变性从不同边界开始**：有的输入被 loop 冻结，有的只在 session append 时冻结。
+- `:15` **决策**：一个 `Message` 值，`id` / `role` / `content` / `source` **全部必填**。
+  > 「A message receives its id **at creation, before inbox routing, claim, pre-step rewriting,
+  > durable append, or request projection**. **The same id survives every representation boundary.**」
+- `:17` **创建与导入被做成两个不可混淆的边界**（极好的机制设计）：
+  `createMessage(input)` **铸造 id、detach 内容、深冻结整个值**再返回；
+  所有创建 helper **都排除输入的 id**，
+  「so callers **cannot accidentally present creation as import**」；
+  而 `freezeMessage(message)` 是**独立的导入/变换边界**：
+  detach 并深冻结一个**身份已存在**的消息，**不铸造替代品**。
+- `:21` `Agent` 的 `followup`/`steer`/`inject` **接受完整消息**，
+  「These operations **never allocate or return identity**」。
+  内容重写产生一个**同 id 的冻结替代品**，而附加上下文是**另一个有自己 id 的新消息**。
+- `:25` **一条判定「改的是表示还是语义」的规则**，可直接迁移到 finaudit 的口径调整：
+  > 「Any operation that changes **only the representation** of an existing semantic message
+  > **preserves its id**… An operation that creates **a new semantic message mints a new id**.」
+
+  举例：压缩时的内容重写**保留被重写的 tool-result 身份**，而摘要检查点**是一条新消息**。
+- `:43` **信封与语义分家**：事件信封仍然拥有**不属于消息语义的事实**——
+  turn/step 位置、token 用量、内部工具失败身份、呈现元数据。
+
+**它否决了什么备选**（原文 `:29`–`:35`，4 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 让 id 在基础消息上保持可选 | 能少迁移 fixture，但**保留了原来的歧义**：每个消费者都要分支判断身份是否存在，**没有任何类型能证明 admission / 记录 / 投影保住了它** |
+| 让 agent 投递去分配 id | 身份被限定在 inbox 关联上，但**agent 调用成了生产者能给自己消息命名的最早时点**；提示构造、UI 附件、同步入队/丢弃协调**只能靠内容匹配或带外 token** |
+| 让每个持久事件各分配一个新 id | **刻意打断与实时输入的关联**，让重放的请求**看起来包含不同的消息**。「**Identity belongs to the semantic value, not to each envelope that carries it.**」 |
+| 只在 agent 或 session 准入时冻结 | 省掉一个创建 helper，但**留下一段「有身份却可变」的区间**，调用方代码可以在其中改变那个 id 所关联的含义。该决策**让「有 id」与「是不可变快照」重合** |
+
+---
+
+### I-A26 `implemented/architecture/2026-06-11-dev-invariants-over-deep-readonly.md`（60 行，**全文**）
+**主题 (2)(7) —— 「值的不可变」与「事实之间的关系」是两件事**
+
+- `:13` **本篇的核心区分，直接对应 finaudit 的两类校验**：
+  > 「**Immutability of individual values is only half of the contract.** A log can contain
+  > **perfectly immutable records whose sequence, turn/step nesting, tool-call pairing, scoped delivery,
+  > or reconstructed model request is wrong.** Those rules **relate multiple records or services and
+  > cannot be established by freezing one object**.」
+
+  → 翻译到审计：**每一条取数都不可变**，不代表**期间可比、勾稽关系成立、口径一致**。
+- `:15` **为什么不用类型系统解决**：TypeScript readonly **不是运行时边界**——
+  「They **disappear when the program runs**, **a cast can bypass them**」，
+  而递归 `DeepReadonly<T>` 会**扩散到每一个日志与消息消费者**，
+  哪怕有些下游请求处理 API **是刻意要用可变值的**。
+- `:23`–`:25` **存储边界的三步，一步都不能少**：
+  `Session` **只在一次递归遍历产出了无损 JSON 快照之后**才接受事件——
+  该遍历**拒绝不支持的值**，并**产出进入日志的那个精确的、已 detach 的记录**，
+  「so validation and storage **cannot observe different values from a stateful getter**」。
+  然后被接受的事件**及其全部后代在发布前深冻结**；
+  `append()` 返回那个已拥有的冻结事件，观察者收到**同一条记录**，
+  `session.events` 返回**冻结的数组快照**——
+  「**A previously returned array does not grow after a later append.**」
+- `:27` **为什么这条必须常开而不能做成插件**：
+  > 「This guarantee belongs in `Session`, **not in an optional listener**, because
+  > **every composition relies on trustworthy history**.」
+- `:35` **关系型校验的归属设计**：`dsh-invariants` 只注册可配置的 `ctx.invariants` 服务，
+  **本身不含任何产品检查**；**每个包各自发布 `./invariant` 归属伴生件**。
+  当前的规则清单本身就是一份很好的「关系型不变量」样例：
+  **单调序号、turn/step 嵌套、tool-call/result 配对、合法的 agent 状态迁移、
+  subject 正确的 scoped dispatch、以及「loop 构建的请求」与「从会话日志前缀重建的请求」相等**。
+- `:37` **热重载安全**：服务给每个贡献一个**可销毁的子 fiber**，
+  「so hot reload is safe **in the middle of a turn** without **giving diagnostics ownership of
+  session storage**」。
+
+**它否决了什么备选**（原文 `:41`–`:51`，3 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 全面铺开 deep-readonly 类型 | 给编辑器反馈，**但不给运行时保证**（类型被擦除、插件可强转），还**把 readonly 推进那些刻意要变更的消费者**。在 `Session` 边界做运行时归属**保护了每个调用方而不需要类型扩散** |
+| 只在开发期冻结 | 会让**核心保证依赖于组合方式**：代码可以**通过开发期测试却在生产或省略该插件的组合中损坏历史**。存储不可变因此**常开**，昂贵的关系型检查才是可选 |
+| 只在 deriveMessages 时克隆 | 保护了最常见的请求路径，但**留下 `session.events`、append 返回值与事件观察者**仍能改动持久历史。「**The log must protect its own boundary**；派生投影是**额外**的隔离边界，不是替代」 |
+
+**对 finaudit 的输入**：把校验分成两层，命名也分开——
+**「记录级不可变」常开、无条件、在写入边界完成**；
+**「关系级不变量」（勾稽、可比、口径一致）可配置、按模块归属、各自拥有自己的规则**。
+不要把两者塞进同一个开关。
+
+---
+
+## 8. `implemented/` 第四批 —— 持久化协调、穷尽性后备、身份类型、归属声明
+
+> 本节 8 条为本轮第四批（2026-08-22 续读）。
+> 关注点：**「谁保证日志是完整的」「怎么证明一份生成清单没漏东西」
+> 「怎么让『拿错了 id』变成编译错误」「对外声明自己是谁时能说什么、不能说什么」。**
+
+---
+
+### I-A27 `implemented/architecture/2026-06-14-session-persistence.md`（36 行，**全文**）
+**主题 (2) —— 「持久单元就是既有事件本身，不许有第二个类型」**
+
+- `:9` **问题里的一句自嘲式描述**，可以直接当 finaudit 早期原型的警示：
+  那个示例插件是**只写的遥测**——「no read/replay path, **no crash-safety**（no fsync, no atomic write,
+  a **fire-and-forget dispose drain**）, no listing, and **no format versioning**」。
+- `:11` **对事件溯源模型的忠诚被写成硬约束**：
+  > 「persist the existing `SessionEvent` **directly, with no parallel "persisted message" type
+  > that the log is converted to and from**.」
+- `:22` **本篇最值得抄的一条拒绝**——为什么不做「过滤掉 chunk 的规范日志」：
+  Codex 的 `policy.rs` 形状**很诱人**，但 `seq = log.length` 与 `events[i].seq === i` 的校验
+  **要求一个连续的逻辑日志**；过滤会**留下洞并同时破坏契约与 resume**。
+  > 「A chunk-filtered projection is possible later **as a derived view with its own renumbering**,
+  > but it is **NOT the canonical log**.」
+
+  → **想要"精简视图"就去做派生视图，不要动规范日志。**
+- `:23` **「崩掉的 turn 被闭合，从不被截断」**——这条对审计极重要：
+  > 「Because **one interrupted turn may contain substantial valid work**, cold inspection preserves
+  > its contiguous, parseable events and **adds risk-classified error results** for unanswered
+  > assistant calls, a missing `step/end`, and `turn/end` with `{ kind: 'interrupted' }`」。
+
+  而且划清了「可修复」与「腐坏」的界：**只有不完整的最后一条记录会在提交式修复中被丢弃**；
+  **在最后一个真实 `turn/end` 处或之前**出现解析错误或序号缺口，**是腐坏，会话不可加载**。
+- `:25` **元数据在日志之外**：格式版本、cwd、血缘是**存储关切，不是可重放的对话状态**，
+  所以住在 `SessionHeader` 里，**永不进入 `SessionEventMap`，永不到达 `deriveMessages()`**。
+  连 `createdAt` 都被钉死为**非负安全整数 Unix 毫秒**，三处各自校验（live 创建、JSONL 解码、SQLite 严格 `INTEGER` 列）。
+- `:24` **换后端不换语义的证据**：SQLite 后端**跑同一套 `runPersistenceContract`**——
+  「so the contract holds **both backends to identical semantics**…
+  **expressed once over file bytes and once over rows**」。
+  → **同一份契约测试跑在两种介质上，是"接口真的抽对了"的唯一硬证据。**
+
+**它否决了什么备选**（原文 `:30` 集中列出 6 条，加 `:32` 的格式版本立场）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 过滤 chunk 的规范日志（Codex `policy.rs` 形状） | **破坏连续 seq 契约** |
+| 截断崩掉的 turn | **静默销毁一次长自主运行的真实工作** |
+| 把 `session/meta` 作为日志第 0 行的事件 | 它能**随 seed/fork 免费带走**，但**元数据不是可重放状态**，显式的日志外 header 是**更干净的代价** |
+| 允许有限小数的 `createdAt` | **没有生产者**，且与整数毫秒的存储与查询列**发散** |
+| 采用非全新的、无版本的 SQLite 文件 | **可能覆盖无关对象或身份** |
+| 把 `sessionPersistence` 硬注入 loop | 会让**非持久化的 demo 永远挂起** |
+
+`:32` 还留下一条诚实的能力边界：append-only + flush **对部分尾写是健壮的**
+（冷准备阶段容忍），**但对没有 fsync 的断电中途写不健壮**——那种场景 DB/WAL 后端更强。
+
+---
+
+### I-A28 `implemented/architecture/2026-06-18-shared-persistence-write-coordinator.md`（47 行，**全文**）
+**主题 (5) —— 「不透明标记：让协调器不需要知道存储介质的任何事」**
+
+- `:9` **问题**：两个后端**故意在不同介质上证明同一份契约**，但写路径编排被复制了两份，
+  「the remaining orchestration was still **correctness-heavy and received the same fixes twice**」。
+- `:15` **组合而非继承，理由写得非常具体**：
+  > 「a backend exposes **only the hooks** and **cannot reach the coordinator's private orchestration
+  > state**」，而且**第三方后端仍可以完全不用协调器**直接实现抽象服务。
+- `:27` **一个把"原子性"要求写清楚的 hook 注释**（值得逐字抄）：
+  `appendBatch` 必须**在尚未 materialize 时原子地做 materialize**——
+  > 「the materialize-write and the first event batch **must commit together** — a crash between them
+  > **must not leave a materialized-but-empty session**; **this is why there is no separate
+  > `materialize` hook**.」
+
+  → **接口形状本身就是不变量的载体：把两件必须一起提交的事合成一个 hook。**
+- `:28` **同时明写哪一步"不要求原子"**：`commitRepair` **NOT required to be atomic**——
+  JSONL 合法地分两个 fsync 步骤先截断后追加，SQLite 在一个事务里 DELETE+INSERT。
+  → **不要求的就说不要求，别让实现方去猜。**
+- `:34` **本篇的核心机制，一句话**：
+  > 「the crash-repair "**where is the torn tail**" token **is OPAQUE to the coordinator**.」
+
+  协调器**只测 `tornMarker !== undefined`，然后原样传回**，**从不检视它**。
+  JSONL 的标记携带**要截断到的字节偏移 + 从不完整末帧解出的完整事件**，
+  SQLite 的标记携带**要删除起始的 seq**。
+  「The coordinator therefore **knows neither byte lengths nor frame recovery state**.」
+- `:19` **一条防止"完成擦掉更新的操作"的细节**：已结算的 per-id 链尾
+  **只在它仍是当前的那一个时才自我移除**，
+  「so a completion **cannot erase a newer operation for the same id**」。
+- `:30` **关闭顺序也是契约**：可选的 `close?()` **在静默排空之后**才 await，
+  「so **a close failure never masks a drain error**」。
+
+**它否决了什么备选**（原文 `:42`–`:43`，2 条，其中第二条含 5 个子项）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 让后端继承一个基类 | 选组合：后端**只暴露 hook、够不到协调器的私有编排状态**，第三方后端还可以**完全不用协调器** |
+| 更宽的 hook API | 每个候选 hook 都能折叠掉：**不需要 scope 专用的 live 查找**（`loadStored` + cwd 检查已保住冲突边界）；**不需要存储定位泛型**；**不需要独立的 `materialize` hook**（首批必须与 materialize 原子提交）；**不需要独立的创建冲突探测**（它就是 `loadStored(id) !== undefined`）；**`list()` 不需要走协调器**（列举不需要任何编排） |
+
+---
+
+### I-A29 `implemented/architecture/2026-08-09-cordis-event-walk-backstop.md`（38 行，**全文**）
+**主题 (3)(7) —— 「生成器与后备必须能各自独立地失败」**
+
+- `:11` **问题是一个非常典型的「静默消失」**：投影只走 host-face 包导出可达的文件，
+  于是 client-face 里的 `interface Events` 合并**无声无息地消失**——
+  > 「12 declared events … were documented nowhere generated and **nothing would ever notice
+  > a thirteenth**.」
+
+  更妙的是**连那个「防止静默消失」的扫描本身也有盲区**：它只 glob `packages/*/*/src/*.ts`，
+  于是嵌套文件里的 13 个 Context key**对它不可见**。
+  → **给"防漏"做的检查，自己也会漏。**
+- `:17` **第三个方向的分区检查**（本篇最值得抄的一招）：
+  除了「声明了但没渲染 → 必须豁免」「豁免了但其实渲染了 → 错」，还加了第三向——
+  > 「**every rendered service key and event name must also be visible to the scan**, so a scan
+  > regression (glob, prefilter, block walk) is **a hard error rather than a silent backstop decay**.」
+
+  → **给检查器本身加一个"你还活着吗"的判据。**
+- `:19` **豁免的粒度选择有理由**：`EVENT_WALK_EXEMPTIONS` 的 key 是**完整事件名而不是 scope**，
+  因为 client-face 事件与 host 事件**共享 scope**，
+  「so a scope-level exemption would **mask a host-face regression**」。
+  三向 fail-closed：**未豁免的不可见事件、给已渲染事件写的豁免、以及没有任何合并声明的豁免，全是硬错误。**
+- `:21` **判断逻辑被抽成纯函数**：分区判断从 `computeOutputs` 移进纯 `walkPartitionProblems(input, maps)`，
+  「so **every acceptance path is provable by unit test without running the Typert projection**」。
+- `:27` **Verification 里那条自证极漂亮**：
+  从真实树里**删掉一条活着的豁免**会让生成器**带着事件名与声明文件大声失败**；
+  **恢复它则让生成器回到字节相同的空转重生成（85 artifacts, 0 written）**，
+  「which **also proves the new exemptions exactly cover today's surface**」。
+  → **一次删除 + 一次恢复，同时证明了"门禁会红"和"豁免不多不少"。**
+
+**它否决了什么备选**（原文 `:31`–`:34`，4 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 干脆把 client face 也渲染出来，不用豁免 | 那是**底层盲点的真正修法**，但它**改变了这份目录「是什么」**（host 层参考），并需要为浏览器专属表面做页面决策。「**The backstop is the guarantee; rendering is an upgrade behind it.**」 |
+| scope 级的事件豁免 | 表更小，但 `commands/changed`（client）与已渲染的 host 事件共享 `commands` scope，**豁免一个 scope 会静默吞掉未来的 host-face 事件——正是本篇要消除的失效模式** |
+| 用 Typert 而不是原始 AST 扫描来推导穷尽性 | **投影与后备必须独立失败**：**Typert 的可达性 bug 正是后备存在的理由**，所以扫描**刻意保持为一个不共享任何机制的朴素 `ts.createSourceFile` 遍历** |
+| 对已渲染签名做传递类型闭包门禁 | **决定之前先量过**：已渲染签名里可达的每个类型名都已被分类，更深的字段之字段类型由页面手工策展的 `type-equiv` 与包 README 拥有；闭包门禁会**为内部类型强行安排页面归属而没有面向读者的需求** |
+
+---
+
+### I-A30 `implemented/architecture/2026-07-29-terminal-llm-stream-failures.md`（37 行，**全文**）
+**主题 (4) —— 「一次尝试只有一种失败表示」**
+
+- `:7` 又一个**部分取代声明写在开头**的例子，并逐项说明**旧笔记继续拥有什么**
+  （结构化失败事实、重试策略、持久尝试、压缩恢复）。
+- `:11` **问题**：适配器失败有**两种公开表示**——抛异常，和带内的
+  `finish { kind: 'error' | 'aborted' }`。于是
+  > 「correctness therefore depended on **proving which statement threw** and **consulting metadata
+  > attached to the exact returned iterable**.」
+
+  → **靠"是哪一行抛的"来判断语义，是不可维护的。**
+- `:17` **决策**：`LlmRuntime` 是**一次适配器尝试的规范化边界**。
+  它**只**捕获四种（最终适配器选择、同步 dispatch、迭代器构造、`next()` 失败），
+  转成**不可变的 `LlmFailure`**，并**发出一个终结性 `finish`**。
+- `:19` **捕获边界的终点写得极精确**：
+  > 「**The adapter-owned catch ends before each yielded chunk.**」
+
+  来自 `llm/stream` 中间件、嵌套调用、适配器清理、chunk 消费者、日志、信号检查、装配的错误
+  **仍然作为 defect 或生命周期失败抛出；它们永不进入 model-request 恢复**。
+  并配一条流不变量：**只有终结性 error/aborted 才允许留下未闭合的 block**，
+  「**No assistant message or tool call is assembled from that incomplete output.**」
+  → **半截的输出不许被装配成事实。**
+- `:23` **消费方只消费一种表示**：agent loop **不再需要分类用的 catch**，
+  它迭代并记录 chunk、检视终结 finish、把失败事实 + prepared policy 交给 `agent/request-error`。
+  三个 sidecar API **被删除**（`isLlmAdapterFailure` / `llmFailureOf` / `llmRetryPolicyOf`）。
+- `:37` **诚实记下放弃了什么**：
+  > 「Recovery **gives up exact thrown-object identity** and exposes only **detached provider-neutral
+  > facts**.」
+
+**它否决了什么备选**（原文 `:27`–`:33`，4 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 保留 call-local 的错误打标 | 保住了抛出对象的身份，但**逼每个消费者去 catch 一个包含它自己可失败工作的区域**，并**把分类耦合到一个 iterable 包装器的身份**。「**The original error object has no durable role in recovery**；规范化的事实才是有用的边界值」 |
+| 要求每个适配器都发失败 chunk、禁止抛异常 | 库迭代器、传输层与 JavaScript dispatch **仍然可以抛**。要求每个适配器复现同一个 catch 边界**重复了归属**，且**保护不了直接使用 `LlmRuntime` 的消费者** |
+| 在 agent loop 里 catch 所有迭代错误 | loop **无法可靠地把 provider 失败与中间件/会话追加/取消/装配失败区分开**，除非恢复那张 sidecar 映射。「**Classification belongs where the adapter call is made.**」 |
+| 在流开始前返回一个 `Result` | 流前的 result **无法表示部分输出之后的传输失败**，除非再加第二套响应生命周期。既有的终结 chunk **已经同时表示早期与晚期的尝试结果** |
+
+---
+
+### I-A31 `implemented/architecture/2026-06-20-branded-ids.md`（69 行，**全文**）
+**主题 (6) —— 「让『拿错了 id 的种类』变成编译错误」**
+
+- `:9` **本篇先引用了自己仓库里那条治理政策，再说它只被执行了一半**：
+  > 「*Branding is for ids that **cross package boundaries and could plausibly be confused**;
+  > **not every string needs a brand**.*」「That policy is right; the problem is that
+  > **it is only half-applied**.」
+- `:11` **Gap 1 讲得极具体**：后台 job id 是裸 `string`，由每个执行器的计数器生成
+  `` `bash-${this.nextTaskId++}` ``，**与 `SessionId` 的默认形状 `` `session-${++counter}` `` 完全一样**。
+  > 「A bash job id and a session id are **trivially swappable at a call site and the compiler says
+  > nothing**. It is a **model-facing id** … so **a confusion here is reachable from untrusted input**.」
+- `:13` **owner token 是更危险的子情形**：它被文档描述为**刻意不透明**的隔离 key，
+  但**在每个活着的调用方它就是 `Agent.id`/`SessionId`，只是换了个 seam 局部的名字**；
+  它被用于访问控制比较，所以
+  > 「a **mismatched-but-well-typed string** here is a **cross-session isolation bug**
+  > the type system currently cannot catch.」
+- `:15` **Gap 2 —— 品牌在边界处侵蚀**：即使已加品牌的 `CallId`/`SessionId`，
+  也**在最容易混淆的地方退化回裸 `string`**：registry/store 的 key 类型与公开方法参数。
+  > 「**A brand that is dropped at a collection key buys nothing on lookups**」。
+- `:49` **为什么不把 `owner` 直接标成 `SessionId`**（本篇最好的一段推理）：
+  把 Service Definition 的字段标成 `SessionId`，会**把 `dsh-session` 的词表引进一个
+  「必须不知道 owner token 意味着什么」的包**——
+  「it would **couple a generic execution backend to the session model** and **contradict the
+  opaque-token design**. A sandboxed or remote executor … **should not inherit a session dependency**.」
+  于是 `dsh-shell` 只知道「owner 是某种不透明的品牌 token」，
+  **由已经决定访问策略的那个消费者作为唯一边界去做转换**。
+- `:53`–`:59` **「暂不做」清单，每条带理由而非承诺**（这个格式本身值得抄）：
+  `ModelId`（合理的下一个，只为控制爆炸半径而略过）、
+  `ToolName`（作者定义、人类可读、**最弱的候选，多半不值得**）、
+  `ErrorCode`（**是封闭词表不是 per-instance id，字符串字面量联合更合适**）、
+  数值序数（`Branded<string>` 不适用，且**是位置序数、极少跨边界，收益低**）、
+  **带校验的构造**（品牌工厂是**纯 cast、没有运行时检查**；加 `parse()`/`isValid()`
+  是**运行时行为变更、有自己的设计问题，属于它自己的决策**）。
+- `:68` **Consequences 里最诚实的一句**：
+  > 「**Brands do not validate.** A brand is a **confusability guard, not a correctness proof**:
+  > a *wrong* session id that is still a well-formed string **passes the type checker exactly as before**.
+  > … it only stops the **category** error of passing the wrong **kind** of id.」
+- `:69` **连"边界在哪停"也承认是判断题**：
+  「Branding `BashTaskId` but not `ToolName` … is **a taste call**」，
+  并给出 tie-breaker：**倾向于面向模型的、或用于访问控制的 id**。
+
+**它否决了什么备选**（原文 `:47`–`:49`）：
+唯一正式否决的是**把 `owner` 直接类型化为 `SessionId`**，理由见上（会耦合执行后端到会话模型、
+违背不透明 token 设计、让沙箱/远程执行器继承会话依赖）。
+`:51`–`:59` 的「Out of scope / possible extensions」**是延后而非否决，原文明说
+「deferred with a reason, not a commitment」**。
+
+---
+
+### I-A32 `implemented/architecture/2026-06-21-mandatory-app-attribution-headers.md`（82 行，**全文**）
+**主题 (1) —— 「对外声明身份时，只说静态的公开产品事实」**
+
+- `:11` **风险被一句话点破**（这是本篇最可迁移的判断）：
+  采用某个供应商的确切 header 集合**就好像它是通用标准一样**，然后
+  > 「**leaking provider-specific headers** to direct DeepSeek requests, future OpenAI/Anthropic/Vertex
+  > adapters, test servers, or **proxies that log unknown fields indefinitely**.」
+- `:13`–`:23` **有一整段 `## Investigation`**，逐条把「谁是标准、谁是惯例、谁是某家的产品特性」分开：
+  RFC 9110 §10.1.5 的 `User-Agent` 是**唯一直接对应「哪个产品在发这个 HTTP 请求」的标准 header**；
+  OpenRouter 的 `HTTP-Referer` **名字与含义都是它自己的**，尽管长得像标准 `Referer`；
+  RFC 9110 §10.1.2 的 `From` 是标准但**不适合作强制默认**（隐私）；
+  请求体的 `user`/`metadata` **标识的是终端用户而不是产品**；
+  SDK 遥测 header **标识的是 SDK 而不是应用**。
+  → **这一段是"先把概念分清再做决定"的范本；finaudit 在引用准则时应当同样区分
+  「准则原文 / 行业惯例 / 某家事务所的做法」。**
+- `:31`–`:37` **归属身份由 `dsh-llm` 拥有，不由各适配器拥有**；
+  `AppIdentity` **只包含构造 `User-Agent` 所需的公开产品事实**；
+  版本**从所属包 manifest 读取，绝不手抄常量**。
+  然后是一条极硬的隐私边界：
+  > 「There is **no per-request API for the model, user prompt, session id, cwd, user email,
+  > API key owner, or local machine identity** to influence these fields.」
+- `:29` **明确写下"故意不做什么"**：OpenRouter 的四个 header **刻意不实现**，
+  「Until then, **even requests pointed at OpenRouter send only the shared `User-Agent`**」。
+- `:48` **连"以后要做也必须显式"都先规定好**：若将来支持 OpenRouter，
+  检测**必须显式**（专门的 provider 包，或显式 config），
+  「**not arbitrary path fragments or model names**」。
+- `:52`–`:60` **Verification 是一份可逐条核对的清单**，其中两条是负向断言：
+  「**No adapter sends OpenRouter-specific attribution headers**」、
+  「**No app-attribution field carries secrets, local paths, session ids, prompt text, model output,
+  user email, or per-user stable identifiers.**」
+  → **负向断言（"我们没有发送 X"）也要进验证清单，不能只列正向。**
+- `:80` **抽象压力测试**：pi-ai 若升级后不再传递 header，**mock server 测试会变红**。
+  > 「This is **useful pressure on the abstraction**: a provider adapter that **cannot set mandatory
+  > headers cannot fully implement the harness LLM contract**.」
+
+**它否决了什么备选**（原文 `:64`–`:74`，5 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 现在就做 OpenRouter app attribution | 那些 header 是**某供应商的产品特性，不是本决策要标准化的供应商中立请求归属**；应当是**显式的 OpenRouter 适配器/模式决策**，而不是**藏在第一个共享归属 helper 里** |
+| 到处都发 OpenRouter header | 会**把一份自定义契约当成通用标准**，向**没有要求过的供应商发送语义误导的字段** |
+| 只用供应商账号/项目身份 | 那些标识的是**谁付钱或谁拥有请求，不是哪个应用在发流量** |
+| 用终端用户 `user`/`metadata` 字段 | 那些描述的是**请求背后的人或租户**；app attribution 必须是**静态产品身份且每次请求都安全可发** |
+| 配置式 opt-in 归属 | **默认关闭正是适配器持续漂移的方式**。政策是**强制的默认归属 + 可覆盖的公开值**，不是可选归属 |
+| 用 SDK 名做 `User-Agent` token | `deepseek-harness` 胜出，因为它**命名的是产品、匹配组织/仓库身份与包 scope**，且**不把整个产品称作 SDK** |
+
+---
+
+### I-P16 `implemented/process/2026-08-09-md-fragment-anchor-gate.md`（32 行，**全文**）
+**主题 (7) —— 「人工 grep 的规则被实证推翻」**
+
+- `:9` **问题带实测数字与三种衰减模式**：全语料扫描发现 **15 条链接的 fragment 在目标里没有对应锚点**——
+  ① 链接写好后标题被改写；② 契约搬到了另一份拥有它的文档；
+  ③ 中文对照件链接的是**其中文标题永远不会产生的英文 slug**。
+  > 「**None of these fail any gate**, and each **silently strands the reader at the top of the target page**.」
+- `:13` **门禁规则里的细节全部对齐 GitHub 的真实渲染**：
+  slug 从**渲染后的标题文本**计算（标题里的链接、行内代码、强调都按 GitHub 的方式参与）；
+  **下划线保留**；重复 slug 用 GitHub 的 occupied-set `-1`/`-2` 后缀；
+  **大小写精确匹配**（因为元素 id 是大小写敏感的）。
+  同时明写**不管什么**：指向非 Markdown 目标的 fragment（`file.ts#L10`）**语义由渲染器拥有，不在范围内**。
+- `:15` **刻意不共用 slug 函数**：与 `gen-cordis-catalog` 的 slugger 规则不同
+  （后者丢下划线），因为生成器的标题总是通过显式 `<a id>` 可达，
+  「**the two need not share one rule**」。
+- `:21` **Verification 里那句话最值钱**：
+  > 「the gate runs over the full corpus … and **passes only after the 15 fixes —
+  > the corpus itself is the red-to-green evidence for each decay mode**.」
+
+  → **不是"我写了测试"，而是"真实语料本身就是这条门禁从红到绿的证据"。**
+
+**它否决了什么备选**（原文 `:25`–`:28`，4 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 保留人工 grep 规则 | **它被实证证明没守住**：那 15 条 fragment **是在一个由门禁驱动的维护文化下衰减掉的**，因为标题改写发生在**从不看入链的 PR** 里。「**A mechanical invariant belongs in an executed gate.**」 |
+| 让中文链接指向中文 slug 锚点 | GitHub 能给 CJK 标题正常 slug，但**语料现有约定已是显式 `<a id>` + 英文 fragment**，那还能**在剥离非 ASCII 的渲染器下存活**；采用第二套约定会**劈裂语料** |
+| 与 typert 生成器共用 `githubSlug` | 一次函数导入会**把文档门禁耦合到包构建**，而**两套规则确实不同**，所以**分歧是设计而非漂移** |
+| 顺便校验 VitePress slug | 站点自己的死链检查**已经在 `website:build` 里跑**；生成区域带显式锚点**正是为了让两个渲染器一致** |
+
+---
+
+### I-P17 `implemented/process/2026-06-20-core-data-structures-catalog.md`（61 行，**全文**）
+**主题 (6) —— 「粘贴的类型定义如何被机械地保证不漂移」**
+
+- `:9` **问题里那句判断，适用于 finaudit 的一切"口径说明文档"**：
+  > 「a catalog that paraphrases or paste-copies type definitions **rots the instant a field changes** —
+  > and **an out-of-sync type doc is worse than none, because a reader trusts it**.」
+- `:21` **范围线是靠一个判例定的**，不是靠定义：
+  `ShellExecRequest`/`ShellExecSpec`/`ShellRunResult` 是**决定性测试用例**——
+  如果它们算 core，那 core 就等于**所有跨包词表**，目录就成了平铺倾倒；如果不算，core 就是**中央脊柱**。
+  后者胜出，于是整个结构变成**分层文件夹而不是单张平文档**。
+  → **划范围时先找一个能把两种理解逼出不同结论的判例。**
+- `:23` **定下来的规则一句话**：
+  > 「***the type you write, hold, or receive is core; the machinery that types it, renders it,
+  > or persists it is a subsystem-page detail.***」
+
+  两条刻意的例外也写清楚了：`ToolDefinition` 是 core **尽管 loop 从不持有它**
+  （**作者重要性压过严格的"流经脊柱"规则**）；
+  `ToolSchema` 是 core 尽管概念上属于工具流水线（**"流经脊柱"压过"概念归属"**）。
+- `:34`–`:38` **`ts type-equiv` 机制**（本篇最可直接迁移的资产）：
+  完整类型声明与其 JSDoc **逐字粘贴**进专用围栏；
+  `verify-type-equiv.ts` 用 TypeScript parser 抽取每个块，
+  **断言其声明结构与每一条 JSDoc 都与被声明符号匹配**，
+  **只忽略格式空白与非 JSDoc 注释**。
+  为什么不用编译期 `_Check` 断言：
+  > 「**source names and documentation identity, not assignability, are the properties
+  > the catalog preserves**.」
+
+  每个块的 `{ doc, symbol, source }` 记在**中心 manifest**（不是散文里的指令注释），
+  脚本强制 **1:1 对应**，
+  「so **a block can never be silently unchecked and an entry can never rot**」。
+- `:38` **中英对照的处理很讲究**：`.zh.md` 的块**只有在完整的被跟踪围栏序列
+  在顺序、种类、字节上都与无后缀兄弟件一致时**才复用它的 manifest 条目；
+  否则门禁独立检查它、找不到条目、**失败**。
+- `:41`–`:43` **门禁与人的分工被明说**：
+  > 「`verify-type-equiv` catches a **drifted paste** of an already-documented type,
+  > but **it cannot tell you a brand-new core type went undocumented**. …
+  > **the gate handles drift, the human handles new types.**」
+- `:53` **一条被单独立成 `## Verification lesson` 的教训**：
+  门禁**必须扫描完整的 Markdown 范围，而不只是 manifest 点名的文档**，
+  否则**一个未登记的 `type-equiv` 块就逃过了那个号称 1:1 的检查**。
+  于是门禁**把这类块报为 orphan**。
+  → **"我检查了所有登记在册的" ≠ "我检查了所有存在的"。这条对审计抽样直接适用。**
+
+**它否决了什么备选**（原文 `:47`–`:49`，3 条）：
+
+| 被否决方案 | 理由（原文要点） |
+|---|---|
+| 平铺倾倒所有跨包词表 | **`ShellExecRequest` 这个判例杀死了它**：如果 seam 词表算 core，这份目录**对谁都没用** |
+| 用编译期 `_Check` 可赋值性断言代替源码匹配 | **可赋值性不保留名字与 JSDoc**：**改名但同类型的字段、或改动过的契约注释都会通过** |
+| 把每个类型块的来源写在指令注释里 | 选中心 manifest，因为**它强制的 1:1 对应意味着块不可能被静默跳过、条目也不可能腐烂** |
+
+**对 finaudit 的输入**：财务指标口径文档就是这里的「类型目录」。
+可迁移的三件事：**① 逐字引用准则原文而不是转述；② 用中心 manifest 记录
+「哪段文字对应哪条准则的哪一版」并强制 1:1；③ 明确门禁只能抓漂移，
+"新增了口径却没写文档"必须由人负责——并且把这条分工写进制度而不是指望自觉。**

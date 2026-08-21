@@ -4,7 +4,13 @@
 > 本文对其做**系统性覆盖普查**（不是关键词打捞），按六个主题抽取对 finaudit-agent 有用的输入。
 >
 > 仓库快照位置（只读）：`.../scratchpad/deepseek-harness`
-> 普查日期：2026-08-18
+> 普查日期：2026-08-18（第一轮）／2026-08-22（收口：覆盖度表 + §4 + §5）
+>
+> **语料版本**：本文与 `deepseek-harness-notes-part2.md` 的全部行号引用，
+> 指向该 clone 的 commit **`47f9438`**（全哈希 `47f943859bef60e4160492346772ded9b24f765a`）。
+> 语料已丢失过一次（`survey/` 目录连同 `inventory.tsv`、`read-full.txt` 被清空，
+> `.agents/notes/README.md` 等制度文件也已不在），**行号引用必须绑定 commit 才能回指**。
+> 第二轮的 71 条笔记条目在 `deepseek-harness-notes-part2.md`；本文 §1.3 的覆盖度是**两轮合并去重后**的。
 
 ---
 
@@ -56,8 +62,91 @@ find ... -name "*.md" ! -name "*.zh.md" → 679 个英文正文文件
 
 ### 1.3 覆盖度（分三档，如实标注）
 
-<!-- COVERAGE-TABLE -->
-（本节在普查过程中逐组更新，见文末 §5「未读清单」）
+**分母复核（2026-08-22 重新实测，commit `47f9438`）**：
+
+```
+find .agents/notes -name '*.md' ! -name '*.zh.md' | wc -l   → 674
+# 逐篇检查首行：674 篇全部以 "# Agent Note:" 开头，无一例外
+find .agents/notes -type f | wc -l                          → 1977
+find .agents/notes -name '*.zh.md' | wc -l                  → 661
+find .agents/notes -name '*.i18n.yaml' | wc -l              → 642
+```
+
+⚠️ **与 §1.1 的差异，如实记录**：§1.1 当时数到 **1985 个文件 / 679 个英文正文**，
+其中 5 个不是笔记本体（README ×2 语言 + AGENTS ×3 + CLAUDE ×1 一类的制度文件）。
+**在 2026-08-22 的快照里这些制度文件已经不在**：`.agents/notes/` 下只剩
+`archived/ implemented/ proposed/ rejected/` 四个目录，
+`find . -iname 'README*' -o -iname 'AGENTS*' -o -iname 'CLAUDE*'` **零命中**。
+文件总数也从 1985 掉到 1977。
+→ **§2「体系本身」那一节所依据的 `README.md` 已无法在本快照中复核**；
+该节结论保留，但标记为「引自 2026-08-18 的快照，当前不可回指」。
+→ **674 这个「正式笔记」分母仍然成立且已重新实测**，本表以 674 为分母。
+
+**三档定义（互斥、穷尽，相加 = 674）**
+
+| 档 | 定义 |
+|---|---|
+| **全文读完** | 从第 1 行读到最后一行，且在 `deepseek-harness-notes-survey.md` §3 或 `deepseek-harness-notes-part2.md` 正文里有对应条目 |
+| **只读标题** | 文件名在本轮 `ls` / `grep -ril` 输出里被逐条列出并对着七个主题筛过，**但文件本身没有打开** |
+| **完全未碰** | 既没打开，文件名也没有被逐条枚举审视过（只在 `find \| wc -l` 的聚合计数里出现过） |
+
+> 「只读标题」**只**出现在 `implemented/architecture` 与 `implemented/process` 两个目录，
+> 因为只有这两个目录在本轮被完整 `ls` 出来并逐条做过主题筛选。
+> 其余目录要么全读，要么完全没碰——**没有中间态，不虚报**。
+
+**覆盖度表（分母 674）**
+
+| 目录 | 总数 | 全文读完 | 只读标题 | 完全未碰 | 全文覆盖率 |
+|---|---:|---:|---:|---:|---:|
+| `archived/architecture` | 14 | 0 | 0 | 14 | 0% |
+| `archived/bug-fix` | 19 | 0 | 0 | 19 | 0% |
+| `archived/feature` | 54 | 0 | 0 | 54 | 0% |
+| `archived/process` | 20 | 0 | 0 | 20 | 0% |
+| `archived/simplification` | 27 | 0 | 0 | 27 | 0% |
+| `archived/testing` | 8 | 0 | 0 | 8 | 0% |
+| `implemented/architecture` | 125 | **35** | 90 | 0 | 28% |
+| `implemented/bug-fix` | 76 | 1 | 0 | 75 | 1% |
+| `implemented/feature` | 169 | 0 | 0 | 169 | 0% |
+| `implemented/process` | 69 | **17** | 52 | 0 | 25% |
+| `implemented/simplification` | 46 | 0 | 0 | 46 | 0% |
+| `implemented/testing` | 12 | 3 | 0 | 9 | 25% |
+| `proposed/architecture` | 9 | **9** | 0 | 0 | **100%** |
+| `proposed/feature` | 4 | **4** | 0 | 0 | **100%** |
+| `proposed/process` | 7 | **7** | 0 | 0 | **100%** |
+| `proposed/simplification` | 2 | **2** | 0 | 0 | **100%** |
+| `proposed/testing` | 2 | **2** | 0 | 0 | **100%** |
+| `rejected/feature` | 1 | **1** | 0 | 0 | **100%** |
+| `rejected/simplification` | 10 | **10** | 0 | 0 | **100%** |
+| **合计** | **674** | **91** | **142** | **441** | **13.5%** |
+
+**三档校验**：91 + 142 + 441 = **674** ✅
+
+**91 是怎么数出来的（去重后）**
+
+| 来源 | 篇数 | 说明 |
+|---|---:|---|
+| 第一轮 §3 组 A（`rejected/` 全部） | 11 | A-1…A-11 |
+| 第一轮 §3 组 B（testing 主题） | 5 | B-1/B-2/B-4 在 `implemented/testing`；B-3/B-5 在 `proposed/testing` |
+| 第一轮 §3 组 C（fail-closed 主题） | 6 | C-1…C-6，全在 `implemented/architecture`（5 篇）与 `implemented/bug-fix`（1 篇） |
+| 第二轮 part2 §0.1（`proposed/` 全量） | 22 | 另 2 篇 proposed/testing 已计入组 B，**不重复计** |
+| 第二轮 part2 §0.2（`implemented/` 主题命中） | 49 | arch 32 + process 17 |
+| **小计（含重复）** | **93** | |
+| **减去跨轮重复** | **−2** | 见下 |
+| **去重后合计** | **91** | |
+
+**两篇跨轮重复（本轮发现，如实记录）**：
+
+| 路径 | 第一轮位置 | 第二轮位置 |
+|---|---|---|
+| `implemented/architecture/2026-06-14-session-persistence.md` | survey §3 **C-4** | part2 **I-A27** |
+| `implemented/architecture/2026-08-09-cordis-event-walk-backstop.md` | survey §3 **C-3** | part2 **I-A29** |
+
+这两篇在第二轮被重读了一遍。原因是主题筛选按文件名与内容 `grep` 命中，
+而第一轮的已读记录只存在于 §3 的散文里、没有机器可读的清单
+（原 `survey/read-full.txt` 已随 `survey/` 目录一起丢失）。
+**两轮的笔记从不同角度切入**（C-4 侧重"崩掉的 turn 被闭合而非截断"，
+I-A27 侧重"持久单元就是既有事件本身"），所以两份条目都保留，
+但**在覆盖度计数上只算一篇**。
 
 ---
 
@@ -648,10 +737,243 @@ make it useful **through a consumer** instead of deleting it.」
 
 ## 4. 对 finaudit 的具体输入
 
-（逐组读完后追加）
+> 下面每一条都注明出处（`survey §3 编号` 或 `part2 编号` + `路径:行号`）。
+> **凡原文没有写的，不写。** 「可迁移结论」是我的推论，用「→」标出，与原文引用区分开。
+
+### 4.1 证据链的形状：一个被校验的值，两个确定性投影
+
+**出处**：part2 **I-A23**（`implemented/architecture/2026-07-20-canonical-tool-output-contract.md:15`–`:37`）
+
+deepseek-harness 要求**每个工具必须声明规范输出**：`schema` + 纯 `render(args, value)` +
+可选 `presentationMeta`。工具体只返回 schema 描述的值；registry 依次做
+**无损 JSON 快照 → schema 校验 → 深冻结 → 调纯渲染器**。
+
+→ **finaudit 的「答案 + 证据链」应当照这个形状建**：
+一个被 schema 校验、深冻结的 canonical 值（口径 id、取数来源、计算中间量、准则条文引用），
+两个确定性投影：**给人看的叙述** 与 **给机器复核的结构化记录**。
+叙述是值的投影，**不是第二份独立作者写的结果**——原文 `:71` 明确否决了「让工具同时返回 value 和 content」，
+理由是「两个作者自定的结果会互相矛盾，策略无法声明哪个权威」。
+
+→ 配套要抄的还有 `:35` 那三条互斥语义：**改呈现 ≠ 改结论 ≠ 拒答**，
+以及 `:35` 那句安全声明：**「呈现层遮蔽不是保密机制」**——
+finaudit 若要禁止某个数据被程序化访问，必须**拒绝该次调用或替换该值**，不能只在报告里不显示。
+
+### 4.2 一个事实只能有一个来源，实时视图与事后复核读同一条流
+
+**出处**：part2 **I-A18**（`implemented/architecture/2026-06-30-event-domain-semantics.md:15`, `:23`, `:27`, `:29`）
+
+原文的边界规则一句话：**「持久、可重放的事实 = `SessionEvent`；实时拦截或携带活对象的瞬时信号 = Cordis 事件」**。
+而且这条规则被真的执行了——四个「为了方便」而存在的边界镜像事件**全部删除**，
+判据是实证的：`:29`「**No production consumer needs the live `Agent` at a boundary**」。
+
+→ **finaudit 的证据链事件必须是 JSON-only 的持久事实**，界面与复核读同一条流。
+凡是为了前端方便而镜像出来的第二份事实，迟早两边不一致。
+→ 删镜像之前**先证明没有生产消费者需要它**，这个次序不能反。
+
+### 4.3 审计失败必须是带稳定 code 的封闭类型，而且要双表示
+
+**出处**：part2 **I-A14**（`implemented/architecture/2026-06-11-structured-error-taxonomy.md:9`, `:16`, `:21`, `:23`）
+
+原文的痛点是「failures crossed seams as bare strings」，导致
+「a plugin **couldn't tell ENOENT from EACCES**」。对策是一个带**稳定 `code`（与 `message` 分开）**
+的基类，且结构化字段**随事实一路走进日志**。
+最值得抄的是 `:23` 那条**刻意的不对称**：结构化 `error` 字段**不进模型历史**，
+模型看到的仍是文本块——**同一个失败有两个受众、两套表示，谁也不冒充谁**。
+
+→ finaudit 的失败（口径不匹配、科目缺失、期间不可比、准则版本不适用）
+必须是**封闭枚举 + 稳定 code**，不是「数据有问题」。
+→ 并且**给人的解释**与**进证据链的 `{name, code}`** 分开存，不要指望从自然语言里反解结构。
+
+### 4.4 校验分两层：记录级不可变（常开）+ 关系级不变量（可配置、按模块归属）
+
+**出处**：part2 **I-A26**（`implemented/architecture/2026-06-11-dev-invariants-over-deep-readonly.md:13`, `:23`, `:27`, `:35`）
+
+原文那句判断可以直接翻译成审计语言：
+`:13`「A log can contain **perfectly immutable records whose sequence, turn/step nesting,
+tool-call pairing … is wrong**. Those rules **relate multiple records** and
+**cannot be established by freezing one object**.」
+
+→ **每一条取数不可变 ≠ 期间可比、勾稽成立、口径一致。**
+→ 照抄它的分层：**记录级不可变常开、无条件、在写入边界完成**（原文 `:27` 的理由：
+「every composition relies on trustworthy history」，所以**不能做成可选插件**）；
+**关系级不变量**（勾稽、可比、口径一致、准则适用性）**可配置、由各业务模块各自拥有并各自测试**。
+→ 注意 `:35` 的归属设计：不变量**服务本身不含任何产品检查**，
+每个包发布自己的 `./invariant` 伴生件。finaudit 应当同样：
+核心只提供不变量注册与执行，具体的勾稽规则归属于各报表模块。
+
+### 4.5 制度层：什么时候必须留痕、格式谁来查、不写备选算不算违规
+
+这是本轮最大的收获，全部来自 `implemented/process`。
+
+- **必须留痕的边界，由人判断，不设自动门禁**（part2 **I-P10**,
+  `implemented/process/2026-07-19-require-agent-notes-for-non-trivial-changes.md:13`, `:21`）。
+  非平凡范围被逐项数清楚（行为、契约、流程、**磁盘/wire/配置格式**……），
+  但 `:21` 明确写：「**No automated gate attempts to classify a diff as trivial or non-trivial**」。
+  → **该由人判断的语义边界，不要假装能自动化；但边界本身必须写成清单。**
+
+- **格式契约由机器执行**（part2 **I-P8**, `…/2026-07-05-uniform-agent-note-format.md:13`）：
+  头块 + 按生命周期的正文骨架 + **强制的 `Alternatives considered` 段**，
+  由 `verify-agent-note-format` 在 `doc-sync` 里执行，
+  「so a lifecycle move that skips its rewrite **now fails CI instead of review memory**」。
+
+- **不写备选怎么办 —— 本轮所有「原文未记录备选」标注的制度来源**
+  （I-P8, `:15`）：
+  > 「**alternatives are recorded, never invented**」。
+  格式化之前的旧笔记若其备选**无法从记录中重建**，就带上精确的
+  `agent-note-format: alternatives-not-recorded` 注释，**门禁只对该决策日期之前的文件接受它**。
+  → **宁可在记录上留一个被门禁认可的洞，也不补一段编造的理由。**
+  这条应当原样搬进 finaudit：**证据缺失要有一个正式的、可被门禁识别的标记，
+  而不是靠自然语言里的"暂无数据"。**
+
+- **「审计过的缺席」与「忘了写」必须能区分**（part2 **I-P14**,
+  `…/2026-07-10-readme-known-limitations-gate.md:9`, `:15`）：
+  原文的问题陈述与 finaudit 完全同构——
+  > 「an omitted section **cannot distinguish an audited absence from forgotten documentation**」。
+  解法：规范标题 + **被门禁校验的允许列表**（`NO_LIMITATIONS`），
+  「every entry must **name a scanned package**」，所以列表本身不会腐烂。
+  → finaudit 的「本项不适用 / 本期无此科目」必须走**同一套显式登记**，
+  且登记项必须指向一个真实存在的科目，否则门禁失败。
+
+- **门禁与人的分工要写死**（part2 **I-P17**,
+  `…/2026-06-20-core-data-structures-catalog.md:43`）：
+  > 「**the gate handles drift, the human handles new types**」。
+  → finaudit：门禁能抓「口径文档与实现漂移」，抓不到「新增了口径却没写文档」。
+  这条分工要写进制度，不能指望自觉。
+
+### 4.6 台账与清单：先问「这里有没有一条别处推不出来的事实」
+
+**出处**：part2 **I-P11**（`…/2026-07-19-remove-generated-agent-note-index.md:9`, `:15`）
+与 **I-P9**（`…/2026-06-20-agent-note-classification.md:39`）
+
+- I-P11 `:9`：集中索引**复制了路径、文件名日期与 H1 已经编码的事实**，
+  于是它成了**可预测的合并热点**。解法是**让文件系统树本身成为清单**。
+- I-P9 `:39` 否决「在文件里写一行 `Classification:`」的理由更锋利：
+  一行字**可以和它所在的文件夹不一致**；路径编码让
+  「**the label and its storage are the same thing — there is nothing to keep in sync**」。
+
+→ finaudit 的 `OPEN-ITEMS.md` / `DECISIONS.md` / 证据台账天然是合并热点。
+判据是：**这份清单里有没有一条事实是别处推不出来的？**
+全都推得出来 → 它只是热点，不是资产；有推不出来的 → 保留，但只保留那部分。
+
+### 4.7 验证怎么写才算数
+
+本轮见到三个可直接照抄的验证写法：
+
+1. **红→绿用真实语料本身当证据**（part2 **I-P16**,
+   `…/2026-08-09-md-fragment-anchor-gate.md:21`）：
+   门禁跑全语料，**只有在修完那 15 条断链之后才通过**——
+   「**the corpus itself is the red-to-green evidence for each decay mode**」。
+2. **删一条 + 恢复一条，同时证明两件事**（part2 **I-A29**,
+   `…/2026-08-09-cordis-event-walk-backstop.md:27`）：
+   从真实树里删掉一条豁免 → 门禁带着名字大声失败；恢复 → 回到**字节相同的空转重生成
+   （85 artifacts, 0 written）**，后者顺带证明了**豁免不多不少**。
+3. **说清隔离条件并声明植入物已移除**（part2 **I-P13**,
+   `…/2026-08-06-coverage-uncovered-locations.md:36`）：
+   在「全部测试通过（632 文件 / 10326 用例）、只有阈值失败」的隔离条件下取得 CI 证据，
+   并明写「**the planted failure is not in the committed tree**」。
+
+→ finaudit 的 `VERIFICATION.md` 应当按这三个模式写，而不是「跑了，通过了」。
+
+### 4.8 命名即契约（做 Phase 2 架构时用）
+
+**出处**：part2 **I-A24**（`…/2026-08-11-repository-naming-contract-and-rename-ledger.md:11`, `:45`–`:63`, `:65`）
+
+`:45`–`:63` 是一张 15 个角色词的「什么时候用 / 什么时候不许用」表。
+最可直接迁移的是它的**判别方法**（`:65`）：**看调用方主要在调什么**。
+以及 `:48` 那句：「**A map inside a class does not make the class a store.**」
+
+→ finaudit 建包时，`Extractor` / `Normalizer` / `Resolver` / `Policy` / `Validator` / `Ledger`
+这些词各自意味着什么，要先定义再用。
+→ 同时抄 `:19` 那条纪律：**重命名的变更只改名字，边界变更另开提案**——
+「Reviewers must be able to see that **behavior did not change**」。
+
+### 4.9 三条「原文写得比我能总结得更好」的句子
+
+留原文，不转述：
+
+1. `implemented/architecture/2026-06-11-runtime-arg-validation.md:9`（part2 I-A15）：
+   > 「that type is a **compile-time claim about a value that arrives at runtime as
+   > model-generated JSON** … reached `execute` **typed-in-name-only**.」
+2. `implemented/architecture/2026-07-05-windows-jsonl-durable-publish.md:33`（part2 I-A19）：
+   > 「**Power-loss behavior remains an API-contract property rather than something
+   > unit tests can prove**」——后面紧跟着列出**真正可测的**五条不变量。
+3. `implemented/process/2026-07-27-explicit-change-scope-report.md:37`（part2 I-P7）：
+   > 「The explicit input **makes an incorrect base possible but visible**」
+   → **可见的错 > 隐形的对。**
 
 ---
 
 ## 5. 未读清单（我不能置评的部分）
 
-（最终填写）
+**总量：674 篇中 583 篇没有全文读过**（91 读过 = 13.5%）。
+下表是我**不能置评**的部分。凡本文与 `part2` 里出现过的判断，都不覆盖这些篇目。
+
+### 5.1 完全未碰（441 篇）—— 连文件名都没有逐条枚举过
+
+| 目录 | 未碰篇数 | 为什么这次没读 |
+|---|---:|---|
+| `implemented/feature` | **169** | 本轮主题是「证据链 / append-only / 封闭类型 / 模块边界 / schema / gate」，`feature` 是产品能力，不在主题上。**这是最大的一块空白** |
+| `implemented/bug-fix` | 75 | 只读了 1 篇（survey C-2）。bug-fix 里很可能藏着**最有价值的"实际踩到的坑"**，但没有主题索引，逐篇筛成本高 |
+| `archived/feature` | 54 | `archived/` 整个目录本轮零覆盖 |
+| `implemented/simplification` | 46 | **这是被低估的一块**：`simplification` 记录「删掉了什么、为什么删得起」，与本轮读的 `rejected/` 互补 |
+| `archived/simplification` | 27 | 同上，且是已归档版本 |
+| `archived/process` | 20 | |
+| `archived/bug-fix` | 19 | |
+| `archived/architecture` | 14 | |
+| `implemented/testing` | 9 | 12 篇里读了 3 篇（survey B-1/B-2/B-4） |
+| `archived/testing` | 8 | |
+| **合计** | **441** | |
+
+### 5.2 只读标题（142 篇）—— 文件名逐条看过并对着七个主题筛过，但没打开
+
+这两个目录本轮做了完整 `ls` + `grep -ril` 主题筛选，
+所以**我知道这 142 篇叫什么、大致关于什么**，但**没有读过正文，不能引用其内容**。
+
+| 目录 | 只读标题 | 已全文 | 总数 |
+|---|---:|---:|---:|
+| `implemented/architecture` | 90 | 35 | 125 |
+| `implemented/process` | 52 | 17 | 69 |
+| **合计** | **142** | **52** | **194** |
+
+**其中我在筛选时判断"标题看起来与主题相关、但本轮没排上"的篇目**（下次续读的第一优先级）：
+
+`implemented/architecture`：
+`2026-06-13-capability-seams.md`、`2026-06-17-filesystem-capability-seam.md`、
+`2026-06-18-agent-lifecycle-and-ownership-contracts.md`、`2026-06-18-session-surface.md`、
+`2026-06-21-bounded-llm-request-recovery.md`、`2026-06-30-bash-stdin-env-trusted-plugin-api.md`、
+`2026-07-05-subagent-provider-lifecycle-events.md`、`2026-07-08-tool-output-spill-files.md`、
+`2026-07-12-scoped-layers-store.md`、`2026-07-19-package-invariant-runtime-contracts.md`、
+`2026-07-26-job-registry-seam.md`、`2026-07-27-dispose-ladder-to-consumer.md`、
+`2026-07-28-user-settings-seam.md`、`2026-08-05-large-session-jsonl-restore-pipeline.md`、`2026-08-05-session-preparation.md`、
+`2026-08-08-bounded-session-persistence-write-batching.md`、`2026-08-09-layered-skill-registry.md`、
+`2026-08-10-remote-event-delivery.md`
+
+`implemented/process`：
+`2026-06-11-vendor-cordis-as-source.md`、`2026-06-18-markdown-cross-link-lint.md`、
+`2026-07-02-bilingual-docs-and-pairing-gate.md`、`2026-07-02-tool-schema-catalog.md`、
+`2026-07-04-doc-tiers-and-budgets.md`、`2026-07-06-export-jsdoc-gate.md`、
+`2026-07-13-documentation-site-projection.md`、`2026-07-22-fast-local-git-hooks.md`、
+`2026-07-26-ci-failover-runbook.md`、`2026-07-26-dependencies-over-hand-rolling.md`、
+`2026-07-28-per-subsystem-cordis-surface-regions.md`、`2026-07-31-coverage-exempt-heavy-suites.md`、
+`2026-08-03-package-anchored-subsystem-pages.md`、`2026-08-08-api-remotes-generated-contract-build.md`、
+`2026-08-08-unified-github-label-taxonomy.md`、`2026-08-10-event-directed-pr-review-status.md`
+
+### 5.3 已丢失、无法复核的部分
+
+| 对象 | 状态 |
+|---|---|
+| `.agents/notes/README.md`（+ `.zh.md`） | **本快照中不存在**。survey §2「体系本身」全部依据它，那一节结论**当前不可回指** |
+| `.agents/notes/**/AGENTS.md`（3 份）、`implemented/CLAUDE.md` | 同上，不存在 |
+| `survey/inventory.tsv`（674 行清单） | **已丢失**，本轮用 `find` 重建 |
+| `survey/read-full.txt`（第一轮全文读过的 15 篇） | **已丢失**。第一轮已读篇目**只能从 survey §3 的散文里逐条抠出**，这直接导致本轮重读了 2 篇（见 §1.3 末尾） |
+
+→ **教训（已在 part2 头部写入）**：`路径:行号` 只有绑定到具体 commit 才能回指。
+本轮起，所有引用统一绑定到 commit **`47f9438`**。
+
+### 5.4 明确不做的事
+
+- **不去读 `data secret` / `privacy-preserving-agent-poc`**（D-004）。本轮全程未触碰。
+- **不替原作者补写备选**。凡原文没有 `## Alternatives considered` 的，
+  本文与 part2 一律写「原文未记录备选」并注明原文自带的
+  `alternatives-not-recorded` 标记（共 3 篇：part2 I-A14 / I-A15 / I-A18）。
+- **不对没读过的篇目下判断**。上面 583 篇的内容，本文与 part2 里没有任何一句话依赖它们。
