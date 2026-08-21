@@ -1,0 +1,130 @@
+<mxfile host="app.diagrams.net" modified="2026-08-22T06:30:00.000Z" agent="finaudit-agent" version="24.0.0">
+  <diagram name="项目情况总览" id="status">
+    <mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="finaudit-agent — 项目情况（2026-08-22）&#10;可审计的财务分析 Agent：每个答案都附带可独立复核的证据链" style="text;html=1;align=center;verticalAlign=middle;fontSize=18;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="16" width="1520" height="46" as="geometry" />
+        </mxCell>
+
+        <!-- ============ 阶段进度 ============ -->
+        <mxCell id="phLane" value="阶段进度" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9E9E9E;dashed=1;verticalAlign=top;align=left;spacingLeft=8;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="72" width="1520" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p0" value="Phase 0&#10;cninfo 实证结论&#10;&#10;未开始（可并行）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#9E9E9E;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="104" width="180" height="92" as="geometry" />
+        </mxCell>
+        <mxCell id="p1" value="Phase 1  语义层&#10;✅ 已收口&#10;&#10;20/20 定义 · 358 tests&#10;5 条成功标准全 VERIFIED" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="270" y="104" width="210" height="92" as="geometry" />
+        </mxCell>
+        <mxCell id="p15" value="Phase 1.5  数据接入层&#10;◐ 计划中（当前）&#10;&#10;6 个决策点已全部裁决&#10;CONTEXT + RESEARCH 就位&#10;PLAN 待出" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="510" y="104" width="230" height="92" as="geometry" />
+        </mxCell>
+        <mxCell id="p2" value="Phase 2&#10;可信执行层 + Web&#10;&#10;未开始（H2 复核实验）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#9E9E9E;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="770" y="104" width="180" height="92" as="geometry" />
+        </mxCell>
+        <mxCell id="p3" value="Phase 3&#10;知识层（准则 RAG）&#10;&#10;未开始" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#9E9E9E;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="980" y="104" width="180" height="92" as="geometry" />
+        </mxCell>
+        <mxCell id="p4" value="Phase 4&#10;评测闭环与对外材料&#10;&#10;未开始" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#9E9E9E;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="104" width="180" height="92" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e01" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="p1" target="p15"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="p15" target="p2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e23" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="p2" target="p3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e34" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="p3" target="p4"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- ============ 已建成 ============ -->
+        <mxCell id="builtLane" value="已经建成的（有证据，跑得起来）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#82B366;dashed=1;verticalAlign=top;align=left;spacingLeft=8;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="228" width="740" height="300" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b1" value="语义层 src/semantic_layer/&#10;受限布尔 DSL（刻意不含算术）&#10;9 条 Requirement 校验器 · 26 个规则码" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="262" width="340" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="b2" value="metrics/  20 份 version:2 定义&#10;_flags.yaml 10 条受控 flag&#10;advisory_only 19.0%（阈值 50%）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="420" y="262" width="340" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="b3" value="4 道门禁（任一红即不提交，&amp;&amp; 串联）&#10;pytest 358 · scan（AC-10）&#10;validate · check_xrefs（621 处引用）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="340" width="340" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="b4" value="eval/frozen-01  已冻结&#10;20 题 + 夹具 + 21 文件 SHA-256&#10;C2 拒答 4/4，门成立" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="420" y="340" width="340" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="b5" value="LLM 对照臂  eval/baseline.py&#10;deepseek-v4-pro / v4-flash 两臂跑完&#10;两模型在 Q-C1-001 上错得逐字相同，且都不拒答" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="418" width="340" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="b6" value="供应链门禁 scripts/verify_deps.py&#10;许可证禁列：AGPL 拒绝（含传递依赖）&#10;禁的是 AGPL 不是 copyleft，GPL/LGPL 放行" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="420" y="418" width="340" height="72" as="geometry" />
+        </mxCell>
+
+        <!-- ============ Phase 1.5 决策 ============ -->
+        <mxCell id="decLane" value="Phase 1.5 的六个决策（2026-08-21 全部裁决）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#D6B656;dashed=1;verticalAlign=top;align=left;spacingLeft=8;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="800" y="228" width="760" height="300" as="geometry" />
+        </mxCell>
+
+        <mxCell id="d15" value="D-015  抽取器 src/extractor/ 与语义层平级&#10;单向依赖由测试强制 → 守住 U-03 不被提前拍板" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="820" y="262" width="360" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="d16" value="D-016  映射表按命名空间拆五份&#10;标签 = 有序片段序列，逐字匹配&#10;+ column_header：列由表头文字绑定，不得靠序号" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1195" y="262" width="345" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="d17" value="D-017  formula 自建封闭算术解析器&#10;不引 simpleeval（建在 ast 上，撞 is. 前缀冲突）&#10;eval() 硬性排除" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="820" y="330" width="360" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="d18" value="D-018  勾稽校验批次级闸门&#10;fail-closed 放计算层读入边界，封闭理由码" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1195" y="330" width="345" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="d19" value="D-019  page + anchor_page 两个整数&#10;区间不需要：数字不可能跨页，跨页的是表标题锚点" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="820" y="398" width="360" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="d2021" value="D-020  scope_change 改挂 notes.consolidation_scope_change&#10;D-021  NFR-02 加静态托管豁免；NFR-04 改写" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1195" y="398" width="345" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="d4fact" value="D4 不是裁决，是实测：notes.business_combination_type 能抽出&#10;（p120–121 披露模板固定六项，每项自带 √适用/□不适用）&#10;但茅台六项 1–4 全「不适用」⇒ 无正样本，须补一家真发生企业合并的公司年" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="820" y="466" width="720" height="52" as="geometry" />
+        </mxCell>
+
+        <!-- ============ 缺口 ============ -->
+        <mxCell id="gapLane" value="缺口与阻塞（红 = 会让结论站不住）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#B85450;dashed=1;verticalAlign=top;align=left;spacingLeft=8;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="546" width="740" height="286" as="geometry" />
+        </mxCell>
+
+        <mxCell id="g1" value="A-9  勾稽闸门抓不到「整列取错」&#10;资产总计 = 负债 + 权益 在期末列与期初列上都成立&#10;⇒ 三个数全取期初列，闸门照样放行&#10;已裁决：D-016 加 column_header（待 Phase 1.5 实现）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="580" width="700" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="g2" value="SC-2 的 ≥24/30 建在半个样本上：实测覆盖仅 16/30&#10;is 8 / cfs 2 / notes 3 / kpi 1 共 14 个字段零实测，而 ≥24 只允许失手 6 个&#10;⇒ Phase 1.5 第一个 wave 应是把这 14 个探一遍，不是直接写抽取器" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="664" width="700" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="g3" value="A-10  探测语料已不在磁盘（茅台 PDF、探测脚本、harness clone 的 docs/ 与 .git 索引）&#10;⇒ ROADMAP 的「已验证技术起点」本地无物证可即刻复跑&#10;判据：下载链路做成仓库内脚本 + 外部参考仓库钉死 commit&#10;N-20  无人只读 YAML 验证过定义对人可读（执行者代答无效，Phase 2 前必补）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="740" width="700" height="76" as="geometry" />
+        </mxCell>
+
+        <!-- ============ 外部沉淀 ============ -->
+        <mxCell id="extLane" value="外部项目的阅读 → 沉淀到本项目的情况" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#6C8EBF;dashed=1;verticalAlign=top;align=left;spacingLeft=8;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="800" y="546" width="760" height="286" as="geometry" />
+        </mxCell>
+
+        <mxCell id="x1" value="cninfo（1451 行，已读完）&#10;→ 落地：D-013 数值以年报 PDF 为准 · SC-7 阻断式勾稽 · SC-8 看取到的值&#10;· CONTEXT §3.2 三个失效模式（标题在上页/页内切分/标签折行）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="820" y="580" width="720" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="x2" value="deepseek-harness（约 10 700 行；笔记 91/674 全文，docs 23/110）&#10;→ 已落地：D-018 fail-closed 在读入边界 · F-8 门禁必须 &amp;&amp; 串联 · check_xrefs 门禁&#10;→ 未落地：闸门放进调用签名（resolve_scope() -&gt; ScopeSpec | Refusal）仍只在台账，ARCHITECTURE.md 零命中" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="820" y="652" width="720" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="x3" value="hello-agents（书稿 54%，但骨架章 ch7 14% / ch6 0%；框架源码 11 368 行刚开读）&#10;→ 本轮补上：EVAL_CASES §3.3 四条判分者硬规则（J-1 不得同源 / J-2 解析失败单独计类 /&#10;J-3 顺序互换复跑 / J-4 一致性必须有数字）—— 此前评测协议里这些词全部零命中&#10;→ 待补：ch7 全章、ch6 全章、框架源码精读（三个 agent 均因限额中断）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="820" y="728" width="720" height="76" as="geometry" />
+        </mxCell>
+
+        <!-- ============ 底注 ============ -->
+        <mxCell id="note" value="红线：eval/frozen-01/ 与 docs/agent/poc-01/ 一个字节都不许动（D-012）　｜　仅公开数据（D-010，不可协商）　｜　仓库 PRIVATE 至 Phase 4（D-005）&#10;POC-01 的 PASS 是「未被证伪」不是「已被证实」——两位回答者同源模型、错误相关。这正是本轮 J-1 规则的由来。" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontStyle=2;fillColor=#F5F5F5;strokeColor=#B3B3B3;" vertex="1" parent="1">
+          <mxGeometry x="40" y="848" width="1520" height="44" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
