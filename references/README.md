@@ -23,6 +23,7 @@
 | `cninfo.md` | `kevin1000x/cninfo-financial-analyzer` + `cninfo-analyzer-web` | 下载链路与 PDF 抽取**实跑验证过**；`api/main.py` SSE 端点读原文；pipeline / metrics / financial_data_sources 读关键路径；web README 与部署链路读完。未读 `text_analyzer.py`、测试、`docs/superpowers/` |
 | `hello-agents.md` | `datawhalechina/hello-agents` | **Ch12 评测（2743 行）读原文**；Ch7 只读过工具摘要（标注为二手）。Ch1-6 / 8-11 / 13-16 未读 |
 | `deepseek-harness.md` | `deepseek-ai/deepseek-harness` | `architecture.md`(129) + `subsystems/tools.md`(720) + `subsystems/session.md`(849) + `tool-execution-pipeline.md`(62) **均读原文**。Cordis primer、`agent-lifecycle.md`、源码未读 |
+| `deepseek-harness-docs-part2.md` | 同上，`docs/` 续读第 2 轮（commit `47f9438`） | **全文读完 10 份**：`subsystems/tools.md`(720)、`tool-execution-pipeline.md`(62)、`event-producer-consumer.md`(76)、`testing.md`(49)、`development.md`(171)、`subsystems/invariants.md`(88)、`subsystems/README.md`(55)、`defensive-patterns.md`(33)、`postmortem/README.md`(18)、`postmortem/0001`(113)。**部分读 3 份**：`subsystems/approval.md`(170 读约 90)、`subsystems/subagent.md`(734 读约 55)、`cookbook/extension-cookbook.md`(读 2 行)。`subsystems/` 其余 **41 页仅标题**；`capability-seams.md` / `config-catalog.md` / `module-graph.md` / `tool-catalog.md` / `cordis-*` 等 **17 项未读**。逐份覆盖表见该文件开头 |
 
 ## 为什么建这个文件夹
 
