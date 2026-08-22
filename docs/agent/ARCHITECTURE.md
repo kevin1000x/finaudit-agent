@@ -200,6 +200,38 @@ harness 拒绝时只填 `error: { message }` 而无 `info`，落盘处 `...error
 与 D-003「证据链是第一类产物、必须可机械复核」直接冲突。
 **本项目的拒绝事件必须携带结构化理由码字段，且该字段不得因取值为空而从事件中消失。**
 
+**补充（2026-08-22）——本节此前只管「拒绝」，不管「降级成功」，那是个洞。**
+hello-agents 的 LangGraph 案例把**降级路径与正常路径写进同一个终态**
+（两处都写 `step="completed"`，`references/hello-agents-ch06-frameworks.md` §5）
+⇒ 事后无法区分「正常算出来的」与「兜底兜出来的」。
+**这与「拒绝要留痕」是同一个要求的另一半：降级成功而不留痕，同样是证据链上的洞。**
+本项目的终态因此必须至少三分：
+`completed` ｜ `completed_degraded{cause: 封闭枚举}` ｜ `refused{code: 封闭枚举}`。
+`completed_degraded` 的 `cause` 与 `refused` 的 `code` 取自**同一套封闭词表的不同分区**，
+不得是自由文本。
+
+### 8.5 证据指针必须被下游**强制消费**（2026-08-22 新增）
+
+这是 §8.1「闸门放进调用签名」在**证据侧**的镜像，此前只有闸门那半边。
+
+**实证**（`references/hello-agents-framework-tools.md` §9）：hello-agents 的
+`truncator.py` 把工具输出全文写盘并返回 `{preview, full_output_path, stats}`
+——**形状完全正确，只有 30 行**。但 `full_output_path` 在**唯二的两个调用点**
+（`react_agent.py:847` / `:1224`）被丢弃，只取了 `preview`；
+`grep -rnE 'tool_output_dir|tool-output'` 全包 **3 命中，全是写侧配置，零处读回**。
+⇒ **全文确实写在磁盘上，但没有任何人知道它在哪。**
+
+**结论不是「要存全文」，是**：存证机制做对了没用，**指针如果只是「可选返回值」，它一定会在接线时被丢掉**。
+落到本项目：抽取记录与计算结果之间的引用（`field_id` + `page` + `anchor_page`）
+必须出现在**函数签名的返回类型里且不可为空**，
+不能做成「顺带塞进 metadata 的一个可选键」——那等价于没有。
+
+**同源的第二个实证**：`core/agent.py:647-700` 的同步工具路径**从不调截断器**
+（`grep -c "self.truncator.truncate"` = 2，都在 ReAct 的异步分支），
+而 `truncator.py:4` 的文档写着「统一截断工具输出」——实际覆盖 2/6 调用点、1/4 Agent。
+⇒ **凡是要求「每次都做」的事，不能放在调用点。**
+
+
 ### 8.4 证据日志的 fail-closed 放在**读入边界**
 
 不放在写入侧。理由与 D-018 同源：放写入侧，任何绕过写入侧的路径都会静默逃逸；

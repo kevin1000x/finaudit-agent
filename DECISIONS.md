@@ -350,6 +350,12 @@ case id 无重复、引用的夹具存在。
   1. 存在 `src/extractor/` 包；**待 Phase 1.5**
   2. 存在一条测试，断言 `src/semantic_layer/**` 的源码中不出现对 `extractor` 的 import
      （反方向不断言）；**待 Phase 1.5**
+     ⚠️ **该测试必须走 AST，不得用行首正则**（2026-08-22 补充）。
+     实证：hello-agents 框架的依赖环**全部藏在函数内 import 与 `TYPE_CHECKING` 块里**
+     （`core/agent.py:49-50,65,70`），行首 `^from|^import` 扫不到
+     （`references/hello-agents-framework-core.md` §1）。
+     用 grep 实现这条判据，等于本决策自带一个洞。
+     检查对象是 `ast.Import` / `ast.ImportFrom` 的**全部出现位置**，含函数体内与条件块内。
 - 反转触发条件：Phase 2 的 `ARCHITECTURE.md` 定下内核/壳边界后，
   若该边界要求抽取器独立分发，则按那份文档重新安排位置——**届时本条自动让位，不需要重开讨论**。
 
