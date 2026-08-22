@@ -1,0 +1,79 @@
+# 本文件是 PROJECT_SPEC.md §11「完成必须有证据」的机器化载体。
+# 决策依据 D-021（2026-08-22 修订：开发期 CI 不视为 NFR-02 的部署基础设施）。
+# 改动本文件等同于改动门禁定义，须同步 rules/commands.md。
+
+name: gates
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# 只读权限：本工作流不写仓库、不发布任何东西。
+permissions:
+  contents: read
+
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------
+  # 四道门 + 冻结校验。任一红即整个 job 红。
+  # 按 F-8：验证与后续动作一律 && 串联，不用 ; 也不用分步骤吞掉退出码。
+  # ---------------------------------------------------------------
+  gates:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 是 pyproject.toml 声明的下限，跑它才能证明那条声明是真的。
+        # 3.13 是当前主流版本，两端都跑才看得出版本漂移。
+        python-version: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+
+      - name: 四道门（&& 串联，任一红即停）
+        run: |
+          python -m pytest -q \
+            && python -m semantic_layer scan \
+            && python -m semantic_layer validate \
+            && python scripts/check_xrefs.py \
+            && echo "四道门全 exit 0"
+
+      # 冻结校验放在 Linux runner 上跑，顺带验证 D-012 的物理保障：
+      # .gitattributes 强制 LF 入库，SHA-256 必须跨平台稳定。
+      # 这一条在本地（Windows）跑不出来——CRLF 一旦混进去，只有这里会红。
+      - name: 冻结校验（D-012，同时验证跨平台哈希稳定）
+        run: |
+          cd eval/frozen-01 && sha256sum -c SHA256SUMS \
+            && cd ../../docs/agent/poc-01 && sha256sum -c SHA256SUMS
+
+  # ---------------------------------------------------------------
+  # 供应链与许可证门禁（D-014）。单独成 job：它要访问 PyPI，
+  # 网络抖动不应该让上面那组门禁变红——失败归因要清楚。
+  # ---------------------------------------------------------------
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+
+      - name: 许可证禁列（AGPL 拒绝，含传递依赖）
+        run: python scripts/verify_deps.py

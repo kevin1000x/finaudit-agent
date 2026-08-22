@@ -18,3 +18,15 @@ python -m eval.run --suite frozen-01 --report reports/
 ```
 
 （评测命令在 Phase 1 实现前不存在，不要假装跑过。）
+
+---
+
+## CI（2026-08-22 新增，D-021 第二条豁免）
+
+`.github/workflows/gates.yml` 在 push / PR 时跑**同一组门禁**，不新增检查项。
+本地与 CI 是同一份命令的两个执行位置——**本地绿不等于 CI 绿**：
+Linux 与 Windows 在换行符、路径大小写、locale 上都可能分叉，
+而冻结产物的 SHA-256 跨平台稳定（D-012 的物理保障）**只有在 Linux runner 上才验得出来**。
+
+改 `gates.yml` 等同于改门禁定义，**必须同步本文件**，反之亦然。
+CI 只允许跑验证：不得构建产物、发布、部署，工作流已声明 `permissions: contents: read`。
