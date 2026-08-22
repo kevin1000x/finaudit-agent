@@ -48,11 +48,11 @@
 | `hello_agents/tools/builtin/skill_tool.py` | 173 | **全文（逐行）** —— §5.3 |
 | `hello_agents/tools/builtin/task_tool.py` | 186 | **全文（逐行）** —— §5.2 |
 | `hello_agents/tools/builtin/todowrite_tool.py` | 387 | **全文（逐行）** —— §8.1–§8.3 |
-| `hello_agents/context/__init__.py` | 26 | **待读**（本轮任务，正文尚未写入） |
-| `hello_agents/context/builder.py` | 307 | **待读**（本轮任务，正文尚未写入） |
-| `hello_agents/context/history.py` | 168 | **待读**（本轮任务，正文尚未写入） |
-| `hello_agents/context/token_counter.py` | 162 | **待读**（本轮任务，正文尚未写入） |
-| `hello_agents/context/truncator.py` | 183 | **待读**（本轮任务，正文尚未写入） |
+| `hello_agents/context/__init__.py` | 26 | **全文** —— §9.2（导出面 + 3 个不存在的类）|
+| `hello_agents/context/builder.py` | 307 | **全文（逐行）** —— §9.9（GSSC 全流程 + 中文恒 0 实测）|
+| `hello_agents/context/history.py` | 168 | **全文（逐行）** —— §9.6–§9.7（不可逆压缩、`role="summary"`）|
+| `hello_agents/context/token_counter.py` | 162 | **全文（逐行）** —— §9.8（不可达降级 + 中文低估）|
+| `hello_agents/context/truncator.py` | 183 | **全文（逐行）** —— §9.3–§9.5（可逆机制 + `max_bytes` 装饰性）|
 | `hello_agents/skills/__init__.py` | 27 | **全文**（§6 导出面） |
 | `hello_agents/skills/loader.py` | 225 | **全文（逐行）** —— §6 |
 | `tests/test_observability.py` | 199 | **全文** |
@@ -1728,3 +1728,684 @@ model_dump -> {'name':'action','type':'string','description':'d','required':True
 
 > 本项目的对应约束：证据存储必须 **append-only + 内容寻址**，
 > 删除只能是「写一条 tombstone」，不能是「把数组置空」。
+
+---
+
+# 九、`context/`（846 行）—— 上下文如何裁剪，裁掉的还能不能找回
+
+> 本节带着本项目最关心的一个问题读：**上下文裁剪是否可逆？**
+> 因为 finaudit-agent 有一条硬约束——「证据全文不能进上下文，但必须可独立复核」（D-003）。
+> 一个框架如果把裁掉的原文丢了，它就不能作为这条约束的骨架参考；
+> 如果它保住了原文，那就要看**保到哪一层、指针有没有传下去**。
+
+## 9.1 结论先行
+
+框架里有**两条完全独立、可逆性相反**的裁剪路径，作者似乎没有意识到它们是同一类问题：
+
+| 路径 | 位置 | 裁什么 | 原文去哪了 | 可逆？ |
+|---|---|---|---|---|
+| **A. 工具输出截断** | `context/truncator.py` | 单次工具返回的长文本 | **写入磁盘 JSON**（`truncator.py:116`、`:152-182`） | **组件层可逆** |
+| **B. 对话历史压缩** | `context/history.py` | 旧的历史消息 | **直接丢弃**（`history.py:144` 整体重新赋值） | **不可逆，原文销毁** |
+| （C. GSSC 流水线） | `context/builder.py` | 一切 | 直接丢弃（`builder.py:192`、`:207-208`、`:289-296`） | 不可逆，且**整条流水线是死代码**（§9.9） |
+
+**但路径 A 的可逆性在集成层被切断了。** 截断器返回的 `full_output_path`
+在**唯一两个调用点上被丢弃**（`react_agent.py:847`、`react_agent.py:1224`
+均只取 `truncate_result.get('preview', ...)`）。
+全仓 `grep -rn "tool_output_dir|tool-output" --include=*.py hello_agents/` → **3 命中，全部是写侧配置**
+（`truncator.py:54` 默认值、`core/agent.py:61` 传参、`core/config.py:38` 配置项），
+**零处读回**。也就是说：**框架把完整输出写到了磁盘上，然后没有任何人知道它在哪。**
+
+一句话结论：**这是反面案例，但不是「没想到要存」那种反面案例，而是更值得记的一种——
+存了，机制也对，可是指针没有传下去，于是等价于没存。**
+对本项目的意义见 §9.11 与文末「骨架启示」。
+
+## 9.2 模块结构与实际接线
+
+```
+context/__init__.py       26   导出 6 个名字（:18-25）
+context/builder.py       307   ContextBuilder / ContextConfig / ContextPacket —— GSSC
+context/history.py       168   HistoryManager
+context/truncator.py     183   ObservationTruncator
+context/token_counter.py 162   TokenCounter
+```
+
+`__init__.py:1-11` 的模块 docstring 列了 **7 个组件**，实际只实现了 4 个：
+`Compactor`、`NotesManager`、`ContextObserver` 三个在 docstring 里（`:8`、`:9`、`:10`）但仓库里不存在。
+核验：`grep -rn "class Compactor|class NotesManager|class ContextObserver" --include=*.py .` → **0 命中**。
+（与 §1.11「文档与代码已经漂移」同类。）
+
+实际接线（`grep -rn "ContextBuilder|HistoryManager|ObservationTruncator|TokenCounter" --include=*.py .`）：
+
+| 类 | 被谁用 | 是否进主链路 |
+|---|---|---|
+| `HistoryManager` | `core/agent.py:49`、`:52`（构造）+ 12 处调用 | **是** |
+| `ObservationTruncator` | `core/agent.py:50`、`:57`（构造）；`react_agent.py:843`、`:1220`（调用） | **部分**，见 §9.4 |
+| `TokenCounter` | `core/agent.py:65`、`:66`、`:308`、`:326`、`:363` | **是** |
+| `ContextBuilder` / `ContextConfig` / `ContextPacket` | **只在 `context/` 包内部出现（6 处，含 docstring 与 `__all__`）** | **否 —— 包外零消费者**（§9.9） |
+
+## 9.3 路径 A：`ObservationTruncator` —— 组件层的设计是对的
+
+`truncate()`（`:72-130`）的返回形状值得记，因为它正好是本项目要的形状：
+
+```python
+# truncator.py:118-130
+return {
+    "truncated": True,
+    "preview": preview,              # 进上下文的
+    "full_output_path": output_path, # 不进上下文、但可复核的
+    "stats": {...}                   # 裁了多少
+}
+```
+
+`_save_full_output`（`:152-182`）把原文完整写成 JSON：
+`{"tool", "output", "timestamp", "metadata"}`（`:172-177`），
+文件名 `tool_{%Y%m%d_%H%M%S_%f}_{tool_name}.json`（`:168-169`）。
+带微秒，**不会像 `DevLogTool`（§8.4(1)）和 `TodoWrite`（§8.3）那样同秒互相覆盖**——
+这是本仓库全部持久化写法里唯一一处把时间戳精度做对的地方。
+
+写文件处 `:179-180` **没有 try/except**，失败会向上抛。就组件本身而言这是 fail-loud，正确。
+（但抛到调用点会被吞，见 §9.4(3)。）
+
+**它与「证据链」还差什么**（对照 D-003）：
+
+| 缺口 | 依据 |
+|---|---|
+| 无内容哈希 | `grep -n "hash|sha|digest" hello_agents/context/truncator.py` → **0 命中**。文件写完就是一份普通拷贝，改了看不出来 |
+| 无调用关联 | `data` 里只有工具名和时间（`:172-177`）。没有 `tool_call_id` / `step` / `session_id`，**无法把这份原文与产生它的那次调用对上** |
+| 时间戳有两个且不一致 | `:168` 生成文件名的 `datetime.now()` 与 `:175` 写进内容的 `datetime.now()` 是**两次独立调用**，可以差若干毫秒；均无时区 |
+| 目录只写不读 | 见 §9.1 的 grep |
+
+## 9.4 路径 A 的断点：可逆性在集成层被丢掉（本节最重要）
+
+`grep -c "self.truncator.truncate" hello_agents/agents/react_agent.py` → **2**，
+且这 2 处是**全仓仅有的两处**截断调用。两处写法逐字相同：
+
+```python
+# react_agent.py:843-847（异步工具路径） 与 :1220-1224（异步流式路径）
+truncate_result = self.truncator.truncate(
+    tool_name=tool_name,
+    output=result_content
+)
+result_content = truncate_result.get('preview', result_content)
+```
+
+四个问题，逐条：
+
+**(1) `full_output_path` 被丢弃。** 返回字典里唯一能让原文重新被找到的字段，
+在 `:847` / `:1224` 这一行之后就永久离开了程序。
+下一行（`:852-861`）写 trace 时记的是 `"result": result_content`——**记的是预览，不是路径**。
+于是 trace 里留下一段被砍过的文本，磁盘上留下一份没人认领的原文，两者之间没有任何链接。
+
+**(2) `metadata` 没传。** `truncate()` 的第三参数（`truncator.py:76`）留了元数据口子，
+两个调用点都没用。而**同一作用域里 `tool_call_id` 是有的**（`:857` 就在用它写 trace），
+只要多传一个 `metadata={"tool_call_id": tool_call_id}` 就能建立关联——**没传**。
+这不是能力不足，是接线时漏了。
+
+**(3) 截断失败会被记成「工具执行失败」。** `:838-849` / `:1215-1226`：
+
+```python
+try:
+    tool_response = await tool.arun_with_timing(arguments)
+    result_content = tool_response.text
+    truncate_result = self.truncator.truncate(...)   # 磁盘满 / 目录只读 → 抛在这
+    result_content = truncate_result.get('preview', result_content)
+except Exception as e:
+    result_content = f"❌ 工具执行失败: {str(e)}"     # ← 归因到工具头上
+```
+
+工具跑成功了、结果也拿到了，仅仅是**存证失败**，模型收到的却是「工具执行失败」。
+`truncator.py:179` 那个正确的 fail-loud，到这里变成了**错误归因的静默降级**。
+这是 §4.3 记的「静默降级四种形态」之外的第五种：**把 B 的失败报成 A 的失败。**
+
+**(4) 六个工具执行点里只有 2 个走截断。** `_execute_tool_call`（`core/agent.py:647-700`）
+是**同步**工具路径，全仓四个 Agent 都在用它——
+`simple_agent.py:225`、`reflection_agent.py:276`、`plan_solve_agent.py:246`、`react_agent.py:338`——
+而 `grep -n "truncat" hello_agents/core/agent.py` 在 `:647-700` 区间 **0 命中**。
+所以 `truncator.py:4` 那句「统一截断工具输出（避免每个工具自己实现）」，
+实际覆盖率是 **2/6 调用点、1/4 Agent、且只在该 Agent 的异步分支上**。
+其余四条路径把工具原始输出**未经任何长度限制**直接拼进上下文。
+
+## 9.5 截断器自身的两个真实缺陷（已实测复现）
+
+**(1) `max_bytes` 是装饰性的。** `:97` 的判断是「行数 ≤ max_lines **且** 字节 ≤ max_bytes」，
+但真正执行裁剪的 `_truncate_lines`（`:132-150`）**只按行裁，完全不看字节**。
+于是「行数不超、字节超标」的输入（一个长 JSON、一段无换行的 PDF 抽取文本）会：
+进入截断分支 → `lines[:2000]` 原样返回 → `preview == output`。
+
+实测（复刻 `:97` + `:141-142` 的逻辑，纯字符串运算）：
+```
+单行 60000 字节: len(lines)=1<=2000 但 bytes=60000>51200 -> 进入截断分支
+  head 截断后 preview 字节=60000, 原始字节=60000, 相等? True
+```
+结果是 `truncated: True` 而 `kept_bytes == original_bytes`（`:125` vs `:127`），
+**统计块自己就自相矛盾**，60KB 原样进了上下文。
+对本项目直接相关：**年报 PDF 抽出来的表格文本经常是超长少换行的**，正好命中这条。
+
+**(2) `head_tail` 会把内容放大。** `:145-147`：
+```python
+half = self.max_lines // 2
+return lines[:half] + ["...(中间省略)..."] + lines[-half:]
+```
+没有 `len(lines) > max_lines` 的前置检查。当因**字节**超标而进入截断、行数却远小于 `max_lines` 时，
+`lines[:1000]` 与 `lines[-1000:]` 是**同一批行**，结果被复制两遍。
+实测：`原始 10 行 -> 截断后 21 行, 放大 2.1x`。
+一个名为「截断」的函数，在这条路径上让上下文**变大一倍**。
+
+## 9.6 路径 B：`HistoryManager.compress()` —— 不可逆，且默认摘要不含任何内容
+
+这是本节要给本项目留的**反面案例**。两段代码一起看：
+
+```python
+# context/history.py:136-144
+summary_msg = Message(
+    content=f"## Archived Session Summary\n{summary}",
+    role="summary",
+    metadata={"compressed_at": datetime.now().isoformat()}
+)
+self._history = [summary_msg] + self._history[keep_from_index:]
+```
+
+`:144` 是一次整体重新赋值。`self._history[:keep_from_index]` 那批原文
+**没有被写到任何地方**——没有归档文件、没有路径指针、没有条数以外的任何痕迹。
+`metadata`（`:140`）只记了「什么时候压的」，**没记「压掉了什么」「压掉了几条」「原文在哪」**。
+
+`grep -n "path|save|dump|archive|open(" hello_agents/context/history.py` → **0 命中**。
+同一个包里 `truncator.py` 明明写了落盘（`:179`），`history.py` 一行都没有。
+**同一模块内两条裁剪路径，一条存原文一条不存，且没有任何注释解释这个差异。**
+
+**更严重的是默认摘要的内容。** 驱动方在 `core/agent.py:344-359`：
+
+```python
+# core/agent.py:352-359
+if self.config.enable_smart_compression:
+    summary = self._generate_smart_summary(history)
+else:
+    summary = self._generate_simple_summary(history)   # ← 默认走这条
+self.history_manager.compress(summary)
+```
+
+而 `_generate_simple_summary`（`core/agent.py:365-383`）返回的是：
+
+```
+此会话包含 {rounds} 轮对话：
+- 用户消息：{user_msgs} 条
+- 助手消息：{assistant_msgs} 条
+- 总消息数：{len(history)} 条
+（历史已压缩，保留最近 {min_retain_rounds} 轮完整对话）
+```
+
+**一个字的内容都没有，全是计数。**
+所以在默认配置下，「压缩」这个动作的净效果是：
+**把 N 条真实对话原地换成一句「这里曾经有 N 条对话」，原文销毁，不可恢复。**
+
+这比「摘要有损」严重一个量级——它不是压缩，是**带回执的删除**。
+
+> 与 §8.6 A4（`DevLogTool` 的 `clear` 不留痕）是同一个病：
+> 记录系统里「内容没有」与「内容被清掉了」不可区分。
+> 区别在于 `DevLogTool` 至少不假装自己压缩过；这里还留了一句「已压缩」当说明。
+
+**智能摘要路径也不可逆，只是有损得体面些。** `_generate_smart_summary`（`core/agent.py:385-455`）
+调 LLM 生成结构化摘要，但：
+- `_format_history_for_summary`（`:457-472`）在送进 LLM 前**每条消息先砍到 500 字符**（`:469`），
+  所以摘要是基于被砍过的输入生成的——**二次损失，且这一层的丢弃同样无记录**；
+- `:452-455` 摘要失败 → `print` 警告 → **回退到上面那个纯计数摘要**。
+  即「智能压缩」失败时行为退化成「删除并留回执」，调用者只会在 stdout 看到一行 ⚠️。
+
+**docstring 与实现相反。** `history.py:19` 写「只追加，不编辑（缓存友好）」，
+`:61` 再写一次「追加消息（只追加，不编辑）」。
+但同一个类里 `compress()`（`:144`）整体重写列表、`clear()`（`:78`）清空列表。
+**声称的 append-only 性质被同一个类的另外两个方法证伪。**
+
+## 9.7 压缩产出的那条消息，三家 API 三种错法
+
+`compress()` 造出的是 `role="summary"`（`history.py:139`）。
+`MessageRole` 确实允许它（`core/message.py:7` 的 `Literal` 含 `"summary"`），
+但**没有任何一层把它映射回三家 API 认识的角色**。
+`grep -rn '"summary"' --include=*.py hello_agents/` → 12 命中，
+除 `message.py:7` 声明与 `history.py:139` 构造外，其余全是 `devlog_tool` / `todowrite_tool` 里
+同名但无关的字段，**零处角色映射**。
+
+历史送进 LLM 的地方（`simple_agent.py:284`、`:349`、`:401`，`reflection_agent.py:339`）
+一律是 `{"role": msg.role, "content": msg.content}` 原样透传。于是：
+
+| 提供商 | 代码位置 | `role="summary"` 的实际下场 |
+|---|---|---|
+| OpenAI 方言 | 适配器内**无任何角色处理** | 原样发出 → **API 400 非法 role** |
+| Anthropic | `llm_adapters.py:394-395` `else: converted_messages.append(msg)` | 原样发出 → **API 400** |
+| Gemini | `llm_adapters.py:649` `role = "model" if msg["role"] == "assistant" else "user"` | **静默改成 `user`** —— 摘要被当成「用户说的话」喂回模型 |
+
+前两家是压缩后**下一次调用就崩**；第三家**不崩，但把系统生成的摘要伪装成用户输入**——
+后者更危险，因为它把会话推进了「模型以为用户确认过这些事实」的状态。
+对本项目：**任何自动生成、又要回流进上下文的文本，必须携带不可伪装的来源标记；
+靠一个自定义 role 值来承载来源，会在跨供应商的映射层被抹掉。**
+
+## 9.8 `TokenCounter`：一个不可能触发的降级 + 对中文的系统性低估
+
+**(1) 声明了、但永远不会触发的降级。** docstring 两处（`:7`、`:22`）都写
+「降级方案（tiktoken 不可用时使用字符估算）」，
+而 `:10` 是**模块顶层无保护的 `import tiktoken`**。
+`grep -rn "import tiktoken" --include=*.py hello_agents/` → 2 命中（`token_counter.py:10`、`builder.py:15`），
+**均无 try/except**；`requirements.txt:10` 与 `pyproject.toml:23` 都硬声明 `tiktoken>=0.5.0`。
+所以「tiktoken 不可用」时 **`import hello_agents` 整个就失败了**，
+`:135-137` 那个字符估算分支根本到不了。
+
+> 这与 `core/` 篇 §4.1 记的「两个永远不会正确触发的 flag」是同一物种，
+> 也正是本项目 `rules/failure-modes.md` 第 2 条要防的东西。
+> 这里更微妙一点——降级分支本身写得没错，错的是**它的前置条件已被顶层 import 排除**。
+> 识别方法：写下降级分支后，问一句「让它触发的那个世界，程序还活着吗？」
+
+真正能走到 `:128` 的 `else` 只有一种情况：`tiktoken` 装了、但 `get_encoding("cl100k_base")`
+也抛异常（`:60-63`），即离线且无缓存 BPE 文件。**那才是这个降级的真实触发条件，而 docstring 没写。**
+
+**(2) 中文估算偏差。** `:134` 与 `:137` 的降级都是 `len(text) // 4`。
+这个「1 token ≈ 4 字符」的经验值来自英文；中文在 `cl100k_base` 下大致 **1 字符 ≈ 1～1.5 token**。
+一旦落到降级路径，中文文本的 token 数会被**低估约 4～6 倍**。
+而 `_should_compress()`（`core/agent.py:341-342`）正是拿这个数与阈值比——
+低估意味着**该压缩时不压缩**，直到真正发请求时被 API 拒。
+本项目的语料是中文年报，这条不是理论风险。
+
+**(3) 两个计数器，口径不同，同时在用。**
+- `TokenCounter.count_message`（`:82-106`）：`encoding_for_model(model)` + **每条 +4**（`:101`）+ 缓存
+- `builder.py:299-306` 的模块级 `count_tokens`：**恒用 `cl100k_base`**、不 +4、不缓存
+
+同一段文本经两者得到不同的数，而框架里两者都在用（`core/agent.py` 用前者，`builder.py` 用后者）。
+
+**(4) 缓存无上限、键里存了全文、无淘汰。** `:92` `cache_key = f"{message.role}:{message.content}"`，
+`:104` 无条件写入。`grep -n "clear_cache" hello_agents/core/agent.py` → 仅 `:326`（`clear_history` 里）。
+长会话中缓存持有**每一条历史消息的完整正文**，即使 `HistoryManager.compress()`
+已经把它们从历史里删掉了。
+
+> 这里有个反讽值得记：**被「压缩」掉的原文，唯一残留的副本在 token 计数器的缓存键里。**
+> 它在内存里、没有读取 API、不可枚举（只能拿已知全文去命中），
+> 所以既当不了证据，又实实在在把「已删除」的文本留在了进程里。
+> **对合规是负债，对可复核是零资产**——两头不占。这是「半可逆」最糟的形态。
+
+**(5) `count_text` 与 `count_message` 不等价。** `:108-117` 的公开 `count_text` 不加那 +4、也不入缓存。
+`counter.count_text(msg.content) != counter.count_message(msg)`，差值恒为 4，无处说明。
+
+**(6) `get_cache_stats()["total_cached_tokens"]`（`:160`）把缓存里所有历史条目求和**，
+它既不是当前上下文的 token 数，也不是累计消耗，**不对应任何真实量**。
+（同 §1.9(3) `total_cost` 恒为 0 的「假指标」家族。）
+
+## 9.9 `ContextBuilder` / GSSC 流水线：整条是死代码，且对中文恒为空
+
+**先说接线**：`grep -rn "ContextBuilder" --include=*.py .` → **6 命中，全部在 `hello_agents/context/` 包内**
+（`builder.py:1` docstring、`:52` 类定义、`:59` 用法示例；`__init__.py:4` docstring、`:13` import、`:19` `__all__`）。
+**排除该包自身后，全仓外部命中 = 0**：不在 `core/`、不在 `agents/`、不在 `tests/`、不在 `examples/`。
+类 docstring `:55` 自己也写了「MemoryTool 和 RAGTool 已被移除，此类暂时不可用」——
+**但 `__init__.py:18-21` 仍把它连同 `ContextConfig`、`ContextPacket` 作为公开 API 导出**。
+
+即便如此，它的**结构**对本项目有参考价值（`_structure` 分了
+`[Role & Policies] / [Task] / [State] / [Evidence] / [Context] / [Output]` 六段，`:214-267`），
+所以仍逐行读了。读出来的问题如下。
+
+**(1) `[Evidence]` 段与其它段走同一条有损流水线，没有任何豁免。**
+`:241-249` 收的是 `type ∈ {related_memory, knowledge_base, retrieval, tool_result}` 的包。
+这些包要先过 `:192` 的 `min_relevance` 过滤、再过 `:206-210` 的预算填充、
+最后过 `:269-296` 的整体截断。**三道关卡，每一道都可能把证据整段丢掉，且三道都不留记录。**
+唯一被豁免的是 `type == "instructions"`（`:187`、`:200-203` 固定纳入）。
+对照本项目：**证据是唯一不能被相关性打分裁掉的东西，这里它恰恰是可以的。**
+
+**(2) 相关性打分对中文恒为 0 —— 全部中文证据都会被丢弃。**
+`:164-169`：
+```python
+query_tokens = set(user_query.lower().split())
+content_tokens = set(packet.content.lower().split())
+overlap = len(query_tokens & content_tokens)
+packet.relevance_score = overlap / len(query_tokens)
+```
+`str.split()` 按空白切分。中文不用空格分词，**整段中文会被切成 1 个 token**，
+与查询的交集除非两个字符串完全相同否则恒为 0。
+
+实测（复刻 `:164-169`，纯字符串运算，未 import 框架）：
+```
+中文: query_tokens=1 relevance=0.0000  >= min_relevance(0.3) ? False
+英文: query_tokens=7 relevance=0.7143  >= min_relevance(0.3) ? True
+```
+用的是「贵州茅台2023年的销售毛利率是多少」+ 一段含答案的中文年报摘录：**相关性 0.0**。
+在默认 `min_relevance=0.3`（`:41`）下，`:192` 会把**每一个中文包**过滤掉，
+`_select` 只剩系统指令。最终上下文里没有 `[Evidence]`、没有 `[Context]`，
+**而且不会报错、不会警告**——`_structure` 的 `if p2_packets:`（`:245`）为假就是不生成那一段。
+
+**这是本节对本项目最直接的一条警示**：不是「中文效果差一点」，是**恒为空且静默**。
+任何基于英文空格分词做相关性 / 去重 / 关键词命中的组件，进中文语料前必须先证伪这一条。
+
+**(3) `enable_mmr` / `mmr_lambda` 是完全没接线的开关。**
+`grep -rn "mmr" --include=*.py .` → **2 命中**，全部在 `builder.py:42-43` 的字段声明上。
+`_select` 里没有任何多样性计算。**声明了 MMR，实现里一行都没有。**
+（同 §1.9(4) 的 `html_include_raw_response`。）
+
+**(4) 新近性算了但不参与筛选。** `:174-184` 算出复合分 `0.7*相关性 + 0.3*新近性`，
+`:188` 用它排序；但 `:192` 的过滤用的是 `p.relevance_score`（**原始相关性**），不是复合分。
+所以新近性只影响顺序、从不影响去留。又，`_gather` 里现造的包（`:131`、`:147`）
+`timestamp` 默认 `datetime.now()`（`:25`），`recency_score` 对它们恒 ≈ 1.0，
+这一项对同批次内的包**是个常数**。
+
+**(5) 预算只管 packet，不管模板。** `:195-210` 按 `available_tokens` 填充，
+但 `_structure` 之后又加了段标题、`[Task]`（`:231`）和一段缩进的 `[Output]` 模板（`:259-264`），
+**这些都不在预算内**。于是结构化之后大概率超预算，触发 `_compress`。
+
+**(6) `_compress` 是无标记的行截断，且丢弃发生在尾部。**
+`:285-296` 从头逐行累加，超预算就 `break`，**丢掉的部分连一个「…」都不留**
+（`truncator.py:147` 至少还有个「...(中间省略)...」）。
+由于 `[Output]` 是最后一段（`:265`），**第一个被砍掉的就是输出格式约束**。
+即：一超预算，模型就悄悄不再被要求「列出支撑证据及来源」。
+`:282` 只 `print` 一行 ⚠️，不抛异常、不写 trace、不进返回值。
+
+**(7) `_compress` 每行都重建一次编码器。** `:290` 逐行调 `count_tokens`，
+而 `count_tokens`（`:302`）每次调用都执行 `tiktoken.get_encoding("cl100k_base")`。
+一份 5000 行的上下文 = **5000 次编码器构造**。
+与此同时 `__init__` 里 `self._encoding = tiktoken.get_encoding("cl100k_base")`（`:76`）
+**被赋值后全文再无引用**（`grep -n "_encoding" builder.py` → 只有 `:76` 与 `:302`，后者是局部变量）。
+
+**(8) `:206-210` 用 `continue` 而非 `break`。** 装不下的包跳过，继续尝试后面分数更低但更小的包。
+行为上未必错，但结果是**最终入选集合与分数序不一致**，而没有任何地方记录「谁因为装不下被跳过」。
+
+## 9.10 本节错误处理与静默降级清单（逐处，带行号）
+
+| # | 位置 | 形态 | 后果 |
+|---|---|---|---|
+| C1 | `truncator.py:97` vs `:141-150` | 判据看字节，执行只看行 | `max_bytes` 形同虚设，超大单行原样进上下文 |
+| C2 | `truncator.py:145-147` | 缺 `len(lines) > max_lines` 前置检查 | `head_tail` 把内容放大 2.1x（实测） |
+| C3 | `react_agent.py:847`、`:1224` | 丢弃 `full_output_path` | **原文写了盘，指针没了 = 等价于没存** |
+| C4 | `react_agent.py:848`、`:1225` | `except Exception` 把存证失败报成工具失败 | 错误归因；模型以为工具坏了 |
+| C5 | `core/agent.py:647-700` | 同步工具路径不接截断器 | 4/6 调用点无任何长度约束 |
+| C6 | `history.py:144` | 整体重新赋值，旧消息不落盘 | **原文销毁，不可逆** |
+| C7 | `core/agent.py:365-383` | 默认摘要只有计数、无内容 | 「压缩」= 带回执的删除 |
+| C8 | `core/agent.py:452-455` | 智能摘要失败 → `print` + 回退到 C7 | 失败路径静默退化为删除 |
+| C9 | `core/agent.py:469` | 摘要前每条砍到 500 字符 | 二次有损，无记录 |
+| C10 | `history.py:139` + `llm_adapters.py:649` | `role="summary"` 在 Gemini 路径被改成 `user` | 系统摘要伪装成用户发言 |
+| C11 | `llm_adapters.py:394-395`（Anthropic）/ OpenAI 无处理 | `role="summary"` 原样发出 | 压缩后下一次调用 API 400 |
+| C12 | `token_counter.py:10` + `:135-137` | 顶层硬 import + 声称的降级 | 降级分支**不可达**，docstring 与现实相反 |
+| C13 | `token_counter.py:58-66` | 三层 `except` 静默返回 `None` | 精确计数悄悄变成 `len//4` |
+| C14 | `token_counter.py:104` | 缓存无上限、键含全文、无淘汰 | 被「压缩掉」的原文残留在进程内存里 |
+| C15 | `builder.py:164-169` | 英文空格分词打分 | **中文相关性恒 0 → 证据全被静默丢弃**（实测） |
+| C16 | `builder.py:42-43` | `enable_mmr` 无实现 | 假开关 |
+| C17 | `builder.py:192` | 过滤用原始相关性，不用复合分 | 新近性从不影响去留 |
+| C18 | `builder.py:282-296` | 超预算 `print` + 无标记行截断 | `[Output]` 约束最先消失，无痕 |
+| C19 | `builder.py:302` | 逐行重建编码器 | O(n) 次 `get_encoding` |
+| C20 | `context/__init__.py:8-10` | docstring 列了 3 个不存在的类 | 文档漂移（grep 0 命中） |
+
+## 9.11 对照 D-003：这一节能给本项目什么
+
+把 §9 的两条路径摆在 D-003「证据链是第一类产物，不是日志」旁边：
+
+| D-003 的要求 | 路径 A（工具截断） | 路径 B（历史压缩） |
+|---|---|---|
+| 原文可独立复核 | **机制有**（`truncator.py:116`），**指针丢**（`react_agent.py:847`） | **无** |
+| 内容寻址 / 防篡改 | 无（grep `hash|sha` → 0 命中） | 无 |
+| 与执行关联（call_id / step） | **有口子没接线**（`truncator.py:76` 空着，`react_agent.py:857` 手边就有 id） | 无 |
+| 删除留痕 | 不适用（不删） | **无**（`history.py:144` 直接覆盖） |
+| 裁剪量可审计 | **有**（`stats`，`:122-129`），但在 C1 下自相矛盾 | 只有「N 条」这个数 |
+
+最值得带走的一句：**路径 A 证明「先落盘、再把指针放进上下文」这个形状可行且轻量（30 行代码）；
+路径 A 的断点证明「指针必须是被下游强制消费的，否则一定会在接线时丢掉」。**
+本项目对应的做法见文末「骨架启示」B-1 与 B-2。
+
+---
+
+# 十、对 finaudit-agent 的骨架启示
+
+> **本节遵守 `references/README.md` 第 3 条（2026-08-22 新增）：
+> 每条必须写明落地点。只有「未落地」是允许的第二种答案，「读过了」不是。**
+> 编号沿用现有权威文档；标「未落地」的条目一并写出**它应该落到哪里**。
+> 现有决策编号到 `D-021` 为止，因此下面提到的新增决策一律记作「下一可用编号 D-022 起」，
+> **不是已存在的编号**。
+>
+> 范围限定：本节只从本文档实读的 `tools/` `context/` `observability/` `skills/` 得出结论；
+> `core/` `agents/` 的启示见另一份文档同名章节。
+
+## 10.1 该借鉴的
+
+### A-1　「preview 进上下文 + 全文落盘 + stats 记裁剪量」这个三件套
+
+**依据**：`truncator.py:118-130`（§9.3）。三十行代码就做出了本项目最需要的形状——
+**上下文里放摘要，磁盘上放全文，返回值里放「裁了多少」**。
+本项目「证据全文不能进上下文但必须可复核」的问题，骨架就是这个。
+
+**落地点：未落地。**
+应落到 **`PROJECT_SPEC.md` §5（架构）证据链字段集**，作为 `AC-05`「字段齐全率 100%」
+所要求的固定字段之一：任何被截断的证据，其证据链条目必须同时含
+`preview` / `full_ref` / `truncation_stats` 三者，缺一即判 AC-05 不达标。
+注意与 **`SC-4`**（抽取产物带出处：SHA-256 + 巨潮 URL + 页码 + 单位币种）的关系——
+`SC-4` 记的是「一条被抽取的报表行」的出处，A-1 记的是「一次回答里被截断的证据」的出处，
+**粒度不同，不能互相替代**（这条边界 `01.5-RESEARCH.md:161` 已经划过，此处沿用）。
+
+### A-2　指针必须被下游强制消费，否则一定丢
+
+**依据**：§9.4(1)。框架**做对了存证**（`truncator.py:116`），却在唯一两个调用点
+（`react_agent.py:847`、`:1224`）只取 `preview`、扔掉 `full_output_path`，
+于是磁盘上躺着一份没人认领的原文，`tool-output/` 目录全仓**零处读回**。
+**这是本轮最值得带走的一条**：可复核性不是靠「有没有存」保证的，是靠
+**「不消费指针就编译不过 / 跑不通」** 保证的。
+
+**落地点：已落地（同型），但需扩展。**
+`ARCHITECTURE.md §8.1` 已经确立同一原理的另一半——
+「闸门放进**调用签名**，绕过闸门在类型上不可表达」。
+A-2 是这条原理在**证据侧**的镜像：**证据引用也要放进返回类型，让「丢掉引用」在类型上不可表达。**
+具体做法：截断后的返回值不得是 `str`，必须是一个携带 `full_ref` 的封闭结构，
+且下游把它转成上下文文本的函数**必须同时接收 evidence sink**。
+**需要新增一条决策把这半边写死**（下一可用编号 D-022 起），
+理由与 `ARCHITECTURE.md §8.1` 第 1、4 条同源：只要它是「链条上的一环」，就可被绕过、可被静默跳过。
+
+### A-3　三态返回协议：`SUCCESS / PARTIAL / ERROR`
+
+**依据**：`tools/response.py`（§2.4）。协议本身设计得好，是全仓少数值得直接抄的东西。
+但框架自己**定义了 `PARTIAL` 却几乎不用**——`file_tools.py` 把截断报成 `SUCCESS`（§7.2），
+`devlog_tool` 的长输出也不降级（§8.5）。
+
+**落地点：未落地。**
+应新增一条决策（D-022 起）写死：**「被截断」必须报 `PARTIAL`，不得报 `SUCCESS`。**
+这条与 `AC-05` 直接挂钩——如果截断被报成成功，证据链里就不会出现 `truncation_stats`，
+`AC-05` 的「字段齐全率 100%」会在一个假成功上判过。
+同时与 `ARCHITECTURE.md §8.2`（`Refusal` 必须是封闭枚举）配套：
+**三态是「结果的封闭枚举」，`Refusal` 是「拒绝理由的封闭枚举」，两者不能用自由文本代替。**
+
+### A-4　`run_with_timing` 把入参记进 context
+
+**依据**：`tools/base.py`（§2.6）。它给出了一个**不侵入工具实现**就能拿到
+「这次调用用了什么参数」的钩子位置——这正是证据链里「执行了什么」那一栏的来源。
+
+**落地点：未落地。**
+应落到 **`PROJECT_SPEC.md` FR-05**（「执行前静态校验，执行后哈希留痕」）的实现说明：
+留痕的**采集点**放在这个包装层，不放在每个工具内部。
+理由与 §9.4(4) 实测到的教训一致——框架把截断放在调用点，结果 6 个调用点只覆盖了 2 个；
+**凡是要求「每次都做」的事，就不能放在调用点。**
+
+### A-5　入参校验要在边界上真的跑，而不只是定义
+
+**依据**：§2.3 —— `tools/base.py` 写了参数校验函数，但**全仓一次都没被调用**；
+§8.1 —— `_validate_todos` 是全 `tools/` 树里唯一一处真正执行的入参校验。
+一个框架里「写了校验」与「校验会跑」是两件事。
+
+**落地点：已落地。**
+`D-018`（勾稽校验是批次级闸门；fail-closed 放在**计算层的读入边界**）就是这条的本项目版本，
+且 `D-018` 选的位置（读入边界而非写入侧）恰好避开了框架踩的坑。
+`ARCHITECTURE.md §8.4` 已复述该理由。**本节不新增约束，只补一条源码级旁证。**
+
+### A-6　扩展点的能力边界要写死在「能提供什么」上
+
+**依据**：§6.2 —— skill 只能提供**文字**，不能提供**代码**；`skill_tool.py` 是纯文本注入，
+不执行任何东西（§5.3）。这个边界画得干净：扩展者能改变模型看到什么，不能改变进程执行什么。
+
+**落地点：已落地。**
+`D-017`（`formula` 的数值执行层自建封闭算术解析器，`eval()` 硬性排除）是同一条原理：
+**外部提供的是待解释的数据，不是待执行的代码。**
+框架的 `calculator.py`（§5.1）也走了自建求值器而非 `eval` 的路线，**与 D-017 选择一致**——
+这是本轮唯一一处「框架的做法与本项目既有决策正面互证」的地方。
+（但框架的数值语义本身有问题，见 §5.1，那部分不借。）
+
+### A-7　时间戳精度决定持久化会不会互相覆盖
+
+**依据**：`truncator.py:168` 用 `%Y%m%d_%H%M%S_%f`（带微秒），是全仓唯一做对的；
+而 `DevLogTool`（§8.4(1)）与 `TodoWrite`（§8.3）用固定名或秒级名，**同秒内第二次写覆盖第一次**。
+一个证据文件被覆盖，和没写过没有区别。
+
+**落地点：未落地。**
+应落到 **`SC-4`** 的实现约束里：出处记录的落盘命名**必须内容寻址**（用内容 SHA-256 前缀），
+**不用时间戳**——比微秒更强，且天然幂等。
+`SC-4` 目前只要求「带出处」，没写「出处怎么存不会互相覆盖」，这是个真实缺口。
+
+### A-8　「同一秒 / 同一批」的边界要显式，别靠隐式假设
+
+**依据**：§8.3 两处「同一秒内互相覆盖」的持久化。
+框架的错不在于没想到并发，而在于**把「不会同时发生」当成了默认前提**。
+
+**落地点：已落地（同型）。**
+`D-018` 把勾稽校验定为**批次级**闸门，正是把「批」这个边界显式写出来的做法。
+本条不新增约束，作为 `D-018` 「为什么必须显式声明批次」的一条外部旁证记录。
+
+## 10.2 该刻意不借的（每条必须写理由）
+
+> `references/README.md` 第 4 条：**偏离通用做法而不写理由，下一个人会以为是疏漏然后「修好」它。**
+
+### B-1　不借：`HistoryManager.compress()` 式的「压缩」
+
+**框架怎么做**：`history.py:144` 一次整体重新赋值，被压缩的原文**不写任何地方**（§9.6）。
+
+**本项目不借的理由**：这不是压缩，是**带回执的删除**。
+`D-003` 要求「给不出证据链的回答判为失败，不判为降级成功」——
+而这种压缩会制造一种特别难发现的失败：**回答看起来有据可依，但依据已经不存在了**。
+`AC-06`（复核者仅凭证据链 5 分钟内独立判断对错）在这种状态下**结构上不可能通过**：
+复核者点进去，原文没了。
+
+**落地点：未落地。**
+应新增一条决策（D-022 起）：**上下文裁剪一律可逆——被移出上下文的内容必须先落盘并留下引用，
+「先删后摘要」在本项目内禁止。** 删除只能是写一条 tombstone，不能是覆盖数组
+（这句在本文档 §8.6 的末尾已经以「本项目的对应约束」写过，但**至今没有进任何权威文档**，
+本轮把它标为待落地，不再让它停留在 references 里）。
+
+### B-2　不借：默认摘要只放计数
+
+**框架怎么做**：`core/agent.py:365-383`，默认摘要是「本会话包含 N 轮对话 / 用户消息 X 条」，
+**零内容**（§9.6）。
+
+**本项目不借的理由**：它把「摘要」这个词用在了一个不含任何被摘要内容的字符串上。
+对本项目更危险的是它的**失败路径**——`core/agent.py:452-455` 智能摘要失败时
+`print` 一行 ⚠️ 然后**退回到这个纯计数摘要**。
+即：LLM 一超时，系统就从「有损保留」静默切换到「完全丢弃」，
+调用方看不出区别。这正是 `D-003` 反对的「降级成功」。
+
+**落地点：未落地。**
+应落到 **`EVAL_CASES.md §5 失败归因分层**：新增一类「证据不可达」失败，
+与 `UNPARSEABLE`（§5.0）同级——**不进四层归因，单独计数**。
+理由与 `J-2` 完全同构：`J-2` 说「解析失败不得并入任何实质结果」，
+这里是「证据丢失不得并入任何实质结果」。目前 `EVAL_CASES.md` 里没有这一类。
+
+### B-3　不借：用英文空格分词给中文内容打相关性分
+
+**框架怎么做**：`builder.py:164-169`，`set(text.lower().split())` 求交集。
+
+**本项目不借的理由**：**对中文恒为 0**（§9.9(2) 已实测：中文 relevance=0.0000，英文 0.7143），
+在默认 `min_relevance=0.3` 下会把**每一段中文证据静默丢弃**，
+且不报错、不警告——`_structure` 只是不生成 `[Evidence]` 那一段。
+本项目全部语料是中文年报，照抄等于建一个**永远交不出证据的证据系统**。
+
+**落地点：未落地。**
+应落到 **`EVAL_CASES.md §7 阶段门 → Phase 2 门（证据链）**：
+加一条准入检查——**任何用于证据召回/排序/去重的组件，
+必须先用一条中文问答样本证明其得分不恒为 0**，未证明不得进入评测。
+这是一个 5 行的检查，但它拦掉的是「整条链路对中文静默失效」这种一眼看不出来的失败。
+
+### B-4　不借：声明了却不接线的开关（假开关族）
+
+**框架怎么做**：三个实例——
+`enable_mmr` / `mmr_lambda` 全仓 2 命中且都是声明本身（§9.9(3)）；
+`html_include_raw_response` 完全没接线（§1.9(4)）；
+`enum=[...]` 被 pydantic 静默丢弃、声明了约束而约束不存在（§8.4(3)）。
+
+**本项目不借的理由**：假开关比没有开关更糟——它让读代码的人相信某个保护存在。
+这与本项目 `rules/failure-modes.md` 第 2 条（**只有真实字段能诚实触发时才声明 flag**）
+是同一条，只是框架给了三个现成的反面样本。
+
+**落地点：已落地。**
+`rules/failure-modes.md` 第 2 条已覆盖。本条作为**外部实例**补充进该规则的「识别方法」：
+`grep -c` 该开关名，**命中数 == 声明处数**即为假开关。
+这个判据可以机械执行，比「凭感觉审」可靠。
+
+### B-5　不借：写在 docstring 里、但前置条件已被排除的降级分支
+
+**框架怎么做**：`token_counter.py:7`/`:22` 声称「tiktoken 不可用时降级到字符估算」，
+而 `:10` 是顶层无保护 `import tiktoken`，`requirements.txt:10` 硬依赖——
+**tiktoken 不可用时整个包 import 就失败了**，那个降级分支不可达（§9.8(1)）。
+
+**本项目不借的理由**：这是 `rules/failure-modes.md` 第 2 条的一个**新变种**，
+值得单独记：**降级分支本身写得没错，错的是它的触发条件已被上游排除。**
+识别方法（本轮总结，建议补进规则）：写完降级分支后问一句——
+**「让它触发的那个世界里，程序还活着吗？」** 答不上来就是假降级。
+
+**落地点：未落地。**
+应作为第 8 类（或第 2 类的子形态）补进 **`rules/failure-modes.md`**，
+因为该文件的定位是「**已经真实犯过的错**」——本项目是否犯过这一类需要操作者确认；
+若未犯过，则应改放 **`rules/pitfalls.md`**（预防性高代价陷阱）。**这个归属需要操作者裁决。**
+
+### B-6　不借：把 `project_root` 当沙箱
+
+**框架怎么做**：`file_tools.py` 的 `project_root` **什么都不拦**（§7.1）。
+
+**本项目不借的理由**：`PROJECT_SPEC.md §8` 已明确「❌ 生产环境安全保证（静态校验不是沙箱）」，
+即本项目**不假装有沙箱**。框架的问题不是没有沙箱，是**有一个名字像沙箱的参数**。
+命名本身构成误导。
+
+**落地点：已落地。**
+`PROJECT_SPEC.md §8`（Non-goals）+ `AC-09`（执行前静态校验拒绝全部已知危险样本）
+共同覆盖：本项目的边界是「静态校验」，且**它的名字就叫静态校验，不叫沙箱**。
+本条不新增约束，作为命名纪律的旁证。
+
+### B-7　不借：`DevLogTool` 作为决策/审计记录的形状
+
+**框架怎么做**：固定文件名 + `except Exception: pass` + `clear` 不留痕（§8.4、§8.6 的 A1–A5）。
+
+**本项目不借的理由**：§8.6 已逐条列出，其中 **A4（`clear` 不留痕）单独就足以否决**——
+记录系统若无法区分「记录里没有」与「记录被清掉了」，它防不住审计要防的那件事。
+
+**落地点：未落地。**
+与 B-1 是同一条待落地决策的两个面（B-1 是历史压缩，B-7 是记录清空），
+应合并写进同一条新增决策（D-022 起）：**证据存储 append-only + 内容寻址；
+删除只能写 tombstone。** 目前 `D-003` 只规定了「证据链是第一类产物」和字段固定，
+**没有规定存储语义**——这是 `D-003` 的一个真实空白。
+
+### B-8　不借：两个口径不同的计数器同时在用
+
+**框架怎么做**：`TokenCounter.count_message`（`encoding_for_model` + 每条 +4 + 缓存）
+与 `builder.py:299` 的模块级 `count_tokens`（恒 `cl100k_base`、不 +4、不缓存）并存，
+同一段文本得到不同的数，而框架里两者都在用（§9.8(3)）。
+
+**本项目不借的理由**：本项目对「同一个量有两个口径」这件事已经有过一次代价——
+`D-016` 之所以要把「标签 = 有序片段序列」当一等构造，正是因为
+「留给每个调用点各自发明拼接规则」会产生互不一致的实现。
+计数器是同一类问题：**口径分叉不会报错，只会让两处数字对不上，而没人知道哪个对。**
+
+**落地点：已落地（同型原理）。**
+`D-016`（映射表 schema：片段序列 + `column_header`，逐字匹配、不允许模糊匹配）
+已经把「不允许各调用点自行发明口径」写死在映射侧。
+**但计数/预算侧没有对应约束**——若 Phase 2 引入上下文预算，
+需要在那时按 `D-016` 同样的原理补一条「全项目单一 token 口径」，**现在不预设编号**。
+
+### B-9　不借：`max_bytes` 式的「判据与执行不一致」
+
+**框架怎么做**：`truncator.py:97` 用字节做判据，`:141-150` 只按行执行，
+于是 `max_bytes` 形同虚设（§9.5(1)，已实测）。
+
+**本项目不借的理由**：这是**第二次**在同一个仓库里见到同型缺陷——
+§7.4(1) 记的 `MultiEditTool`「校验用原文、执行用滚动结果」是同一个病：
+**判据与执行读的不是同一个东西。**
+本项目最可能踩它的地方是勾稽校验：**用抽取时的值判、用计算时的值算**，
+两者之间隔着单位换算与符号规约。
+
+**落地点：已落地（但值得复核）。**
+`D-018` 把 fail-closed 放在**计算层的读入边界**，正是让「判据」与「执行」共用同一份输入。
+**建议动作**：在 `docs/agent/OPEN-ITEMS.md` 的 D 区加一条判据——
+「勾稽校验读入的数值，与 `formula` 求值读入的数值，是否为同一对象？」
+若两者之间存在任何转换步骤，`D-018` 的保证就有缺口。**这是本节唯一一条需要操作者确认的动作项。**
+
+## 10.3 一句话总结
+
+框架在**组件层**反复做对（三态协议、截断器形状、封闭求值器、微秒时间戳），
+在**接线层**反复做错（指针被丢、闸门只在签名里、校验从不被调用、6 个调用点只覆盖 2 个）。
+
+**对本项目的意义**：`D-003` 目前保证的是「证据链有哪些字段」，
+`ARCHITECTURE.md §8` 保证的是「闸门不能被绕过」，
+**中间缺一条「证据引用不能在传递过程中丢失」**——
+这恰好是本轮读出来的、框架栽得最彻底的地方（§9.4），
+也是 10.1-A2 / 10.2-B1 / B-7 共同指向的那条待新增决策。

@@ -45,7 +45,7 @@
 | `hello_agents/agents/plan_solve_agent.py` | 546 | **全文** |
 | `hello_agents/agents/react_agent.py` | 1241 | **全文** |
 | 根目录 `pyproject.toml` / `setup.py` / `requirements.txt` | 79/16/11 | **全文** |
-| `tests/`（覆盖 core+agents 的部分） | — | 待填 |
+| `tests/`（覆盖 core+agents 的部分） | 2105 / 4892 | **部分**：9 个相关文件中 7 个**全文（逐行）**，`test_llm_function_calling.py` 读结构 + 全部 44 条断言，`test_context_engineering.py` 只读 `:107-190` 与 `:290-424`；其余 10 个文件（2787 行，属 `tools/` 范围）**只做定点 grep，未通读** —— 详见 §7.8 |
 
 **合计目标 6243 行**（core 3296 + agents 2884 + 顶层 63）。
 
@@ -1018,3 +1018,611 @@ react_agent.py:1173         Thought → "已记录推理过程: {reasoning}"   F
 `SessionStore.save` 用 `session_name` 直接当文件名（`session_store.py:96-99`），
 **同名即覆盖**——同一个进程里第二次出错会覆盖第一次的错误现场。
 `121-122` 与 `132-133` 这两层嵌套的 `except` 让"保存失败"也只 print 不抛。
+
+---
+
+## 7. `tests/` —— 覆盖 `core/` + `agents/` 的部分
+
+> 本节回答一个问题：**§4 逐处记下来的那些静默降级，测试抓得住吗？**
+> 结论用 grep 命中数说话，不用印象。
+> 本节读的是 19 个测试文件中与 `core/` + `agents/` 相关的 9 个（共 2105 行）；
+> 纯 `tools/` 的 10 个文件由另一份文档负责，本节只在需要对照时引用。
+
+### 7.1 结论先行
+
+三条：
+
+1. **绝大多数是形状测试，不是行为测试。** 覆盖 core+agents 的 9 个文件共 **224 条 assert**，
+   其中 `is not None` 10 条、`"x" in 容器` 存在性 41 条、`hasattr`/`isinstance` 6 条、
+   `> 0` / `>= 0` 非负 10 条。它们断言的是「字段在不在」「值是不是非空」，**不是「值对不对」**。
+2. **§4 的静默降级路径基本没有测试。** 见 §7.4 的逐条 grep 表：
+   `_emit_event` / `_execute_tool_call` / `arun_stream` / `_apply_tool_filter` /
+   `_get_agent_config` / `_convert_parameter_types` / `_emit_event` / `arun_stream` 等
+   **20 个关键符号在 `tests/` 里 0 命中**（该表 24 行中 19 行为 0）。
+3. **更糟的是：有三处测试把缺陷写成了规格。** 它们不是「漏测」，是**测了，并断言缺陷行为是正确的**——
+   一旦有人修好那个缺陷，测试会红。见 §7.5。这是本节最重要的发现。
+
+**一句话**：这套测试保护的是「接口还在」，不保护「行为还对」。
+对本项目的意义见 §8（骨架启示）。
+
+### 7.2 套件的物理事实（先把不可推断的东西钉住）
+
+| 事实 | 依据 |
+|---|---|
+| **没有 CI。** | `ls -d .github` → `No such file or directory`；`find . -name "*.yml" -o -name "*.yaml"` → **0 命中**。整个仓库没有任何 CI/工作流配置 |
+| **`pytest` 从未被声明为依赖。** | `grep -rn "pytest" requirements.txt setup.py pyproject.toml` → **1 命中**，且是 `pyproject.toml:68` 的 `[tool.pytest.ini_options]`。`dependencies`（`pyproject.toml:15-25`，8 项）与 `[project.optional-dependencies]`（`:27-29`，只有 `gemini` / `anthropic`）里都没有 pytest。**配了一个从不声明需要的工具** |
+| **`pytest-asyncio` 同样未声明**，而 `test_async_lifecycle.py:117/132/160` 用了 `@pytest.mark.asyncio` | 同上 grep |
+| **没有 `conftest.py`** | `ls tests/conftest.py` → `No such file`。因此没有共享 fixture、没有统一的假 LLM |
+| **9 个测试文件依赖真实环境变量** | `grep -rln "load_dotenv\|os.getenv\|environ" tests/` → 9 个文件 |
+| **19 个文件里只有 2 个用 mock** | `grep -rl "unittest.mock\|MagicMock\|monkeypatch\|patch(" tests/` → `test_context_engineering.py`、`test_llm_function_calling.py` |
+| **全 `tests/` 只有 3 处 `pytest.raises`** | `grep -rn "pytest.raises" tests/` → `test_llm_function_calling.py:123`、`test_session_persistence.py:257`、`test_tool_filter.py:159`（共 4892 行测试代码） |
+
+最后一条单独强调：**4892 行测试、655 条 assert，只有 3 处断言「应该抛异常」。**
+而 §4.2 数出来的吞异常点是 **35 处**。这个比例本身就是答案。
+
+`test_all_agents.py:22-26` 的第一个测试是 `assert api_key is not None, "请配置 LLM_API_KEY 环境变量"`——
+**没有 key 时整个套件第一个测试就红**。加上没有 CI，实际意味着：
+这套测试**只在作者本机、配好 key 时手动跑**，且没有任何机制保证它跑过。
+
+### 7.3 两种测试文化，泾渭分明
+
+9 个文件明显分成两组，写法差别大到不像同一个人写的：
+
+| | 回归型三件 | 演示型六件 |
+|---|---|---|
+| 文件 | `test_llm_streaming.py`(125)、`test_llm_function_calling.py`(329)、`test_pydantic_v2_serialization.py`(50) | `test_all_agents.py`(265)、`test_session_persistence.py`(338)、`test_smart_summary.py`(148)、`test_subagent_mechanism.py`(257)、`test_context_engineering.py`(424)、`test_async_lifecycle.py`(169) |
+| assert 总数 | 50 | 174 |
+| 其中精确 `==` | **46 / 50** | 76 / 174 |
+| `is not None` | **0** | 10 |
+| 存在性 `"x" in` | 2 | 39 |
+| 非负 `> 0` / `>= 0` | **0** | 10 |
+| 真实 `HelloAgentsLLM()` | 2 处，**两处都不是真的**：`:74` 在 `patch.dict("os.environ", ...)`（`:69`）里造假环境，`:322` 被 `@pytest.mark.skip` 跳过 | **25 处，全部真调用** |
+| `print("✅ …测试通过")` | **0** | 20 |
+
+**回归型三件是好东西，值得借。** 例如 `test_llm_streaming.py:78-96`：
+自建 `FakeClient` / `FakeAsyncStream`（`:27-75`）喂进四种畸形 chunk
+（空 `choices`、缺 `choices`、正常内容、纯 usage），断言 `chunks == ["hello"]` 与
+`last_stats.usage == {...}` —— **确定性、可离线跑、断言精确到值**。
+`test_pydantic_v2_serialization.py:30-31` 更少见：用
+`warnings.simplefilter("error", PydanticDeprecatedSince20)` **把弃用警告升级成错误**，
+这是全套件唯一一处断言「某件事不该发生」的写法。
+
+**演示型六件是「跑给人看」的脚本。** 20 处 `print("✅ …测试通过")` 是标志——
+真正的断言驱动测试不需要自己宣布自己通过，pytest 会说。
+
+> 这个分裂本身就是一条可借鉴的信号：**当一个仓库里同时存在两种测试文化时，
+> 缺陷一定聚集在演示型那一侧。** 本轮 §4/§5/§6 记的问题，
+> 没有一条落在回归型三件覆盖的范围内（流式 chunk 解析、三家 tool schema 转换、pydantic 序列化）——
+> 那三块**恰恰是全仓最干净的三块**。测试质量与代码质量在这里是同向的。
+
+### 7.4 §4 / §5 / §6 逐条：这些静默降级有没有测试覆盖
+
+grep 口径：`grep -rn "<符号>" tests/ | wc -l`，命中数含 import 与注释（即**上界**，实际断言覆盖只会更少）。
+
+| 缺陷（本文档章节） | 关键符号 | `tests/` 命中 | 判定 |
+|---|---|---:|---|
+| §4.1(a) `llm_provider` 恒 `"unknown"` | `_get_agent_config` | **0** | **无覆盖**，且被测试主动绕开，见 §7.5(1) |
+| §4.1(b) 工具哈希不含参数 | `_compute_tool_schema_hash` | 3 | **有测试但测不到**，见 §7.5(2) |
+| §4.2 `agent.py:528` `parameters=[]` | `_build_tool_schemas` | **0** | 无覆盖 |
+| §4.2 `agent.py:613/642` 类型转换失败原样传 | `_convert_parameter_types` | **0** | 无覆盖 |
+| §4.2 `agent.py:680/699` 工具异常拍成字符串 | `_execute_tool_call` | **0** | 无覆盖（**四个 Agent 的同步工具路径全靠它**） |
+| §4.2 `agent.py:720` 自动保存失败仅 debug 时 print | `_auto_save` | 1 | 仅 `test_auto_save` 验证**成功**路径，失败路径无覆盖 |
+| §4.2 `react_agent.py:1055` **裸 `except:`** | `arun_stream` | **0** | **无覆盖**（所在整条流式路径 0 命中） |
+| §4.2 `react_agent.py:848/1225` 截断失败报成工具失败 | `_execute_tools_async` | **0** | 无覆盖 |
+| §4.4 钩子失败静默 | `_emit_event` | **0** | 无覆盖 |
+| §4.4 钩子超时 | `hook_timeout` | **0** | 无覆盖 |
+| §4.4 钩子本身 | `on_tool_start\|on_tool_end\|on_finish` | **0** | 无覆盖；唯一相关的 `test_lifecycle_hooks` 是 `pytest.skip`（`test_async_lifecycle.py:164-166`） |
+| §5.1 `total_tokens` 恒 0 | `_session_metadata` / `total_tokens` | 见 §7.5(3) | **有测试，但只断言键存在** |
+| §5.2 `load_session` fail-open | `check_consistency` | **1** | 唯一那处是 `check_consistency=False`（`test_session_persistence.py:218`）——**把要测的东西关掉了** |
+| §5.3 子代理不可并发 | `run_as_subagent` | 8 | **全部单线程**，并发场景 0 覆盖，见 §7.5(4) |
+| §5.3 直接改 `tool_registry._tools` | `_apply_tool_filter` / `_temp_disabled_tools` | **0** / **0** | 无覆盖 |
+| §5.4 三处 `provider=` 落进 `**kwargs` 黑洞 | `_get_summary_llm` / `_create_light_llm` | **0** / **0** | **无覆盖，且测试自己也在传这个不存在的参数**，见 §7.5(5) |
+| §5.5 `working_dir` 不存在 | `working_dir` | **0** | 无覆盖 |
+| §6.2 `_register_task_tool` 定义两次（死代码） | `_register_task_tool` | **0** | 无覆盖，无 linter（仓库无 flake8/ruff 配置） |
+| §6.3 工具重名 `print` 后覆盖 | `重名`/`已存在`/`duplicate` 相关 | **0**（21 处 `register_tool` 全是不重名的） | 无覆盖 |
+| §6.4 `SimpleAgent.remove_tool()` 必 `AttributeError` | `remove_tool` | **0** | **无覆盖**（这正是它至今没被发现的原因） |
+| §6.7(a) 流式路径每步调 LLM 两次 | `arun_stream` | **0** | 无覆盖 |
+| §6.7(c) 靠 `startswith("❌")` 判失败 | `startswith("❌")` | **0** | 无覆盖 |
+| §6.7(f) LLM 报错被记成 `"timeout"` | `timeout`（agent 语义） | **0** | 无覆盖。`grep -rn "timeout" tests/` 的 6 处全是 `CircuitBreaker(recovery_timeout=…)` 与 `test_observability.py:147` 的一个 payload 字符串 |
+| §6.7(g) `AGENT_FINISH` payload schema 不稳 | `EventType.AGENT_FINISH` | **0** | 无覆盖 |
+| §6.7(j) 同名会话覆盖错误现场 | `save_session(` | 6 | **6 次调用全用不同名字**，同名二次保存 0 覆盖 |
+
+**合计：上表 24 行里，19 行是 0 命中。**
+有具体命中数的只剩 4 行（§4.1(b) 3、§4.2 `_auto_save` 1、§5.2 `check_consistency` 1、§5.3 `run_as_subagent` 8），
+加上 §5.1 那行的定性判定 —— **而这 5 行没有一行真的测到了对应缺陷**，全部属于
+「测了但测不到」或「把要测的关掉了」（§7.5）。
+**真正能抓住 §4 某个静默降级的测试，全套件只有一个**，见 §7.6。
+
+### 7.5 五处「测试把缺陷写成了规格」
+
+这一节比 §7.4 重要。漏测只是没保护；**把缺陷断言成正确，是给缺陷发了合格证**——
+以后有人修好它，红的是测试，被改回去的是修复。
+
+**(1) `llm_provider`：测试手写了代码永远产不出的值。**
+
+`test_check_config_consistency`（`test_session_persistence.py:120-138`）传的是**手写字典**：
+
+```python
+saved_config = {"llm_provider": "openai", "llm_model": "gpt-4", "max_steps": 10}
+current_config = saved_config.copy()
+result = self.store.check_config_consistency(saved_config, current_config)
+```
+
+它测的是 `SessionStore.check_config_consistency` 这个**比较器**，输入是人手造的。
+而 §4.1(a) 的缺陷在**生产者**：`_get_agent_config`（`agent.py:821-838`）
+产出的 `llm_provider` **恒为 `"unknown"`**。
+`grep -rn "_get_agent_config" tests/` → **0 命中** —— 生产者从未被任何测试调用过。
+更关键的是 `:135` 变的是 `llm_model` 而不是 `llm_provider`，
+**所以 provider 这一维只在「两边相同」的情形下被跑过**。
+`grep -rn "llm_provider" tests/` → 3 命中，两处是这里的手写 `"openai"`，
+一处是 `test_smart_summary.py:28` 的 `summary_llm_provider="deepseek"`（那个参数进 `**kwargs` 黑洞，§5.4）。
+
+> **形状测试的教科书定义**：测试给比较器喂了真实系统永远不会产生的输入，
+> 于是比较器测通了，而系统仍然坏着。
+
+**(2) 工具哈希：测了「同样输入同样输出」，没测「不同输入不同输出」。**
+
+`test_compute_tool_schema_hash`（`:285-308`）三条断言：
+
+```python
+assert hash1 != "no-tools"      # 有工具时不是那个哨兵值
+assert len(hash1) == 16         # 长度对
+assert hash1 == hash2           # 同一注册表两次调用结果相同（确定性）
+```
+
+**三条全是必然成立的**。哈希函数的用途是「东西变了要能看出来」，
+而这里**没有任何一条断言检查「改了工具之后哈希会变」**。
+§4.1(b) 的缺陷恰恰是：给工具加一个必填参数，哈希纹丝不动，
+`check_tool_schema_consistency` 返回 `changed=False`、建议「可以安全恢复」。
+写一条「注册一个工具 → 记哈希 → 换成参数不同的同名工具 → 断言哈希已变」就能抓到，**没有这条**。
+
+**(3) 会话元数据：断言键存在，而缺陷正是值恒为 0。**
+
+`test_session_metadata_tracking`（`:310-332`）：
+
+```python
+assert "created_at" in agent._session_metadata
+assert "total_tokens" in agent._session_metadata
+assert "total_steps" in agent._session_metadata
+...
+assert data["metadata"]["duration_seconds"] >= 0
+```
+
+§5.1 记的缺陷是 **`total_tokens` 与 `total_steps` 从头到尾恒为 0**。
+测试断言的是这两个**键在不在**。键当然在——它们在 `agent.py:113-118` 初始化时就被设成 0 了。
+`duration_seconds >= 0` 对任何时长都成立。
+另一处 `test_save_and_load_session:73` 有 `assert loaded_data["metadata"]["total_tokens"] == 100`——
+但那个 `100` 是 `:48` 手写进去的，测的是 JSON 往返，**不是生产者**。同 (1)。
+
+**(4) 上下文隔离：测了会还原，没测不会互相踩。**
+
+`test_context_isolation`（`test_subagent_mechanism.py:116-135`）断言
+`len(agent.get_history()) == original_history_len` —— 即**跑完之后历史长度恢复了**。
+§5.3 记的缺陷是：`run_as_subagent` 用的是「备份-覆盖-还原」，**单线程下 `finally` 保证能还原，
+两个子代理并发就会互相踩**。
+这个测试验证的正是**成立的那一半**，而缺陷在**它没测的那一半**。
+`grep -rn "thread\|concurrent\|asyncio.gather" tests/test_subagent_mechanism.py` → 0 命中。
+
+同一文件的 `test_tool_filter_readonly`（`:137-167`）问题更典型：
+它注册 Read / Write / Bash 三个工具，用 `ReadOnlyFilter` 跑子代理，
+然后断言 **执行完之后三个工具都还在**（`:163-167`）。
+**它从头到尾没有断言「执行期间 Write 和 Bash 真的用不了」。**
+把过滤器换成一个什么都不做的空实现，这个测试照样绿。
+
+**(5) 测试自己在传一个不存在的参数。**
+
+`test_subagent_mechanism.py:97`（以及 `:118/139/171/201/217/235`，共 7 处）：
+
+```python
+llm = HelloAgentsLLM(provider="openai", model="gpt-3.5-turbo")
+```
+
+§5.4 已确认 `HelloAgentsLLM.__init__`（`llm.py:28-37`）**没有 `provider` 形参**，
+它落进 `**kwargs` → 存进 `self.kwargs`（`llm.py:59`）→ 此后无人读取。
+**测试传了 7 次，7 次都被静默吞掉，测试全绿。**
+
+这条值得单独记，因为它说明了一件事：
+**当构造函数用 `**kwargs` 兜底时，测试就失去了「参数名写错会报错」这个最基本的保护。**
+写测试的人显然以为自己在指定 provider —— 测试没有告诉他并没有。
+
+### 7.6 两个「不可能失败的测试」，与唯一一个真能抓住降级的测试
+
+**不可能失败之一：`test_empty_input`（`test_all_agents.py:238-249`）**
+
+```python
+try:
+    result = agent.run("")
+    assert result is not None
+    print("✅ 空输入处理测试通过")
+except Exception as e:
+    print(f"⚠️ 空输入处理异常: {e}")     # ← 吞掉，测试照样绿
+```
+
+一个名为 `TestErrorHandling` 的类，里面的测试**用它所测代码的同一种坏习惯**（吞异常 + print）
+把自己变成了永远通过。这不是笔误，是把生产代码的风格复制到了测试里。
+
+**不可能失败之二（更严重）：`test_agent_real_conversation_with_compression`
+（`test_context_engineering.py:357-419`）**
+
+8 轮真实对话，每一轮都包在 `try/except` 里（`:384-397`），
+失败只 `print(f"⚠️ 第 {i+1} 轮对话失败: {e}")` 然后 `continue`。
+全部跑完后唯一的断言是（`:417`）：
+
+```python
+assert final_rounds <= config.min_retain_rounds + 1   # 3 + 1 = 4
+```
+
+**如果 8 轮全部失败，历史为空，`estimate_rounds()` 返回 0，`0 <= 4` 成立 → 测试通过。**
+也就是说：这个测试在「它要测的功能一次都没执行」的情况下**依然是绿的**，
+而它的名字叫「真实对话压缩测试」。
+`:410` 那个 `if has_summary:` 更说明问题——作者自己也不确定压缩会不会触发，
+所以把验证写成了条件分支而不是断言。
+
+**唯一一个能抓住静默降级的测试：`test_smart_summary_generation`
+（`test_smart_summary.py:73-101`）**
+
+```python
+summary = agent_with_smart_summary._generate_smart_summary(history)
+assert "历史摘要" in summary
+assert "已压缩" in summary
+assert len(summary) > 100
+```
+
+§4.2 记的 `agent.py:452-455` 是：智能摘要失败 → `print` 警告 → **静默回退到简单摘要**。
+简单摘要（`agent.py:378-383`）的文本里**没有「历史摘要」四个字**（它开头是「此会话包含 N 轮对话」），
+长度也只有 60 字左右。所以一旦发生那次静默回退，`:97` 与 `:100` 都会红。
+
+**但这是副作用，不是设计。** 作者写这三条是为了验证「摘要长得对」，
+不是为了验证「没有偷偷降级」。证据：同一文件的
+`test_simple_summary_generation`（`:47-70`）对回退目标本身做了正面断言——
+如果作者意识到那是降级路径，不会同时给它发合格证。而他给了，见下。
+
+### 7.7 最关键的一处：测试给「不可逆压缩」发了合格证
+
+这一条把 §7.5 和另一份文档 §9.6 接上，是本轮两份文档共同指向的同一个点。
+
+**`test_compress`（`test_context_engineering.py:117-138`）**：
+
+```python
+manager = HistoryManager(min_retain_rounds=2)
+for i in range(5):                                  # 造 5 轮
+    manager.append(Message(f"问题{i+1}", "user"))
+    manager.append(Message(f"回答{i+1}", "assistant"))
+assert manager.estimate_rounds() == 5
+
+manager.compress("前面3轮的摘要")
+
+history = manager.get_history()
+assert history[0].role == "summary"
+assert "前面3轮的摘要" in history[0].content
+assert manager.estimate_rounds() == 2
+assert history[-1].content == "回答5"
+```
+
+四条断言**逐条确认「前 3 轮已经消失、只剩一条摘要」，然后判定通过**。
+全文**没有一条断言问「问题1 / 回答1 … 问题3 / 回答3 还能不能找回」**。
+
+`grep -rn "\.compress(" tests/` → **2 命中**（`:129` 与 `:152`），
+两处都不检查原文可恢复性；`grep -rn "path\|archive\|dump" tests/test_context_engineering.py`
+在 `TestHistoryManager` 类范围（`:69-187`）内 **0 命中**。
+
+**`test_simple_summary_generation`（`test_smart_summary.py:47-70`）** 是同一件事的第二半：
+
+```python
+assert "轮对话" in summary
+assert "用户消息：2 条" in summary
+assert "助手消息：2 条" in summary
+assert "总消息数：4 条" in summary
+```
+
+它**把那四个计数字符串逐字断言了一遍**。
+严格说，它断言的是「计数出现」，并没有断言「内容缺席」——
+但效果是一样的：**它把一个不含任何被摘要内容的字符串判定为正确输出**。
+另一份文档 §9.6 判定这个行为是「不是压缩，是带回执的删除」；
+而在这里，它是**被测试逐字确认过的规格**。
+
+> 结论：hello-agents 的历史压缩不可逆，**不是一个被测试漏掉的 bug，
+> 是一个被测试确认过的设计**。
+> 这个区别对本项目很重要：漏测的东西可以补测；**被断言过的行为要改，得先改测试**，
+> 而改测试需要有人先意识到那条断言本身是错的。
+> 这正是「测试写成形状而非行为」的最终代价 —— 它把当下的实现固化成了契约。
+
+### 7.8 覆盖表补充：本节实读的测试文件
+
+| 文件 | 行数 | 读到什么程度 |
+|---|---:|---|
+| `tests/test_all_agents.py` | 265 | **全文（逐行）** —— §7.3、§7.6 |
+| `tests/test_session_persistence.py` | 338 | **全文（逐行）** —— §7.5(1)(2)(3) |
+| `tests/test_subagent_mechanism.py` | 257 | **全文（逐行）** —— §7.5(4)(5) |
+| `tests/test_smart_summary.py` | 148 | **全文（逐行）** —— §7.6、§7.7 |
+| `tests/test_async_lifecycle.py` | 169 | **全文（逐行）** —— §7.2、§7.4（钩子测试被 skip） |
+| `tests/test_llm_streaming.py` | 125 | **全文（逐行）** —— §7.3 回归型范例 |
+| `tests/test_pydantic_v2_serialization.py` | 50 | **全文（逐行）** —— §7.3 |
+| `tests/test_llm_function_calling.py` | 329 | **结构 + 全部 44 条断言逐条**（`grep -n` 提取断言行 + 定点读 `:57-130`、`:316-329`）；三家适配器的 schema 转换细节只读断言未通读构造代码 |
+| `tests/test_context_engineering.py` | 424 | **`:107-190`（`TestHistoryManager` 压缩部分）与 `:290-424`（`TestAgentIntegration`）逐行**；`:1-106` 与 `:190-290`（`TestObservationTruncator`）属另一份文档范围，本节未通读 |
+
+**未读**：`test_circuit_breaker.py`(305)、`test_custom_tools.py`(236)、`test_devlog_tool.py`(424)、
+`test_file_tools.py`(437)、`test_observability.py`(200)、`test_skills.py`(294)、`test_todowrite.py`(369)、
+`test_tool_filter.py`(159)、`test_tool_response_protocol.py`(254)、`test_trace_integration.py`(109)
+—— 共 10 个文件 2787 行，属 `tools/` / `observability/` 范围，**本节只对它们做过定点 grep（命中数已在 §7.4 标注），未通读**。
+
+---
+
+## 8. 对 finaudit-agent 的骨架启示
+
+> **本节遵守 `references/README.md` 第 3 条（2026-08-22 新增）：
+> 每条必须写明落地点。只有「未落地」是允许的第二种答案，「读过了」不是。**
+> 现有决策编号到 **`D-021`** 为止；本节提到的新增决策一律记作「下一可用编号 D-022 起」，
+> **不是已存在的编号**。
+> 与另一份文档（`hello-agents-framework-tools.md` §10）**编号池共用**——
+> 那边已提出三条待新增决策（证据引用不可丢失 / 三态截断 / append-only 存储），
+> 本节若指向同一条，写明「与 tools 篇 §10-x 同一条，不另起编号」。
+>
+> 范围：本节只从 `core/` `agents/` `tests/` 得出结论。
+
+### 8.1 该借鉴的
+
+#### A-1　依赖边必须由工具提取，且提取口径要包含函数内延迟 import
+
+**依据**：§1.1 的依赖边是 `grep -n '^from\|^import\|^\s\+from ...'` 提取的；
+§1.2 进一步发现**环确实存在，只是被 `TYPE_CHECKING` 与函数内延迟 import 藏起来了**——
+`core/agent.py:49-50`、`:65`、`:70` 四处 import 都写在 `__init__` 函数体里。
+
+**这对本项目的具体意义**：`D-015` 说「依赖方向单向且**由测试强制**」。
+本轮发现的是那条强制测试的一个真实盲区——
+**只扫模块级 import 的检查器，会漏掉全部函数内 import 与 `TYPE_CHECKING` 块**，
+而框架的环恰好全藏在那两处。
+
+**落地点：已落地（`D-015`），但强制口径需要补一句。**
+建议动作：在 `D-015` 的执行细则处写明依赖扫描**必须走 AST 而非行首正则**，
+且**必须包含函数体内的 import 与 `TYPE_CHECKING` 块**。
+这不是新决策，是给已有决策补一个可执行的判据；
+若 `D-015` 的现有测试是行首 grep 实现的，**它现在就有这个洞**。
+**这一条需要操作者确认现有实现走的是哪种口径。**
+
+#### A-2　只有 ABC 抽象方法是真扩展点，duck typing 不是
+
+**依据**：§2.4 —— `BaseLLMAdapter` 是全仓唯一一个真正的 ABC；
+而 §3.5 记的三个「非抽象但期望被覆盖」的方法（`arun` / `arun_stream` / `_generate_smart_summary`）
+**覆盖与否无任何检查**，其中 `_generate_smart_summary` docstring 写着「需要子类实现」
+而基类给了完整实现、**结果无人覆盖**（§3.5 表）。
+后果直接落在 §4.2 `agent.py:452` 那条静默降级上。
+
+**落地点：未落地。**
+应落到 **`PROJECT_SPEC.md` §5（架构）** 的扩展点小节：
+本项目凡是「必须由下游提供」的东西，一律用抽象方法或封闭类型表达，
+**不用「基类给个默认实现 + docstring 说你该覆盖」**。
+理由与 `ARCHITECTURE.md §8.1` 同源：**能靠纪律绕过的约束，等于没有约束。**
+§8.1 已经把这条原理用在闸门上，这里是把它用在扩展点上——**同一条原理，两个应用面**。
+
+#### A-3　回归型测试的三个具体写法，可以直接抄
+
+**依据**：§7.3 的「回归型三件」。三个写法：
+
+1. **自建假客户端而非 mock 框架**（`test_llm_streaming.py:27-75`，`FakeClient` / `FakeAsyncStream`）——
+   确定性、可离线、无需 mock 库、读起来就是一份行为规格。
+2. **精确等值断言**（`:91` `assert chunks == ["hello"]`，`:92-96` 断言整个 usage 字典）——
+   回归三件 50 条 assert 里 46 条是 `==`，演示六件 174 条里只有 76 条。
+3. **把「不该发生的事」升级成错误**（`test_pydantic_v2_serialization.py:30-31`
+   `warnings.simplefilter("error", PydanticDeprecatedSince20)`）——
+   全套件唯一一处断言「某事不该发生」的写法。
+
+**落地点：未落地。**
+应落到 **`EVAL_CASES.md` §7 阶段门 → Phase 2 门** 之外的地方——
+它约束的是**单元测试写法**而非评测协议，因此更适合 **`rules/commands.md`**
+（该文件已是「要跑验证时读」的入口）新增一节「本项目的测试写法约定」。
+其中第 3 条对本项目尤其有用：`AC-02`（口径缺失时拒答）与 `AC-09`（静态校验拒绝危险样本）
+都是「某事不该发生」型断言，**用 `pytest.raises` + 精确理由码断言，不用「返回值非空」**。
+
+#### A-4　会话落盘的八键结构，可作「该存什么」的起点清单
+
+**依据**：§5.1 的八个键（`session_id` / `created_at` / `saved_at` / `agent_config` /
+`history` / `tool_schema_hash` / `read_cache` / `metadata`）。
+结构本身是对的；**坏的是每个键的填充质量**（`llm_provider` 恒 `"unknown"`、
+`total_tokens` 恒 0、哈希不含参数、history 里是被截断加工过的观测）。
+
+**落地点：已落地（`D-003` + `AC-05`），但本轮给出了一个可用的反向清单。**
+`D-003` 规定「证据链字段固定」，`AC-05` 要求「字段齐全率 100%」。
+本轮的贡献是指出 **`AC-05` 的「齐全」必须定义成「字段有真值」而不是「字段存在」**——
+因为框架这八个键**齐全率也是 100%，而其中三个是假的**（§5.1 三条硬理由）。
+`§7.5(3)` 给了这个陷阱的实证：测试断言 `"total_tokens" in metadata` 通过，而值恒为 0。
+
+> 这与 `SC-2` 已经踩过的坑同型：`01.5-ROADMAP` 里「能抽出」的计数口径
+> 2026-08-21 被迫写死为「取到的值经人工核对正确」，而不是「标签命中」。
+> **`AC-05` 现在还是「字段齐全率」这种可以被空值满足的措辞。**
+> 建议动作：按 `SC-2` 的先例，把 `AC-05` 的计数口径同样写死。**这一条需要操作者裁决是否修订 `AC-05`。**
+
+#### A-5　`KeyboardInterrupt` 单独放行，`finally` 仍执行还原
+
+**依据**：§5.3 —— `run_as_subagent` 在 `946-948` 先把 `KeyboardInterrupt` re-raise，
+但 `finally` 的还原照常跑。**这一处处理是对的**，且是全仓少数几处正确的异常分层。
+对照 §4.2：全包三个裸 `except:`（`react_agent.py:1055` 与 `file_tools.py:189/196`）
+会把 `KeyboardInterrupt` 与 `SystemExit` 一起吃掉。
+
+**落地点：未落地。**
+应作为一条具体写法补进 **`rules/commands.md`**（或 `rules/pitfalls.md`）：
+**本项目禁止裸 `except:`；`except Exception` 不得覆盖 `BaseException`；
+中断信号必须能穿透到顶层，而清理逻辑放 `finally`。**
+对本项目的现实理由：长跑的 PDF 抽取与批量评测**必须能被 Ctrl-C 干净中断**，
+否则一次跑错要么等它跑完，要么留下半截产物。
+
+### 8.2 该刻意不借的（每条必须写理由）
+
+> `references/README.md` 第 4 条：**偏离通用做法而不写理由，下一个人会以为是疏漏然后「修好」它。**
+
+#### B-1　不借：展示给人看的推理 ≠ 产生动作的推理
+
+**框架怎么做**：§6.7(a) —— `arun_stream` **每一步调用 LLM 两次**
+（`react_agent.py:946-961` 流式、`:980-986` 非流式），
+用户屏幕上读到的推理来自第一次采样，实际执行的 `tool_calls` 来自第二次
+（`:988`），`temperature > 0` 时两者**没有因果关系**。
+代码注释自己承认这是「简化处理」（`:977-979`）。
+
+**本项目不借的理由**：**这是对「可审计」最致命的一种形态。**
+`AC-06` 要求「复核者仅凭证据链，5 分钟内独立判断对错」。
+如果证据链里的推理不是产生那个动作的推理，**复核者复核的是一份不相关的说明文**——
+`AC-06` 的 ≥80% 一致率即使达标也没有意义，因为它测的对象错了。
+这比「证据缺失」更危险：证据缺失会被 `AC-05` 抓到，**证据不相关不会**。
+
+**落地点：未落地。**
+应新增一条决策（D-022 起，**与 tools 篇 §10-A2 是不同的两条**）：
+**证据链中记录的推理，必须与产生被记录动作的那次模型调用是同一次。**
+判据可机械化：证据链条目须携带**同一个 `completion_id` / 请求哈希**，
+推理与动作分属两次调用时**判为失败，不判为降级成功**（这半句直接沿用 `D-003` 的措辞）。
+同时建议在 **`EVAL_CASES.md` §5 失败归因分层**新增一类「证据与动作不同源」。
+
+#### B-2　不借：错误串冒充结果，靠 emoji 前缀判失败
+
+**框架怎么做**：§4.3(3) + §6.7(c)。结构化的 `ToolStatus` 在 `agent.py:672-679` 被读出来，
+**读完就拍扁成带 emoji 前缀的字符串**；下游只能靠
+`result.startswith("❌")`（`react_agent.py:353` / `:863` / `:1228`）把它认回来。
+异步路径更彻底——根本没读过 `ToolStatus`（`:840` / `:1217` 只取 `.text`），
+于是 `status=ERROR` 但正文不以 ❌ 开头的响应，**在异步路径里会被当成成功的观测喂给模型**。
+
+**本项目不借的理由**：**状态一旦被拍成自然语言，就再也无法被机械复核。**
+这正是 `ARCHITECTURE.md §8.3` 已经写下的那条——
+harness 拒绝时只填 `error: { message }`，若照抄「`AC-05` 就只能靠正则匹配一句自然语言来验」。
+hello-agents 是同一个病的**更严重版本**：harness 至少还有个 `error` 字段，
+这里连字段都没有，状态位与内容挤在同一个 `str` 里。
+
+**落地点：已落地。**
+`ARCHITECTURE.md §8.2`（`Refusal` 必须是封闭枚举）+ `§8.3`（拒绝事件必须携带结构化理由码，
+且该字段不得因取值为空而从事件中消失）已经完整覆盖。
+**本条作为该决策的第二个源码级反面样本记录**——
+§8.2/§8.3 此前只有 harness 一个来源，现在有两个独立仓库的证据。
+
+#### B-3　不借：同一个事实有两个来源，且落盘的那个是假的
+
+**框架怎么做**：三处同型——
+① `metadata["total_tokens"]` 恒 0，真正在算的是不落盘的 `_history_token_count`（§5.1(2)）；
+② `_get_subagent_metadata` 的 `tokens` 是**总字符数 // 4**（`agent.py:1056-1057`），
+与 `TokenCounter` 算出来的是两套数（§5.3）；
+③ `TokenCounter`（+4/条、`encoding_for_model`）与 `builder.py:299` 的
+模块级 `count_tokens`（恒 `cl100k_base`、不 +4）并存（tools 篇 §9.8(3)）。
+
+**本项目不借的理由**：口径分叉**不会报错**，只会让两处数字对不上，而没人知道哪个对。
+本项目已经为这件事付过一次代价——`D-016` 之所以要把「标签 = 有序片段序列」
+定为一等构造，正是因为「留给每个调用点各自发明拼接规则」会产生互不一致的实现。
+
+**落地点：已落地（同型原理，`D-016`），但覆盖面有缺口。**
+`D-016` 管的是**映射侧**；本项目目前**没有**对应的「单一数值口径」约束。
+最相关的现成落点是 `SC-5`（数值执行层与 AKShare 交叉校验，
+不一致时置 `source_disagreement` 标记而不是静默选一个）——
+`SC-5` 已经把「不一致不许静默」写死了，方向正确。
+建议动作：把 `SC-5` 的这条原理**从跨源对照推广到同源多算法**
+（例如同一指标在抽取侧与计算侧各算一次），**这一条需要操作者裁决是否值得现在做**。
+
+#### B-4　不借：查了但不阻断的一致性检查
+
+**框架怎么做**：§5.2 —— `load_session` 调了 `check_config_consistency` 与
+`check_tool_schema_consistency`（`agent.py:775-793`），
+**结果只 `print` 两行，然后无条件恢复历史**（`:795-799`）。
+函数签名是 `-> None`（`:755`），调用方连结果都拿不到，只能去 scrape stdout。
+
+**本项目不借的理由**：这是标准 fail-open。而 `D-018` 已经把本项目定成 fail-closed。
+更值得记的是 §7.4 揭示的第二层：**这条 fail-open 路径连测试都没有**——
+`grep -rn "check_consistency" tests/` → 1 命中，且是
+`test_session_persistence.py:218` 的 `check_consistency=False`，**把要测的东西关掉了**。
+
+**落地点：已落地（`D-018` + `ARCHITECTURE.md §8.4`）。**
+`D-018`「fail-closed 放在计算层的**读入边界**」正是这条的正解，
+且 `ARCHITECTURE.md §8.4` 已写明理由（放读入侧，所有消费者都必须过这道门）。
+本条不新增约束，**作为「fail-open 长什么样」的具体样本存档**，
+并补一条判据：**检查函数返回 `None` 就是 fail-open 的信号**——
+一个能阻断的检查，必然要把结果交给调用方。
+
+#### B-5　不借：形状测试，尤其是「断言键存在」
+
+**框架怎么做**：§7.1 / §7.5。演示型六件 174 条 assert 里，
+`is not None` 10 条、存在性 `"x" in` 39 条、`hasattr`/`isinstance` 6 条、非负 `>0/>=0` 10 条。
+§7.5 的五个实例说明了后果：**测试测的是比较器，缺陷在生产者**。
+
+**本项目不借的理由**：`D-015` 的措辞是「依赖方向单向且**由测试强制**」——
+「由测试强制」这四个字只有在测试是**行为测试**时才成立。
+若那条测试写成 `assert hasattr(module, 'x')` 之类的形状断言，`D-015` 就是一句空话。
+
+**落地点：已落地（`D-015` 依赖测试强制），但需要补一条元判据。**
+建议动作：在 **`rules/commands.md`** 的门禁一节写死——
+**每条门禁测试必须能给出「它在什么情况下会红」的一句话说明；说不出来的删掉。**
+本轮的实证支持：§7.6 的两个「不可能失败的测试」
+（`test_all_agents.py:238-249`、`test_context_engineering.py:357-419`）
+都答不出这句话，而它们至今挂在套件里显示为绿。
+
+#### B-6　不借：让测试给缺陷发合格证
+
+**框架怎么做**：§7.7 —— `test_compress`（`test_context_engineering.py:117-138`）
+逐条断言「前 3 轮已消失、只剩一条摘要」并判定通过；
+`test_simple_summary_generation`（`test_smart_summary.py:47-70`）
+逐字断言了那四个计数字符串（`"用户消息：2 条"` / `"总消息数：4 条"` 等），
+即**把一个零内容的摘要判定为正确输出**。
+于是 tools 篇 §9.6 判定为「带回执的删除」的行为，在这里是**被测试锁定的规格**。
+
+**本项目不借的理由**：漏测可以补测；**被断言过的行为要改，得先有人意识到那条断言本身是错的**。
+形状测试的最终代价是把当下的实现固化成契约。
+
+**落地点：未落地。**
+这条与 **`D-012`（评测集冻结）** 有一个真实张力，值得写下来：
+`D-012` 要求问题集与标准答案在看到模型输出前冻结（`AC-04`），这是对的；
+但**冻结的是「题目与答案」，不是「实现行为」**（`EVAL_CASES.md §2.3 冻结范围` 已划了这条线）。
+本轮的启示是这条线需要一条反向保护：
+**回归测试冻结的是行为，因此每条回归断言必须能说出它保护的是哪条决策 / 哪个 AC；
+说不出来的断言，不许作为「不能改」的理由。**
+应落到 **`EVAL_CASES.md §2.3`** 的边界说明处，或 **`rules/commands.md`** 的门禁一节。
+
+#### B-7　不借：`**kwargs` 兜底吞掉写错的参数名
+
+**框架怎么做**：§5.4 —— 三处 `HelloAgentsLLM(provider=...)`
+（`agent.py:490` / `:1155` / `:1267`）传的参数**根本不在被调用的构造函数形参里**，
+它落进 `**kwargs` → `self.kwargs`（`llm.py:59`）→ 此后无人读取。
+`Config` 的三个 provider 字段因此全是死配置。
+§7.5(5) 是同一件事的第二层：**测试也传了 7 次，7 次全被吞掉，测试全绿。**
+
+**本项目不借的理由**：`**kwargs` 兜底会同时关掉两道保护——
+运行时的「参数名写错会报错」，和测试的「写错了测试会红」。
+本项目的口径定义、映射表条目、证据链字段都是**字段名敏感**的结构，
+一个被吞掉的字段名不会报错，只会让某个约束悄悄失效。
+
+**落地点：已落地（同型原理，`D-016` + `metrics/_flags.yaml` 的加载器）。**
+`vocabulary.py:59-92` 对缺键 **fail-closed**（`ValueError` 直接拒绝加载，不补默认值），
+这正是 `**kwargs` 兜底的反面。
+本条不新增约束，**建议把这条 fail-closed 加载模式的适用范围在
+`D-016` 或 `PROJECT_SPEC.md §5` 里写成通则**：
+**本项目所有配置 / 定义 / 证据结构的解析入口一律拒绝未知键，不做静默吸收。**
+注意方向：`vocabulary.py` 拒的是**缺键**，这里要补的是拒**多余键**——**两者不是同一个检查。**
+
+#### B-8　不借：没有 CI、且工具链依赖不声明
+
+**框架怎么做**：§7.2 —— `ls -d .github` 不存在，全仓 `*.yml` / `*.yaml` **0 命中**；
+`pytest` 与 `pytest-asyncio` 在 `dependencies`（`pyproject.toml:15-25`）与
+`[project.optional-dependencies]`（`:27-29`）里**都没有**，
+而 `:68` 却配了 `[tool.pytest.ini_options]`。
+加上 `test_all_agents.py:22-26` 第一个测试就要求真实 `LLM_API_KEY`——
+这套测试**只可能在作者本机手动跑**，且无任何机制保证它跑过。
+
+**本项目不借的理由**：本项目的完成定义（`PROJECT_SPEC.md §11`）与 `AGENTS.md` 硬规则
+都要求「完成必须有证据，不接受『应该可以了』」。
+一套没有 CI、依赖不声明、需要真实密钥的测试，**产生不了这种证据**。
+
+**落地点：部分已落地，有缺口。**
+已落地的一半：`rules/commands.md` 已经是「常用命令（含冻结校验、门禁）」的入口，
+`AC-10` 的非公开数据扫描器已是可跑的门禁（`01-03-PLAN.md`）。
+**缺口**：本项目同样**没有 CI**（`NFR-02` 明确不引入部署基础设施，
+但 CI 是否算「部署基础设施」在 `D-021` 的静态托管豁免里**没有被讨论过**）。
+建议动作：在 `docs/agent/OPEN-ITEMS.md` 的 A 区记一条待裁决——
+**「门禁靠人手跑」是否满足 `PROJECT_SPEC.md §11` 的完成定义？**
+若不满足，则需判断本地 pre-commit hook 是否够用（`rules/agent-skills.md` 已有 Hook 分工一节），
+还是必须引入 CI 而先修订 `NFR-02`。**这一条需要操作者裁决，本节不替其决定。**
+
+### 8.3 一句话总结
+
+`core/` + `agents/` 的问题不是能力不足，是**每一处「本该拒绝」的地方都选择了「继续」**：
+异常吞 35 处、检查只 print、状态拍成字符串、参数错了进 `**kwargs`、
+展示的推理与执行的动作分属两次采样。
+而 `tests/` 的问题是它**站在同一侧**——形状断言不追问值对不对，
+两个测试根本不可能红，还有两处直接给缺陷发了合格证。
+
+**对本项目最该带走的一条**：`D-015` 写的是「依赖方向单向且**由测试强制**」。
+本轮读完 4892 行测试后，这句话里最脆弱的不是「单向」，是「**由测试强制**」——
+一套形状测试可以让任何决策看起来被强制着，而实际什么都没守住。
+配套的元判据（每条门禁断言必须能说出它在什么情况下会红，见 B-5）**目前未落地**，
+是本节认为最值得先补的一条。
