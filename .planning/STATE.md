@@ -4,11 +4,11 @@ milestone: v0.1
 milestone_name: 骨架与 cninfo 延伸
 current_phase: "01.5"
 current_phase_name: 数据接入层
-status: phase-1-complete-phase-1.5-decided-not-planned
-stopped_at: Phase 1 已收口；Phase 1.5 的六个决策点已全部裁决（D-015…D-019）并追加 D-020/D-021/D-022，CONTEXT §4 已由「待裁决」改为「已裁决」表，**仍无 PLAN，待 /gsd-plan-phase 01.5**；外部项目沉淀阶段已收束（references 26 份 26,734 行）；Phase 0 尚未开始
-last_updated: "2026-08-23T14:30:00Z"
+status: phase-1-complete-landing-t1-done-phase-1.5-not-planned
+stopped_at: Phase 1 已收口；Phase 1.5 六个决策点已全部裁决（D-015…D-019）并追加 D-020/D-021/D-022，CONTEXT §4 已改为「已裁决」表，**仍无 PLAN，待 /gsd-plan-phase 01.5**；沉淀阶段已收束（references 26 份 26,734 行）；**落实阶段 T-1 已完成**——131 次「未落地」出现归并为 82 条去重待办（LANDING-BACKLOG §5），T-2/T-3/T-4/T-5 均未开始；Phase 0 尚未开始
+last_updated: "2026-08-23T16:40:00Z"
 last_activity: 2026-08-23
-last_activity_desc: 沉淀阶段收束——hello-agents 骨架章(ch6/ch7/ch9)与框架源码 11,368 行读完、harness simplification 46 篇与 bug-fix 24 篇有正文条目；落实阶段起步——D-022(拒答码 UNAVAILABLE + 异常/Refusal 划界)、第五道门 check_reading_ledger.py(首跑即抓出一条真的)、CI gates.yml(D-021 第二条豁免)、EVAL_CASES §3.3 判分者四条硬规则、ARCHITECTURE §8.3/§8.5、rules/pitfalls 补至 52 行；落地待办已建单一入口 docs/agent/LANDING-BACKLOG.md
+last_activity_desc: T-1 逐条去重归并完成——LANDING-BACKLOG 由路由表升级为去重登记册，82 条（OPEN 65 / BLOCKED 8 / 依据 4 / STALE 4 / DECIDED 1）；查出四件事：①「未落地」标注会过期且无门禁（4 条 STALE，台账 N-35，是 F-4 的反面）② 交叉引用门禁挡得住悬空挡不住错指（台账 N-36，写文件时实地触发两次）③ 两条启示争同一个 J-5 号 ④ 8 条其实被 U-01/U-03 挡着不是「未落地」；本会话不写生产代码，五道门 + 两处冻结校验全绿
 progress:
   total_phases: 6
   completed_phases: 1
@@ -147,30 +147,40 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 
 ### 立即（落实阶段，无前置）
 
-1. **T-1 逐条去重归并落地待办** —— `docs/agent/LANDING-BACKLOG.md` §5。
-   `references/` 里「未落地」标注出现 **131 次**，但那是出现次数**不是**去重后的条目数；
-   在归并完成之前，131 不许当待办数用。**这是其余落实任务的前置。**
+1. ~~**T-1 逐条去重归并落地待办**~~ ✅ **完成 2026-08-23**。
+   131 次出现归并为 **82 条**去重后的落地动作，清单即 `docs/agent/LANDING-BACKLOG.md` §5。
+   状态分布：`OPEN` 65 ｜ `BLOCKED` 8 ｜ `依据` 4 ｜ `STALE` 4 ｜ `DECIDED` 1。
+   **转述时必带两条口径**：82 是「落地动作」数不是工作量；折算链里的 89 是产物自报、逐条重数未做。
 2. **T-2 `ARCHITECTURE §8` 补三条已点名的**：留痕写不进去⇒决定作废（L-1）；
    指针要说明自己是怎么被选出来的（L-2）；参数不可改写是四道锁、载荷必须冻结（L-3）。
+   其余 §5.A 的 `OPEN` 行同批。
 3. **T-3 门禁类两条**：F-2 的机械化（L-4）、假闸门验证程序「造回归→看红→回退」（L-5）。
    第五道门已是这一类的第一条。
+4. **T-5 回标 `references/`**（**T-1 新查出**）—— 4 条 `STALE`：
+   降级终态、中文 `split()`、不可逆压缩、异常/`Refusal` 划界，标注仍写「未落地」而实际已落。
+   根因见台账 **N-35**：**做了但台账没回标**，是 F-4 的反面，目前无门禁。
 
 ### 然后（Phase 1.5 规划）
 
-4. **`/gsd-plan-phase 01.5`**。**前置已全部就绪**：六个决策点已裁决，
+5. **`/gsd-plan-phase 01.5`**。**前置已全部就绪**：六个决策点已裁决，
    `CONTEXT.md` §4 已由「待裁决」改为「已裁决」表，planner 不再有需要回避的决策点。
    ⚠️ **T-1 的清单里凡影响抽取器/映射表/计算层设计的，必须在出 PLAN 之前并入**，
    否则又是「读了没用上」——这正是 N-34 记的那个毛病。
-5. **Phase 1.5 的 wave 0 应当是探测，不是写抽取器**：把零实测的 **14 个字段**探一遍
+   **T-1 已初筛出该并入的**：`L-34 / L-35 / L-36 / L-37 / L-38 / L-45 / L-47 / L-50 / L-55`，
+   外加 `L-1 / L-2 / L-9 / L-12 / L-13`。
+   **`LANDING-BACKLOG` §5.F 的 8 条 `BLOCKED` 不并入**——它们被 `U-01`（证据链字段集，
+   等 Phase 2 数据）与 `U-03`（内核与壳的边界，明令不得在 Phase 1.5 提前拍板）挡着，
+   催办它们等于在数据不足时提前拍板。
+6. **Phase 1.5 的 wave 0 应当是探测，不是写抽取器**：把零实测的 **14 个字段**探一遍
    （`is` 8 / `cfs` 2 / `notes` 3 / `kpi` 1），并把巨潮下载三步链路做成**仓库内可执行脚本**（A-10）。
    理由：SC-2 的门槛只允许失手 6 个，而现在有 14 个字段的可行性是零证据。
 
 ### 并行可做
 
-6. **Phase 0**（cninfo 实证结论）—— 与 Phase 1.5 共用同一条下载定位链路。
+7. **Phase 0**（cninfo 实证结论）—— 与 Phase 1.5 共用同一条下载定位链路。
    **但 Fog 实现要重写**（cninfo 的 `common_vocab` 缺失导致静默降级、`
 ` 作分句符）。
-7. **N-20 补做** —— 只读 YAML 验证定义对人可读。**执行者代答无效**，Phase 2 前必须做。
+8. **N-20 补做** —— 只读 YAML 验证定义对人可读。**执行者代答无效**，Phase 2 前必须做。
 
 ### 已经不必再做的（记下来免得重开）
 
@@ -178,4 +188,7 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 - harness `implemented/feature` 169 篇 + `archived/*` 142 篇：
   harness 自己的制度就写着「归档件不得作为当前行为的依据」
 
-推荐入口：先做 **T-1**，再 `/gsd-plan-phase 01.5`。
+推荐入口：**T-1 已完成**（2026-08-23）。下一步二选一——
+先清 **T-2 / T-3 / T-5**（都无前置，且 T-5 只是回标，最便宜），
+或直接走 **T-4 + `/gsd-plan-phase 01.5`**（把上面初筛的 14 条并进 PLAN）。
+**顺序由操作者定**：前者让登记册先瘦下去，后者让执行早一步开始。
