@@ -152,8 +152,12 @@ grep -cE '^\| L-[0-9]+ \|' docs/agent/LANDING-BACKLOG.md      ->   82   （去�
 **改任何一行的状态后，必须重跑下面这条并回写 §1 的分布表**：
 
 ```bash
-grep -E '^\| L-[0-9]+ \|' docs/agent/LANDING-BACKLOG.md | awk -F'|' '{print $(NF-1)}'
+python scripts/backlog_status.py
 ```
+
+⚠️ **不要用裸 `grep -c OPEN` 数**：状态被改过的行写成 `~~OPEN~~ → **已落地**`，
+字面仍含 `OPEN`，裸 grep 会数出 65 而真实是 62。**先判已关闭 / 部分落地 / 已落地，
+最后才判 `OPEN`**——顺序错了数就错，这正是本文件 §1 警告的那类误读。
 
 **空号**：`L-18` 与 `L-52` 是归并过程中的编号空档，**不是丢失的条目**。
 编号不重排——重排会让已经写出去的引用失效。
