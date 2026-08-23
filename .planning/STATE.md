@@ -4,11 +4,11 @@ milestone: v0.1
 milestone_name: 骨架与 cninfo 延伸
 current_phase: "01.5"
 current_phase_name: 数据接入层
-status: phase-1-complete-phase-1.5-not-planned
-stopped_at: Phase 1 已收口（8/8 计划、五条 SC 全 VERIFIED、H1 严格读法未触发停止条件）；Phase 1.5 尚无 PLAN，待 /gsd-plan-phase；Phase 0 尚未开始
-last_updated: "2026-08-16T13:10:00Z"
-last_activity: 2026-08-16
-last_activity_desc: A-3 裁决落地为 D-014（换 pdfplumber，禁 AGPL）+ 许可证禁列机器化；接入 LLM 对照臂并跑完 pro/flash 两个模型臂，Q-C1-001 静默口径错误在两模型上逐字复现；wave 5 收口，VERIFICATION.md 落地含九段逐字输出，H1 由操作者裁决取严格读法
+status: phase-1-complete-phase-1.5-decided-not-planned
+stopped_at: Phase 1 已收口；Phase 1.5 的六个决策点已全部裁决（D-015…D-019）并追加 D-020/D-021/D-022，CONTEXT §4 已由「待裁决」改为「已裁决」表，**仍无 PLAN，待 /gsd-plan-phase 01.5**；外部项目沉淀阶段已收束（references 26 份 26,734 行）；Phase 0 尚未开始
+last_updated: "2026-08-23T14:30:00Z"
+last_activity: 2026-08-23
+last_activity_desc: 沉淀阶段收束——hello-agents 骨架章(ch6/ch7/ch9)与框架源码 11,368 行读完、harness simplification 46 篇与 bug-fix 24 篇有正文条目；落实阶段起步——D-022(拒答码 UNAVAILABLE + 异常/Refusal 划界)、第五道门 check_reading_ledger.py(首跑即抓出一条真的)、CI gates.yml(D-021 第二条豁免)、EVAL_CASES §3.3 判分者四条硬规则、ARCHITECTURE §8.3/§8.5、rules/pitfalls 补至 52 行；落地待办已建单一入口 docs/agent/LANDING-BACKLOG.md
 progress:
   total_phases: 6
   completed_phases: 1
@@ -60,13 +60,14 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 | | |
 |---|---|
 | 指标定义 | **20 / 20** 合规，`advisory_only` 19.0%，未分类 0 |
-| 测试 | **350 passed** |
-| 提交 | 已推送至 `origin/main` |
+| 测试 | **372 passed** |
+| 门禁 | **5 道**：pytest / `semantic_layer scan` / `validate` / `check_xrefs` / **`check_reading_ledger`**（2026-08-23 新增）+ CI `gates.yml` |
 | 评测集 | frozen-01 冻结 @ `2026-08-15T14:47:51Z`，21 文件哈希 |
 | 系统臂 | C2 拒答 **4/4**，门成立；C1/C3/C4/C5 共 16 题 `NOT_RUN`（能力缺口） |
 | 对照臂 | 裸 LLM 两个模型臂（`deepseek-v4-pro` / `v4-flash`），报告在 `eval/runs/baseline/`（gitignored） |
 | OpenSpec | 3 个变更已归档，`specs/` 9 条 Requirement |
-| 决策 | D-001…**D-014** |
+| 决策 | D-001…**D-022** |
+| 外部沉淀 | `references/` **26 份 26,734 行**（cninfo 1451 / harness 14,093 / hello-agents 11,144） |
 
 ## 累积上下文
 
@@ -82,8 +83,16 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 - D-010 仅公开数据，不可协商
 - D-012 评测集在看到模型输出前冻结
 - D-013 财务数值以年报 PDF 原文为准，二手源只作对照
-- **D-014（2026-08-16）PDF 抽取器不得链接 AGPL 组件，主库 pdfplumber**
-  —— 已由 `scripts/verify_deps.py` 的许可证禁列机器化，不靠人记
+- **D-014** PDF 抽取器不得链接 AGPL 组件，主库 pdfplumber —— 已由 `verify_deps.py` 机器化
+- **D-015…D-019（2026-08-21，Phase 1.5 六个决策点的裁决）**：
+  抽取器与语义层平级 + **单向依赖由 AST 测试强制** ｜ 映射表按命名空间拆五份、
+  标签是有序片段序列、**列由表头文字绑定** ｜ `formula` **自建封闭算术解析器**、`eval()` 硬性排除 ｜
+  勾稽校验**批次级闸门** + fail-closed 在**读入边界** ｜ 页码拆 `page` + `anchor_page` 两个整数
+- **D-020** `scope_change` 改挂新字段 `notes.consolidation_scope_change`
+  —— 起因是茅台 2023 上查实的**真实假阴性**；本条**放宽了「不动 metrics/ 20 份定义」这条非目标，仅限本条**
+- **D-021** NFR-02 两条豁免：静态托管、**开发期 CI**（边界均写死，越出须先修订）
+- **D-022（2026-08-23）** 拒答码新增 `UNAVAILABLE`；**异常与 `Refusal` 按「是否可预期结果」划界**
+  —— 检验方法是「能不能写进文档告诉用户这可能会发生」
 
 ### 待解决问题
 
@@ -121,19 +130,52 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 - 元规则 19.0% 只说明「大部分陷阱写成了可求值规则」，**不说明规则会正确触发**
   —— 要到 Phase 1.5 接上真实字段才验得了
 - 台账 **N-20**：无人只读 YAML 验证过定义对人可读，D-003 的可复核性前提在这一维度上零证据
+- **SC-2 的 ≥24/30 建在半个样本上**：实测覆盖只有 **16/30**（`bs` 15 + `notes.business_combination_type`），
+  `is` 8 / `cfs` 2 / `notes` 3 / `kpi` 1 共 **14 个字段零实测**，而 ≥24 只允许失手 6 个。
+  且它们不同质——`notes.reporting_period_months` 根本不在三张报表里
+- **A-9：勾稽闸门在结构上抓不到「整列取错」**。恒等式在期末列与期初列上都成立
+  ⇒ 三个数全取期初列，D-018 的闸门照样放行。已由 D-016 补 `column_header` 缓解，**实现待 Phase 1.5**
+- **A-10：探测语料反复从磁盘消失**（茅台 PDF、探测脚本、两个外部仓的 clone 各丢过一次）
+  ⇒ ROADMAP 的「已验证技术起点」本地无物证可即刻复跑
+- **`references/` 里有一批 `UNVERIFIED`**：`bug-fix` 台账称读 75 篇而正文只有 24 篇条目；
+  第五道门抓出并降级了 `tests/test_trace_integration.py`。**26,734 行里有一小块没有正文支撑，已单列不并入「已读」**
 
 ## 下一步
 
-1. **`/gsd-plan-phase 01.5`** —— Phase 1.5 六条成功标准已在 ROADMAP，
-   方法记在 `references/cninfo.md` 与两份 cninfo 深读报告
-   （下载三步链路、坐标重组、四个坑）。**注意 9/12 是 fitz 跑的，换 pdfplumber 后未实测**（A-4）
-2. **修 A-2**：`interest_bearing_debt_ratio` 会拒答一家实际无有息负债的公司（茅台实证）。
-   修在抽取层区分「行在格子空 = 0」与「整行不存在 = 缺失」，**定义侧不动**
-3. **Phase 1.5 补一条勾稽校验成功标准**（台账 N-13）——cninfo 完全没有这层，要从零建
-4. （可并行）**Phase 0** —— 审计报告正文就在年报 PDF 里、紧邻合并资产负债表，
-   与 Phase 1.5 共用同一条下载定位链路。**但 Fog 实现要重写**（cninfo 的 `common_vocab`
-   缺失导致静默降级、`\n` 作分句符）
-5. **Phase 2 架构预备**：闸门放进**调用签名**（`resolve_scope() -> ScopeSpec | Refusal`），
-   不用 waterfall listener 也不用「可选工具」；证据日志的 fail-closed 放在**读入边界**（台账 N-14）
+> **顺序是操作者定的**：先完成沉淀 → 再修缮与落实计划 → 然后才推进执行。
+> 沉淀已收束；落实进行中；**执行尚未开始，且不急于开始**。
 
-推荐入口：`/gsd-plan-phase 01.5`
+### 立即（落实阶段，无前置）
+
+1. **T-1 逐条去重归并落地待办** —— `docs/agent/LANDING-BACKLOG.md` §5。
+   `references/` 里「未落地」标注出现 **131 次**，但那是出现次数**不是**去重后的条目数；
+   在归并完成之前，131 不许当待办数用。**这是其余落实任务的前置。**
+2. **T-2 `ARCHITECTURE §8` 补三条已点名的**：留痕写不进去⇒决定作废（L-1）；
+   指针要说明自己是怎么被选出来的（L-2）；参数不可改写是四道锁、载荷必须冻结（L-3）。
+3. **T-3 门禁类两条**：F-2 的机械化（L-4）、假闸门验证程序「造回归→看红→回退」（L-5）。
+   第五道门已是这一类的第一条。
+
+### 然后（Phase 1.5 规划）
+
+4. **`/gsd-plan-phase 01.5`**。**前置已全部就绪**：六个决策点已裁决，
+   `CONTEXT.md` §4 已由「待裁决」改为「已裁决」表，planner 不再有需要回避的决策点。
+   ⚠️ **T-1 的清单里凡影响抽取器/映射表/计算层设计的，必须在出 PLAN 之前并入**，
+   否则又是「读了没用上」——这正是 N-34 记的那个毛病。
+5. **Phase 1.5 的 wave 0 应当是探测，不是写抽取器**：把零实测的 **14 个字段**探一遍
+   （`is` 8 / `cfs` 2 / `notes` 3 / `kpi` 1），并把巨潮下载三步链路做成**仓库内可执行脚本**（A-10）。
+   理由：SC-2 的门槛只允许失手 6 个，而现在有 14 个字段的可行性是零证据。
+
+### 并行可做
+
+6. **Phase 0**（cninfo 实证结论）—— 与 Phase 1.5 共用同一条下载定位链路。
+   **但 Fog 实现要重写**（cninfo 的 `common_vocab` 缺失导致静默降级、`
+` 作分句符）。
+7. **N-20 补做** —— 只读 YAML 验证定义对人可读。**执行者代答无效**，Phase 2 前必须做。
+
+### 已经不必再做的（记下来免得重开）
+
+- hello-agents ch5 低代码平台、ch1/2/4/8/10 残余：落不到任何决策，**主动停止**，不是漏读
+- harness `implemented/feature` 169 篇 + `archived/*` 142 篇：
+  harness 自己的制度就写着「归档件不得作为当前行为的依据」
+
+推荐入口：先做 **T-1**，再 `/gsd-plan-phase 01.5`。
