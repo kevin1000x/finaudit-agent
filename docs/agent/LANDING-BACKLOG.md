@@ -54,7 +54,7 @@ grep -h '已落地' references/*.md | wc -l      # -> 见下方复跑
 | # | 内容 | 目的地 | 出处 |
 |---|---|---|---|
 | **L-1** | `ARCHITECTURE §8.5` 缺上游那一半：**留痕写不进去 ⇒ 决定作废**（现在只写了「指针必须被下游消费」） | `ARCHITECTURE §8.5` | `docs-part2`（`approval.md:122-126`） |
-| **L-2** | `ARCHITECTURE §8.5` 缺「**指针要说明自己是怎么被选出来的**」——glob 抽样三个各自正确的行为合成假象 | `ARCHITECTURE §8.5` | `notes-part3` §C.0 F-i（`B-10`） |
+| **L-2** | `ARCHITECTURE §8.5` 缺「**指针要说明自己是怎么被选出来的**」——glob 抽样三个各自正确的行为合成假象 | `ARCHITECTURE §8.5` | `notes-part3` §C.0 F-i（glob 抽样那一篇；**该文用 `B-nn` 编号自己的 bug-fix 条目，与台账 B 区无关，故此处不写裸编号**） |
 | **L-3** | `ARCHITECTURE §8.1` 需校正：参数不可改写是**四道锁**，签名闭合只是第一道，载荷必须冻结 | `ARCHITECTURE §8.1` | `docs-part2`（`ToolDispatchExecution`） |
 | **L-4** | **F-2 的机械化实现**：门禁应拒绝「非空但省略/忽略 reporter 的检查」与模板化空实现 | `rules/failure-modes.md` + 新门禁 | `docs-part2`（`invariants.md:59`） |
 | **L-5** | 「**A guard only guards if the regression actually fails it**」升格为通用程序：造回归 → 看红 → 回退 | `rules/commands.md` | `docs-part2`（`testing.md:34`） |
