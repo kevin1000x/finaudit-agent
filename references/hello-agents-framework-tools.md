@@ -56,7 +56,7 @@
 | `hello_agents/skills/__init__.py` | 27 | **全文**（§6 导出面） |
 | `hello_agents/skills/loader.py` | 225 | **全文（逐行）** —— §6 |
 | `tests/test_observability.py` | 199 | **全文** |
-| `tests/test_trace_integration.py` | 108 | **全文** |
+| `tests/test_trace_integration.py` | 108 | **UNVERIFIED** —— 台账曾标「全文」，但正文无任何对应内容；语料已从 scratchpad 消失，无法复核是否读过。2026-08-23 由 `check_reading_ledger.py` 抓出并如实降级 |
 | `examples/observability_demo.py` | 229 | **全文** |
 
 > 本表在写作过程中随进度更新；文末「仍未读清单」列出明确没读到的部分。

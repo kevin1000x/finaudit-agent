@@ -43,7 +43,7 @@ jobs:
       - name: Install
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
 
-      - name: 四道门（&& 串联，任一红即停）
+      - name: 五道门（&& 串联，任一红即停）
         run: |
           python -m pytest -q \
             && python -m semantic_layer scan \
