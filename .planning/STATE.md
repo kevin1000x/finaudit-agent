@@ -5,10 +5,10 @@ milestone_name: 骨架与 cninfo 延伸
 current_phase: "01.5"
 current_phase_name: 数据接入层
 status: phase-1-complete-landing-t1-done-phase-1.5-not-planned
-stopped_at: Phase 1 已收口；Phase 1.5 六个决策点已全部裁决（D-015…D-019）并追加 D-020/D-021/D-022，CONTEXT §4 已改为「已裁决」表，**仍无 PLAN，待 /gsd-plan-phase 01.5**；沉淀阶段已收束（references 26 份 26,734 行）；**落实阶段 T-1 已完成**——131 次「未落地」出现归并为 82 条去重待办（LANDING-BACKLOG §5），T-2/T-3/T-4/T-5 均未开始；Phase 0 尚未开始
-last_updated: "2026-08-23T16:40:00Z"
-last_activity: 2026-08-23
-last_activity_desc: T-1 逐条去重归并完成——LANDING-BACKLOG 由路由表升级为去重登记册，82 条（OPEN 65 / BLOCKED 8 / 依据 4 / STALE 4 / DECIDED 1）；查出四件事：①「未落地」标注会过期且无门禁（4 条 STALE，台账 N-35，是 F-4 的反面）② 交叉引用门禁挡得住悬空挡不住错指（台账 N-36，写文件时实地触发两次）③ 两条启示争同一个 J-5 号 ④ 8 条其实被 U-01/U-03 挡着不是「未落地」；本会话不写生产代码，五道门 + 两处冻结校验全绿
+stopped_at: Phase 1 已收口；Phase 1.5 六个决策点已全部裁决（D-015…D-019）并追加 D-020/D-021/D-022，CONTEXT §4 已改为「已裁决」表，**仍无 PLAN，待 /gsd-plan-phase 01.5**；沉淀阶段已收束（references 26 份 26,734 行）；**落实阶段 T-1 / T-2 / T-3 / T-5 已完成**——82 条去重登记册（LANDING-BACKLOG §5），ARCHITECTURE §8 补三节，第六道门落地，4 条 STALE 已回标；**只剩 T-4（与 Phase 1.5 计划合流）未开始**；Phase 0 尚未开始
+last_updated: "2026-08-24T10:20:00Z"
+last_activity: 2026-08-24
+last_activity_desc: T-1/T-2/T-5 完成（08-23）+ T-3 完成（08-24）——LANDING-BACKLOG 成为 82 条去重登记册；ARCHITECTURE §8 新增 §8.1.1/§8.5.1/§8.5.2；4 条 STALE 标注回改；**新增第六道门 check_gates.py「门禁的门禁」+ 28 条测试**，首跑抓出一条真的；实跑「造回归→看红→回退」时第一次跑砸（红的原因是解析失败不是被查的那件事），已修门禁自身的崩溃路径并把这条经验写进 commands.md；**查出 CI 漏跑第五道门整整一天**（步骤名/echo/命令三者不一致），已补齐。400 passed，六道门 + 供应链 + 两处冻结校验全绿
 progress:
   total_phases: 6
   completed_phases: 1
@@ -61,7 +61,7 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 |---|---|
 | 指标定义 | **20 / 20** 合规，`advisory_only` 19.0%，未分类 0 |
 | 测试 | **372 passed** |
-| 门禁 | **5 道**：pytest / `semantic_layer scan` / `validate` / `check_xrefs` / **`check_reading_ledger`**（2026-08-23 新增）+ CI `gates.yml` |
+| 门禁 | **6 道**：pytest / `semantic_layer scan` / `validate` / `check_xrefs` / `check_reading_ledger`（08-23）/ **`check_gates`**（08-24，门禁的门禁）+ CI `gates.yml`（08-24 补齐第五、第六道——此前 CI 只跑四条） |
 | 评测集 | frozen-01 冻结 @ `2026-08-15T14:47:51Z`，21 文件哈希 |
 | 系统臂 | C2 拒答 **4/4**，门成立；C1/C3/C4/C5 共 16 题 `NOT_RUN`（能力缺口） |
 | 对照臂 | 裸 LLM 两个模型臂（`deepseek-v4-pro` / `v4-flash`），报告在 `eval/runs/baseline/`（gitignored） |
@@ -154,9 +154,10 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 2. **T-2 `ARCHITECTURE §8` 补三条已点名的**：留痕写不进去⇒决定作废（L-1）；
    指针要说明自己是怎么被选出来的（L-2）；参数不可改写是四道锁、载荷必须冻结（L-3）。
    其余 §5.A 的 `OPEN` 行同批。
-3. **T-3 门禁类两条**：F-2 的机械化（L-4）、假闸门验证程序「造回归→看红→回退」（L-5）。
-   第五道门已是这一类的第一条。
-4. **T-5 回标 `references/`**（**T-1 新查出**）—— 4 条 `STALE`：
+3. ~~**T-3 门禁类两条**~~ ✅ **完成 2026-08-24**：F-2 的机械化（L-4）与
+   假闸门验证程序（L-5）落成**第六道门** `scripts/check_gates.py` + `commands.md` 的程序。
+   **局限**：L-4 只覆盖测试侧，flag 的 trigger 侧仍无门禁；L-5 的 AC-09 强化未做。
+4. ~~**T-5 回标 `references/`**~~ ✅ **完成 2026-08-23**（**T-1 新查出**）—— 4 条 `STALE`：
    降级终态、中文 `split()`、不可逆压缩、异常/`Refusal` 划界，标注仍写「未落地」而实际已落。
    根因见台账 **N-35**：**做了但台账没回标**，是 F-4 的反面，目前无门禁。
 
@@ -188,7 +189,8 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 - harness `implemented/feature` 169 篇 + `archived/*` 142 篇：
   harness 自己的制度就写着「归档件不得作为当前行为的依据」
 
-推荐入口：**T-1 已完成**（2026-08-23）。下一步二选一——
-先清 **T-2 / T-3 / T-5**（都无前置，且 T-5 只是回标，最便宜），
-或直接走 **T-4 + `/gsd-plan-phase 01.5`**（把上面初筛的 14 条并进 PLAN）。
-**顺序由操作者定**：前者让登记册先瘦下去，后者让执行早一步开始。
+推荐入口：**落实阶段只剩 T-4**。T-1（08-23 去重归并）、T-2（08-23 ARCHITECTURE §8）、
+T-5（08-23 回标）、T-3（08-24 第六道门）均已完成。
+下一步即 **T-4 + `/gsd-plan-phase 01.5`**：把 §5 初筛出的 14 条并进 PLAN 再出计划。
+⚠️ 登记册仍有 **60 条 `OPEN`**，它们**不是 Phase 1.5 的前置**——
+T-4 只需并入影响抽取器 / 映射表 / 计算层的那些，其余按目的地分批做。

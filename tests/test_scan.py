@@ -222,7 +222,14 @@ def test_exclusion_only_waives_content_patterns(repo, rules):
 
 
 def test_binary_tracked_file_does_not_crash_scanner(repo, rules):
-    """非 UTF-8 的被跟踪文件不能让扫描器抛异常——抛了就等于门禁不可用。"""
+    """NO-ASSERT-BY-DESIGN: 非 UTF-8 被跟踪文件的唯一要求就是不抛异常，抛了 AC-10 扫描就整个不可用。
+
+    这里**没有可写的断言**：扫描器对二进制文件的正确行为是「跳过且不报」，
+    而「不报」用 `assert findings == []` 断言会与「它压根没扫到这个文件」混同——
+    两种情况下 findings 都是空。凑一个断言就是 `rules/failure-modes.md` F-2
+    那个毛病（拿手边能求值的东西凑一个），所以按 `scripts/check_gates.py`
+    的 `NO-ASSERT-BY-DESIGN` 例外显式声明。
+    """
     (repo / "blob.bin").write_bytes(bytes(range(256)))
     _git(repo, "add", "-A")
     scan_repository(repo, rules)  # 不抛异常即通过

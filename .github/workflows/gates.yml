@@ -20,7 +20,9 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------
-  # 四道门 + 冻结校验。任一红即整个 job 红。
+  # 六道门 + 冻结校验。任一红即整个 job 红。
+  # 新增门禁时**必须同步这里**：2026-08-23 加的第五道门就漏了整整一天，
+  # 而步骤名、echo、实际命令三者不一致这件事没有任何检查会发现。
   # 按 F-8：验证与后续动作一律 && 串联，不用 ; 也不用分步骤吞掉退出码。
   # ---------------------------------------------------------------
   gates:
@@ -43,13 +45,19 @@ jobs:
       - name: Install
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
 
-      - name: 五道门（&& 串联，任一红即停）
+      # 2026-08-24 更正：本步骤此前名为「五道门」、echo 写「四道门」、实际只跑四条
+      # ——`check_reading_ledger.py`（2026-08-23 落地的第五道门）从未进过 CI。
+      # 名字、echo、命令三者不一致，而没有任何检查会发现这件事。
+      # 现补齐第五道门与新增的第六道门（check_gates.py），并让三者对齐。
+      - name: 六道门（&& 串联，任一红即停）
         run: |
           python -m pytest -q \
             && python -m semantic_layer scan \
             && python -m semantic_layer validate \
             && python scripts/check_xrefs.py \
-            && echo "四道门全 exit 0"
+            && python scripts/check_reading_ledger.py \
+            && python scripts/check_gates.py \
+            && echo "六道门全 exit 0"
 
       # 冻结校验放在 Linux runner 上跑，顺带验证 D-012 的物理保障：
       # .gitattributes 强制 LF 入库，SHA-256 必须跨平台稳定。
