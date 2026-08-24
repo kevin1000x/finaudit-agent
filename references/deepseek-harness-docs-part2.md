@@ -1292,7 +1292,7 @@ capability split」的完整论述都**未读**。
 | 14 | **postmortem 的准入条件是三条硬判据**：subtle（机制非显然）+ systemic（漏网原因是流程/工具缺口，**not a one-off typo**）+ costly to rediscover | `postmortem/README.md:9`、`:7`（与「设计决策记录」划清界限） | **未落地。** 落 `rules/failure-modes.md` 开头。现在 F-1…F-8 是扁平清单、**没有准入条件**，长期会变成「所有犯过的错都往里堆」。尤其 `not a one-off typo` 这条 |
 | 15 | **不调模型的主流程，必须有无密钥、走真实入口的 CI 测试** | `postmortem/0001:112`「When the headline operation does not call the model, that test needs no API key — so it belongs in CI, not behind a key gate」 | **未落地。** 本项目的口径解析、拒答判定、证据链装配**全部不调模型**，因此都属于这一类。落 `rules/commands.md` 与 `gates.yml`（D-021 已建 CI 门禁，此条是给它加内容） |
 | 16 | **正交事实各自独立上报，不许把一个塞进另一个的分支里** | `defensive-patterns.md:7-9`（`timedOut` / `signal` / `exitCode`） | **未落地。**「取到数了」「口径已确认」「数据源新鲜」是三个正交事实，不能嵌套。落 `ARCHITECTURE §8.3`（终态三分已经是这个方向，但只分了终态，没分这三个正交维度） |
-| 17 | **「外部世界的失败」与「我们自己的 bug」在类型上必须分开** | `defensive-patterns.md:11-13`（`LlmRuntime.stream()` 只以终止 chunk 暴露模型请求失败；中间件与消费者缺陷仍然抛出） | **已落地（D-022 决策二，提交 `c6d5c6e`）。** **回标（2026-08-23，T-5）**：本条写作时确为缺口；D-022 已把界线定为**「是否可预期结果」**——检验方法是「能不能写进文档告诉用户这可能会发生」，能写就是 `Refusal`，写不出来（意味着我们写错了）就是异常。并明写了不按「是否在语义层内部」划（会与第 10 条的 `UNAVAILABLE` 直接矛盾）、不按「是否可重试」划（那是运行时属性，契约会不稳）。**标注此前未回改，属 T-1 查出的 4 条 `STALE` 之一。** 以下为原文，保留不改： `ARCHITECTURE §8.2` 规定了 `Refusal` 要封闭枚举，但**没规定「哪些情况必须是异常而不是 Refusal」**。缺了这一半，第 10 条很容易被做成「把所有异常都塞进 RefusalCode」，那是反向的错 |
+| 17（= 登记册 **`L-46`**，已落地于 **D-022 决策二**，提交 `c6d5c6e`） | **「外部世界的失败」与「我们自己的 bug」在类型上必须分开** | `defensive-patterns.md:11-13`（`LlmRuntime.stream()` 只以终止 chunk 暴露模型请求失败；中间件与消费者缺陷仍然抛出） | **已落地（D-022 决策二，提交 `c6d5c6e`）。** **回标（2026-08-23，T-5）**：本条写作时确为缺口；D-022 已把界线定为**「是否可预期结果」**——检验方法是「能不能写进文档告诉用户这可能会发生」，能写就是 `Refusal`，写不出来（意味着我们写错了）就是异常。并明写了不按「是否在语义层内部」划（会与第 10 条的 `UNAVAILABLE` 直接矛盾）、不按「是否可重试」划（那是运行时属性，契约会不稳）。**标注此前未回改，属 T-1 查出的 4 条 `STALE` 之一。** 以下为原文，保留不改： `ARCHITECTURE §8.2` 规定了 `Refusal` 要封闭枚举，但**没规定「哪些情况必须是异常而不是 Refusal」**。缺了这一半，第 10 条很容易被做成「把所有异常都塞进 RefusalCode」，那是反向的错 |
 | 18 | **不能证明因果时，证据链只能写「同一区间内发生」，不能写成因果归因** | `defensive-patterns.md:15-17`（`describe any selected output as interval-wide rather than causally attributed to that message`） | **未落地。** 本项目证据链默认「结论 ← 依据」是因果的；并发取数时该默认不成立。落 `ARCHITECTURE §8.5` |
 | 19 | **审计事件 log-only，不进模型上下文** | `approval.md:88` | **未落地。** 落 `ARCHITECTURE §8.5`。防的是「把证据链塞回 prompt 当上下文」——既费 token，又让证据内容影响模型输出，破坏复核的独立性 |
 | 20 | **关掉一个检查 ≠ 该检查从未存在**：被过滤掉的注册仍然占住名字 | `invariants.md:55` | **未落地。** 落 `ARCHITECTURE §8.5`。若将来做可配置关闭的口径校验，被关掉那条的标识必须仍在日志里，否则「关掉 A」与「A 从未注册」分不开 |
@@ -1330,6 +1330,8 @@ capability split」的完整论述都**未读**。
 此刻改写必然导致四方分叉（`tools.md:378-389` 的 doc comment 内）。
 **这对 `ARCHITECTURE §8.1` 是个校正**：签名闭合只是第一道锁，
 若被传进签名的对象本身可写，签名就是装饰。
+
+→ **已落地 2026-08-23**（登记册 **`L-3`**，`ARCHITECTURE` §8.1.1）。**尚无测试强制**，属设计约束。
 
 **Q3 证据/留痕在哪一步产生，能不能被绕过？**
 - **产生点是 registry 自己**，不是任何 listener（`tools.md:372`、`:374`）。

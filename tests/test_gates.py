@@ -483,3 +483,68 @@ def test_剥注释不误伤真实命令():
     stripped = cg._strip_yaml_comments("      - run: python scripts/check_x.py  # 说明\n")
     assert "python scripts/check_x.py" in stripped
     assert "说明" not in stripped
+
+
+# --------------------------------------------------------------------------
+# R5 —— 已落地的条目必须在 references/ 里留下可追溯的回标
+#
+# 台账 N-35 当初判定「『已含』无法机械判定」，留了「宁可不做，靠清单纪律」。
+# 那个判断在 2026-08-24 被推翻两次：规则刚写下，同一天落地的五条一条没回标。
+# 前提也不成立了——回标时把 L-nn 写进 references，比对就退化成一次 grep。
+# --------------------------------------------------------------------------
+
+
+def test_真实仓库的已落地条目都回标了():
+    assert cg.check_landed_items_are_back_annotated() == []
+
+
+def test_落地但未回标必须报红(monkeypatch, tmp_path):
+    """负向：这是 R5 唯一要防的东西，且它实际发生过（五条落地零条回标）。"""
+    (tmp_path / "docs" / "agent").mkdir(parents=True)
+    (tmp_path / "references").mkdir()
+    (tmp_path / "docs" / "agent" / "LANDING-BACKLOG.md").write_text(
+        "| # | 内容 | 来源 | 目的地 | 状态 |\n"
+        "| L-9 | 某条 | X | Y | ~~OPEN~~ → **已落地 2026-08-24** |\n"
+        "| L-10 | 另一条 | X | Y | OPEN |\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "references" / "a.md").write_text("正文里没有提到任何编号。\n", encoding="utf-8")
+    monkeypatch.setattr(cg, "REPO", tmp_path)
+
+    problems = cg.check_landed_items_are_back_annotated()
+    assert len(problems) == 1
+    assert "L-9" in problems[0]
+    assert "L-10" not in problems[0], "仍是 OPEN 的条目不该被要求回标"
+
+
+def test_回标了就通过(monkeypatch, tmp_path):
+    (tmp_path / "docs" / "agent").mkdir(parents=True)
+    (tmp_path / "references").mkdir()
+    (tmp_path / "docs" / "agent" / "LANDING-BACKLOG.md").write_text(
+        "| L-9 | 某条 | X | Y | **已落地 2026-08-24** |\n", encoding="utf-8"
+    )
+    (tmp_path / "references" / "a.md").write_text(
+        "~~未落地~~ → 已落地（登记册 `L-9`）。\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(cg, "REPO", tmp_path)
+    assert cg.check_landed_items_are_back_annotated() == []
+
+
+def test_编号比对不被粘连误伤(monkeypatch, tmp_path):
+    """`L-9` 不得被 `L-90` 满足——与 check_xrefs 同款的粘连问题。"""
+    (tmp_path / "docs" / "agent").mkdir(parents=True)
+    (tmp_path / "references").mkdir()
+    (tmp_path / "docs" / "agent" / "LANDING-BACKLOG.md").write_text(
+        "| L-9 | 某条 | X | Y | **已落地** |\n", encoding="utf-8"
+    )
+    (tmp_path / "references" / "a.md").write_text("回标了 `L-90`。\n", encoding="utf-8")
+    monkeypatch.setattr(cg, "REPO", tmp_path)
+    problems = cg.check_landed_items_are_back_annotated()
+    assert len(problems) == 1, "L-90 不该满足 L-9"
+
+
+def test_R5的输入缺失时不得静默通过(monkeypatch, tmp_path):
+    monkeypatch.setattr(cg, "REPO", tmp_path)
+    problems = cg.check_landed_items_are_back_annotated()
+    assert len(problems) == 1
+    assert "不得静默通过" in problems[0]

@@ -46,6 +46,10 @@ python -m eval.run --suite frozen-01 --report reports/
 - **R1** 每个 `test_*` 必须有可失败点（`assert` / `pytest.raises` / `pytest.fail` / …）
 - **R2** 每道门禁必须在 `GATES` 注册表里**具名声明**它的负控制用例，且该函数存在、满足 R1
 - **R3** 恒真断言（`assert True` / `assert x == x`）不算断言
+- **R4** 已登记门禁必须真的出现在 `.github/workflows/gates.yml` 里
+  —— 2026-08-23 第五道门漏进 CI 整整一天，这条把那个回归钉死
+- **R5** 登记册里已落地的 `L-nn`，编号必须在 `references/` 里出现过
+  —— 落地了没回标，`未落地` 标注会继续骗下一个读它的人
 
 **R1 的唯一例外**：断言确实就是「不抛异常」时，在测试 docstring 首行写
 `NO-ASSERT-BY-DESIGN: <该测试特有的理由>`。**反模板机制是理由必须全仓唯一**——
