@@ -5,10 +5,10 @@ milestone_name: 骨架与 cninfo 延伸
 current_phase: "01.5"
 current_phase_name: 数据接入层
 status: phase-1-complete-landing-t1-done-phase-1.5-not-planned
-stopped_at: Phase 1 已收口；Phase 1.5 六个决策点已全部裁决（D-015…D-019）并追加 D-020/D-021/D-022；**落实阶段 T-1…T-5 全部完成**——82 条去重登记册、ARCHITECTURE §8 补三节、第六道门（R1–R5）、4 条 STALE 已回标、EVAL_CASES 补 J-5/J-6/J-7、**T-4 已把 12 条并进 `01.5-data-ingestion/CONTEXT.md` §7**；**下一步即 `/gsd-plan-phase 01.5`，前置全部就绪，仍无 PLAN**；Phase 0 尚未开始
-last_updated: "2026-08-24T15:10:00Z"
-last_activity: 2026-08-24
-last_activity_desc: T-1/T-2/T-5 完成（08-23）+ T-3 完成（08-24）——LANDING-BACKLOG 成为 82 条去重登记册；ARCHITECTURE §8 新增 §8.1.1/§8.5.1/§8.5.2；4 条 STALE 标注回改；**新增第六道门 check_gates.py「门禁的门禁」+ 28 条测试**，首跑抓出一条真的；实跑「造回归→看红→回退」时第一次跑砸（红的原因是解析失败不是被查的那件事），已修门禁自身的崩溃路径并把这条经验写进 commands.md；**查出 CI 漏跑第五道门整整一天**（步骤名/echo/命令三者不一致），已补齐。**独立复核抓出 5 个 blocker 并全部修掉**——第六道门自己放行了六类「构造上不会红」的测试（`pytest.xfail`/`@mark.skip`/不可达分支/`return` 之后/未调用的嵌套函数/有副作用的自比较），一个为 F-2 写的脚本自己犯了 F-2；新增 R4 把「CI 与本地门禁分叉」机械化并跑过负控制；§1 的出现次数不再硬编码（移动靶）；补回标 L-1…L-5 并关掉台账 N-35 判据 1。432 passed，六道门（R1–R5）+ 供应链 + 两处冻结校验全绿；D-021 判据 3 已验证（CI run `32732752831`）；台账 N-35 已关闭；**27 个提交已推送，D-021 判据 3 已验证**（首次 push 触发 CI run `32732752831`，3.11/3.13/supply-chain 三 job 全绿，冻结校验 26 文件在 Linux 上全 OK）
+stopped_at: Phase 1 已收口；**Phase 1.5 六份 PLAN 已产出并通过 plan-checker（无 blocker）**，wave 1–5，提交 `72612ec`；落实阶段 T-1…T-5 全部完成；**下一步 `/gsd-execute-phase 01.5`，尚未开始执行**；Phase 0 尚未开始
+last_updated: "2026-08-25T02:50:00Z"
+last_activity: 2026-08-25
+last_activity_desc: **`/gsd-plan-phase 01.5` 已执行**——planner 独立上下文产出六份 PLAN（wave 1 tracer 切片 / wave 2 十四字段探测 / wave 3 映射表与列绑定 / wave 4 数值执行与 D-020 / wave 5 收口），plan-checker 独立复核判 **PASS 无 blocker**，仅一条 scope 警告（plan-01 有 21 个 files_modified，但拆开就不再是 tracer）。CONTEXT §7 的 12 条约束逐条有落点（我自己 grep 复核过），J-5/J-6/J-7 在位，三条红线（D-012 冻结产物 / D-014 AGPL / D-020 metrics 边界）均未触碰。三处 `checkpoint:decision` 经复核确属未决，不是回避。顺带修掉第一道门负控制的编码脆弱性（子进程强制 UTF-8）
 progress:
   total_phases: 6
   completed_phases: 1
@@ -189,7 +189,22 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 - harness `implemented/feature` 169 篇 + `archived/*` 142 篇：
   harness 自己的制度就写着「归档件不得作为当前行为的依据」
 
-推荐入口：**`/gsd-plan-phase 01.5`**。落实阶段 T-1…T-5 全部完成：
+推荐入口：**`/gsd-execute-phase 01.5`**。六份 PLAN 已通过 plan-checker。
+
+**执行时要盯的三件事**（都是复核明确点出来的）：
+
+1. **`01.5-01` 是最大的一份**（21 个 `files_modified`，估 90k tokens，`confidence: low`）。
+   tracer 按定义要穿过所有层，拆开就不再是「先证明架构再横向扩展」。
+   ⇒ **执行时紧盯上下文消耗，必要时中途 checkpoint 交接，而不是预先拆分。**
+2. **三处 `checkpoint:decision` 需要操作者拍板**：抽取记录的契约形状
+   （`selection` 三元组是否构成对 D-019 的扩展 / 批次身份键 / 勾稽不通过用哪个理由码）、
+   SC-2 门槛、跨源不一致容差。**复核确认三条都真的未决**，不是 planner 回避。
+3. **SC-2 是本阶段最大的风险**：实测覆盖 16/30，14 个字段零实测，而门槛只允许失手 6 个。
+   wave 2 的探测结果出来之前，不要假设 SC-2 能达成。
+
+---
+
+（历史）落实阶段 T-1…T-5 全部完成：
 T-1（08-23 去重归并 82 条）、T-2（08-23 `ARCHITECTURE` §8 补三节）、
 T-5（08-23 回标 4 条 STALE）、T-3（08-24 第六道门 R1–R5）、
 T-4（08-24 并入 `01.5-data-ingestion/CONTEXT.md` §7）。

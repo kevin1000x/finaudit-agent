@@ -56,7 +56,24 @@
 
 **验证**：432 passed，六道门 + 两处冻结校验全绿，**且全程未设编码环境变量**。
 
-**下一步**：plan-checker 验证六份 PLAN（工作流 §10）。
+**plan-checker 独立复核：PASS，无 blocker。** 一条 scope 警告：
+`01.5-01` 有 21 个 `files_modified`、估 90k tokens、`confidence: low`
+——但拆开就不再是 tracer，建议改为执行时盯上下文消耗、必要时中途交接。
+
+**我自己复核了 checker 的关键声明，全部属实：**
+
+- **§7 的 12 条逐条有落点**（grep 实测：L-2→01,06 ｜ L-9→01,06 ｜ L-12→04,06 ｜
+  L-13→01,04,06 ｜ L-34→01,04,06 ｜ L-35→01,03,05,06 ｜ L-36→01,03,06 ｜
+  L-37→03,06 ｜ L-38→01,04,06 ｜ L-45→01,06 ｜ L-47→01,06 ｜ L-55→01,03,06），
+  **无一丢弃**；J-5/J-6/J-7 也在位
+- **30 个字段的构成实测对得上**：`bs 15 / is 8 / cfs 2 / notes 4 / kpi 1`
+  ⇒ 已实测 16（bs 15 + notes 1）、零实测 14（is 8 + cfs 2 + notes 3 + kpi 1），与 SC-2 口径一致
+- **三条红线均未触碰**：`files_modified` 里 `eval/frozen-01/` 与 `docs/agent/poc-01/` 零命中（D-012）；
+  `metrics/` 改动只有 `_flags.yaml` 与 `minority_interest_share.yaml` 两份且都在 05
+  （严格落在 D-020 批准范围）；`PyMuPDF` / `fitz` 全仓只在**禁令语句**里出现一次（D-014）
+- **wave 4 的 04 与 05 `files_modified` 零重叠**（`comm -12` 空集）
+
+**下一步**：`/gsd-execute-phase 01.5`。**尚未开始执行。**
 
 
 ### 2026-08-24（第五段）— T-4 完成，落实阶段收口
