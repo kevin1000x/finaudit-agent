@@ -5,10 +5,10 @@ milestone_name: 骨架与 cninfo 延伸
 current_phase: "01.5"
 current_phase_name: 数据接入层
 status: phase-1-complete-landing-t1-done-phase-1.5-not-planned
-stopped_at: Phase 1 已收口；Phase 1.5 六个决策点已全部裁决（D-015…D-019）并追加 D-020/D-021/D-022，CONTEXT §4 已改为「已裁决」表，**仍无 PLAN，待 /gsd-plan-phase 01.5**；沉淀阶段已收束（references 26 份 26,734 行）；**落实阶段 T-1 / T-2 / T-3 / T-5 已完成**——82 条去重登记册（LANDING-BACKLOG §5），ARCHITECTURE §8 补三节，第六道门落地，4 条 STALE 已回标；**只剩 T-4（与 Phase 1.5 计划合流）未开始**；Phase 0 尚未开始
-last_updated: "2026-08-24T10:20:00Z"
+stopped_at: Phase 1 已收口；Phase 1.5 六个决策点已全部裁决（D-015…D-019）并追加 D-020/D-021/D-022；**落实阶段 T-1…T-5 全部完成**——82 条去重登记册、ARCHITECTURE §8 补三节、第六道门（R1–R5）、4 条 STALE 已回标、EVAL_CASES 补 J-5/J-6/J-7、**T-4 已把 12 条并进 `01.5-data-ingestion/CONTEXT.md` §7**；**下一步即 `/gsd-plan-phase 01.5`，前置全部就绪，仍无 PLAN**；Phase 0 尚未开始
+last_updated: "2026-08-24T15:10:00Z"
 last_activity: 2026-08-24
-last_activity_desc: T-1/T-2/T-5 完成（08-23）+ T-3 完成（08-24）——LANDING-BACKLOG 成为 82 条去重登记册；ARCHITECTURE §8 新增 §8.1.1/§8.5.1/§8.5.2；4 条 STALE 标注回改；**新增第六道门 check_gates.py「门禁的门禁」+ 28 条测试**，首跑抓出一条真的；实跑「造回归→看红→回退」时第一次跑砸（红的原因是解析失败不是被查的那件事），已修门禁自身的崩溃路径并把这条经验写进 commands.md；**查出 CI 漏跑第五道门整整一天**（步骤名/echo/命令三者不一致），已补齐。**独立复核抓出 5 个 blocker 并全部修掉**——第六道门自己放行了六类「构造上不会红」的测试（`pytest.xfail`/`@mark.skip`/不可达分支/`return` 之后/未调用的嵌套函数/有副作用的自比较），一个为 F-2 写的脚本自己犯了 F-2；新增 R4 把「CI 与本地门禁分叉」机械化并跑过负控制；§1 的出现次数不再硬编码（移动靶）；补回标 L-1…L-5 并关掉台账 N-35 判据 1。427 passed，六道门 + 供应链 + 两处冻结校验全绿；**27 个提交已推送，D-021 判据 3 已验证**（首次 push 触发 CI run `32732752831`，3.11/3.13/supply-chain 三 job 全绿，冻结校验 26 文件在 Linux 上全 OK）
+last_activity_desc: T-1/T-2/T-5 完成（08-23）+ T-3 完成（08-24）——LANDING-BACKLOG 成为 82 条去重登记册；ARCHITECTURE §8 新增 §8.1.1/§8.5.1/§8.5.2；4 条 STALE 标注回改；**新增第六道门 check_gates.py「门禁的门禁」+ 28 条测试**，首跑抓出一条真的；实跑「造回归→看红→回退」时第一次跑砸（红的原因是解析失败不是被查的那件事），已修门禁自身的崩溃路径并把这条经验写进 commands.md；**查出 CI 漏跑第五道门整整一天**（步骤名/echo/命令三者不一致），已补齐。**独立复核抓出 5 个 blocker 并全部修掉**——第六道门自己放行了六类「构造上不会红」的测试（`pytest.xfail`/`@mark.skip`/不可达分支/`return` 之后/未调用的嵌套函数/有副作用的自比较），一个为 F-2 写的脚本自己犯了 F-2；新增 R4 把「CI 与本地门禁分叉」机械化并跑过负控制；§1 的出现次数不再硬编码（移动靶）；补回标 L-1…L-5 并关掉台账 N-35 判据 1。432 passed，六道门（R1–R5）+ 供应链 + 两处冻结校验全绿；D-021 判据 3 已验证（CI run `32732752831`）；台账 N-35 已关闭；**27 个提交已推送，D-021 判据 3 已验证**（首次 push 触发 CI run `32732752831`，3.11/3.13/supply-chain 三 job 全绿，冻结校验 26 文件在 Linux 上全 OK）
 progress:
   total_phases: 6
   completed_phases: 1
@@ -189,8 +189,14 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 - harness `implemented/feature` 169 篇 + `archived/*` 142 篇：
   harness 自己的制度就写着「归档件不得作为当前行为的依据」
 
-推荐入口：**落实阶段只剩 T-4**。T-1（08-23 去重归并）、T-2（08-23 ARCHITECTURE §8）、
-T-5（08-23 回标）、T-3（08-24 第六道门）均已完成。
-下一步即 **T-4 + `/gsd-plan-phase 01.5`**：把 §5 初筛出的 14 条并进 PLAN 再出计划。
-⚠️ 登记册仍有 **60 条 `OPEN`**，它们**不是 Phase 1.5 的前置**——
-T-4 只需并入影响抽取器 / 映射表 / 计算层的那些，其余按目的地分批做。
+推荐入口：**`/gsd-plan-phase 01.5`**。落实阶段 T-1…T-5 全部完成：
+T-1（08-23 去重归并 82 条）、T-2（08-23 `ARCHITECTURE` §8 补三节）、
+T-5（08-23 回标 4 条 STALE）、T-3（08-24 第六道门 R1–R5）、
+T-4（08-24 并入 `01.5-data-ingestion/CONTEXT.md` §7）。
+
+**planner 的输入已就绪**：CONTEXT §4 是「已裁决」表（无待裁决项），
+**§7 是本轮新增的 12 条落地约束**（抽取器 4 / 映射表 2 / 计算层与闸门 4 / 拒答 2），
+外加 `J-5` / `J-6` / `J-7` 三条「抽取器设计必须能满足」的评测约束。
+
+⚠️ 登记册仍有 **58 条 `OPEN`**，它们**不是 Phase 1.5 的前置**——
+按目的地分批做。§5.F 的 8 条 `BLOCKED` 被 `U-01` / `U-03` 挡着，**不得提前拍板**。
