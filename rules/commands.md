@@ -81,6 +81,16 @@ python -m eval.run --suite frozen-01 --report reports/
 先 `ast.parse` 自证语法仍合法；`check_gates.py` 增加 `_parse()`，
 **语法错的测试模块报为一条 FAIL 而不是让门禁崩**。
 
+**门禁测试里跑子进程时，必须强制子进程用 UTF-8 写 stdout。**
+2026-08-24 实测：不设 `PYTHONIOENCODING` / `PYTHONUTF8` 时，Windows 子进程按系统代码页
+（cp936）输出，父进程按 UTF-8 解码得到 mojibake，`assert "悬空引用" in r.stdout` 匹配不到
+——**第一道门的负控制被一个环境变量翻红，而红的原因不是它要查的那件事**。
+危险不在于红，在于**人看见它红会去改测试而不是改环境**。
+Linux runner 默认 UTF-8，所以 CI 从不暴露这条：**这是「本地绿 ≠ CI 绿」的反向实例**
+——CI 常绿而本地红，同样会让人误判。
+⇒ 子进程一律传 `env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}`，
+**不要靠调用者记得 export**。已落在 `tests/test_xrefs.py` 的 `_UTF8_ENV` 与 `tests/test_gates.py`。
+
 写法上把回退做成 `trap ... EXIT`，别指望自己记得还原：
 
 ```bash

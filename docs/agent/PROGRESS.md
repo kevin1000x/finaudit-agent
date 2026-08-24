@@ -26,6 +26,39 @@
 
 ## 变更日志
 
+### 2026-08-24（第六段）— Phase 1.5 六份 PLAN 落地；顺带修掉第一道门负控制的编码脆弱性
+
+模式 `PLAN` → `IMPLEMENT`。**`/gsd-plan-phase 01.5` 已执行**，planner 在独立上下文产出
+六份 PLAN（提交 `72612ec`），wave 1–5。
+
+**planner 的两处判断我核过，属实：**
+
+- wave 4 的两份 plan `files_modified` **零重叠**（实测 `comm -12` 空集）
+- tracer 只走已实测 15/15 的 `bs.*` 路径，不赌任何未验证字段；
+  零实测的 14 个字段的探测排在 wave 2，**在任何横向扩展之前**
+  ——与 ROADMAP「wave 0 是探测」不冲突，两套 wave 编号的对应关系已写进 ROADMAP
+
+**planner 报的一个缺陷，我实测复现并修掉了：**
+
+`tests/test_xrefs.py::test_checker_flags_unknown_id_end_to_end`
+**不设 `PYTHONIOENCODING` 就红**——Windows 子进程按系统代码页（cp936）写 stdout，
+父进程按 UTF-8 解码得 mojibake，`assert "悬空引用" in r.stdout` 匹配不到。
+
+- **第一道门的负控制能被一个环境变量翻红，而红的原因不是它要查的那件事。**
+  危险不在于红，在于**人看见它红会去改测试而不是改环境**。
+- **Linux runner 默认 UTF-8，所以 CI 从不暴露这条**：这是「本地绿 ≠ CI 绿」的**反向实例**
+  ——CI 常绿而本地红，同样会让人误判。
+- 修法：子进程一律传 `env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}`，
+  **不靠调用者记得 export**。`tests/test_gates.py` 一并加固（它当前只断言 returncode，
+  但断言一旦加中文就会踩到）。
+- 按 `rules/commands.md` 的三步程序验过：造回归（把 `check_xrefs` 的一处 `return 1` 改成
+  `return 0`）→ 负控制变红 → 回退 → 68 passed。**全程未设任何编码环境变量。**
+
+**验证**：432 passed，六道门 + 两处冻结校验全绿，**且全程未设编码环境变量**。
+
+**下一步**：plan-checker 验证六份 PLAN（工作流 §10）。
+
+
 ### 2026-08-24（第五段）— T-4 完成，落实阶段收口
 
 模式 `PLAN`。**落实阶段 T-1…T-5 至此全部完成。**

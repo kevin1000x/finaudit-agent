@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -286,6 +287,9 @@ def test_真实仓库当前为绿_端到端():
     r = subprocess.run(
         [sys.executable, str(REPO / "scripts" / "check_gates.py")],
         capture_output=True, text=True, cwd=REPO, encoding="utf-8", errors="replace",
+        # 同 `tests/test_xrefs.py` 的 `_UTF8_ENV`：不强制的话子进程按系统代码页写 stdout，
+        # 断言中文串会匹配不到。这里当前只断言 returncode，但断言一旦加中文就会踩到。
+        env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
     )
     assert r.returncode == 0, f"门禁的门禁当前是红的：\n{r.stdout}\n{r.stderr}"
 

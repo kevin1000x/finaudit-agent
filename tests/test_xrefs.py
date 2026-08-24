@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -20,11 +21,20 @@ sys.path.insert(0, str(REPO / "scripts"))
 import check_xrefs  # noqa: E402
 
 
+# 子进程必须被强制以 UTF-8 写 stdout。
+# 2026-08-24 实测：不设这个环境变量时，Windows 子进程按系统代码页（cp936）输出，
+# 父进程按 UTF-8 解码得到 mojibake，于是 `assert "悬空引用" in r.stdout` 匹配不到
+# ——**门禁的负控制被一个环境变量翻红，而红的原因不是它要查的那件事**。
+# 危险不在于红，在于人看见它红会去改测试而不是改环境。
+# Linux runner 默认 UTF-8，所以 CI 从不暴露这条：**这是「本地绿 ≠ CI 绿」的反向实例**。
+_UTF8_ENV = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+
+
 def _run() -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(REPO / "scripts" / "check_xrefs.py")],
         cwd=REPO, capture_output=True, text=True,
-        encoding="utf-8", errors="replace",
+        encoding="utf-8", errors="replace", env=_UTF8_ENV,
     )
 
 
