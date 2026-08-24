@@ -32,12 +32,32 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture
-def scratch():
-    """写进真的 tests/ 目录——本门禁扫的就是这里，不能用 tmp_path 绕开。"""
-    p = REPO / "tests" / "test___gate_scratch__.py"
-    yield p
-    if p.exists():
-        p.unlink()
+def scratch(tmp_path, monkeypatch):
+    """样本写进 tmp_path，**不落进真实的 `tests/`**。
+
+    初版把样本写在 `REPO/tests/test___gate_scratch__.py`，靠 teardown 删。
+    2026-08-24 独立复核指出风险：进程被 Ctrl-C 或 OOM 杀掉时会残留一个
+    「无断言测试」文件，第六道门此后永久变红，且红的原因与真实代码无关
+    ——**一道会因为自己的测试残渣而红的门禁，人会去改门禁而不是改代码**。
+
+    `check_module` 只要求路径在 `REPO` 之下（它调 `relative_to(REPO)` 生成报错信息），
+    并不要求在 `tests/` 之下，所以把 `cg.REPO` 指向 tmp_path 即可。
+    """
+    monkeypatch.setattr(cg, "REPO", tmp_path)
+    monkeypatch.setattr(cg, "TESTS_DIR", tmp_path / "tests")
+    (tmp_path / "tests").mkdir()
+    return tmp_path / "tests" / "test_sample.py"
+
+
+def _src(*lines: str) -> str:
+    """按行拼测试源码。
+
+    不用嵌了换行转义的单个字符串字面量：那样写出来的 `<换行>@pytest.mark.skip`
+    会被 AC-10 扫描判成邮箱形态（局部名 + 点分域名），产生真误报。
+    2026-08-24 实际撞上一次。**没有去放宽扫描规则**——为迁就自己的测试
+    放宽门禁，正是本项目禁止的那件事。
+    """
+    return "\n".join(lines) + "\n"
 
 
 def _problems(path: Path) -> list[str]:
@@ -281,3 +301,185 @@ def test_非门禁脚本被显式声明():
     accounted = registered | set(cg.NOT_GATES)
     missing = on_disk - accounted
     assert not missing, f"这些脚本既没登记为门禁也没声明为非门禁：{sorted(missing)}"
+
+
+# --------------------------------------------------------------------------
+# 2026-08-24 独立复核抓出的盲区。**每一条此前都是「放行」。**
+#
+# 这一组不是补测试覆盖率，是把六类「构造上不会红但被判为有可失败点」的形态
+# 钉死。它们全部由复核者与本会话各自独立实跑复现过，不是假想风险。
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "name, src",
+    [
+        (
+            "pytest.xfail 是命令式标记，永不变红",
+            "import pytest\n\n\ndef test_x():\n    pytest.xfail('never fails')\n",
+        ),
+        (
+            "@pytest.mark.skip 的测试根本不跑",
+            _src("import pytest", "", "", "@pytest.mark.skip(reason='x')",
+                 "def test_x():", "    assert 1 == 2"),
+        ),
+        (
+            "@pytest.mark.skipif 同理，条件真假判不出来按 fail-closed 处理",
+            _src("import pytest", "", "", "@pytest.mark.skipif(True, reason='x')",
+                 "def test_x():", "    assert 1 == 2"),
+        ),
+        (
+            "@pytest.mark.xfail 的测试红了也算通过",
+            _src("import pytest", "", "", "@pytest.mark.xfail",
+                 "def test_x():", "    assert 1 == 2"),
+        ),
+        (
+            "断言在常量假分支里，语法上不可达",
+            "def test_x():\n    if False:\n        assert 1 == 2\n",
+        ),
+        (
+            "断言在 while False 里",
+            "def test_x():\n    while False:\n        assert 1 == 2\n",
+        ),
+        (
+            "断言写在 return 之后",
+            "def test_x():\n    return\n    assert 1 == 2\n",
+        ),
+        (
+            "断言写在 raise 之后",
+            "def test_x():\n    raise SystemExit\n    assert 1 == 2\n",
+        ),
+        (
+            "断言在一个从未被调用的嵌套函数里",
+            "def test_x():\n    def helper():\n        assert 1 == 2\n",
+        ),
+    ],
+)
+def test_构造上不会红的形态必须报红(scratch, name, src):
+    scratch.write_text(src, encoding="utf-8")
+    assert _problems(scratch), f"这个形态应当被判为无可失败点：{name}"
+
+
+@pytest.mark.parametrize(
+    "name, src",
+    [
+        ("普通断言", "def test_x():\n    assert 1 + 1 == 2\n"),
+        ("断言在 for 体内", "def test_x():\n    for i in [1]:\n        assert i == 1\n"),
+        ("断言在 if 真分支", "def test_x():\n    if True:\n        assert 1 == 2\n"),
+        (
+            "断言在 if False 的 else 分支",
+            "def test_x():\n    if False:\n        pass\n    else:\n        assert 1 == 2\n",
+        ),
+        (
+            "断言在 with 体内",
+            "def test_x():\n    with open(__file__) as f:\n        assert f\n",
+        ),
+        (
+            "with pytest.raises —— 失败点在 with 的 header 里，不在体内",
+            "import pytest\n\n\ndef test_x():\n    with pytest.raises(ValueError):\n        int('x')\n",
+        ),
+        (
+            "with pytest.warns 同理",
+            "import pytest\n\n\ndef test_x():\n    with pytest.warns(UserWarning):\n        pass\n",
+        ),
+        (
+            "断言在 try 体内",
+            "def test_x():\n    try:\n        assert 1 == 2\n    except AssertionError:\n        raise\n",
+        ),
+        (
+            "unittest 风格的 self.assert*",
+            "import unittest\n\n\nclass TestX(unittest.TestCase):\n    def test_x(self):\n        self.assertEqual(1, 2)\n",
+        ),
+        (
+            "断言写在 return 之前是可达的",
+            "def test_x():\n    assert 1 == 2\n    return\n",
+        ),
+    ],
+)
+def test_可达的失败点必须放行(scratch, name, src):
+    """误报的代价是有人去放宽 R1，而 docstring 自己写了「放宽会让 R1 退化」。
+
+    `with pytest.raises` 那条是真踩过的坑：修可达性时把复合语句整个跳过，
+    header 里的 `pytest.raises(...)` 就被漏判了。
+    """
+    scratch.write_text(src, encoding="utf-8")
+    assert _problems(scratch) == [], f"这个形态是可达失败点，不该报红：{name}"
+
+
+def test_有副作用的自比较不算恒真(scratch):
+    """`next(it) == next(it)` 结构相同但求值不同，它会真的红。
+
+    R3 只在两侧都无副作用时才判自比较——宁可漏判恒真，也不误报。
+    """
+    scratch.write_text(
+        "def test_x():\n    it = iter([1, 2])\n    assert next(it) == next(it)\n",
+        encoding="utf-8",
+    )
+    assert _problems(scratch) == []
+
+
+def test_无副作用的自比较仍算恒真(scratch):
+    scratch.write_text("def test_x():\n    y = 1\n    assert y == y\n", encoding="utf-8")
+    assert len(_problems(scratch)) == 1
+
+
+def test_xfail_不在可失败点白名单里():
+    """锁住这个集合本身：把 `xfail` 加回去，上面那条负向用例才会红，
+
+    但那时已经晚了——直接断言集合内容，改动它必须是有意识的。
+    """
+    assert "xfail" not in cg._PYTEST_FAILERS
+    assert cg._PYTEST_FAILERS == {"raises", "fail", "warns", "deprecated_call"}
+
+
+# --------------------------------------------------------------------------
+# R4 —— 已登记门禁必须真的接进 CI
+#
+# 2026-08-23 落地第五道门时漏了整整一天没进 CI，而步骤名、echo、实际命令
+# 三者不一致这件事没有任何检查会发现。这一组把那个回归钉死。
+# --------------------------------------------------------------------------
+
+
+def test_真实仓库的门禁都接进了CI():
+    assert cg.check_gates_are_wired_into_ci() == []
+
+
+def test_门禁没进CI必须报红(monkeypatch):
+    """负向：注册了一道 CI 里根本没有的门禁。"""
+    fake = cg.Gate(
+        entry="python scripts/check_从未接进CI.py",
+        test_module="test_gates.py",
+        negative_control="test_无断言的测试必须报红",
+    )
+    monkeypatch.setattr(cg, "GATES", (fake,))
+    problems = cg.check_gates_are_wired_into_ci()
+    assert len(problems) == 1
+    assert "没有出现在" in problems[0]
+    assert "两处门禁定义已分叉" in problems[0]
+
+
+def test_CI文件缺失时不得静默通过(monkeypatch, tmp_path):
+    """一道查不了的门禁必须报红，不能因为查不了就当通过——那是 fail-open。"""
+    monkeypatch.setattr(cg, "REPO", tmp_path)
+    problems = cg.check_gates_are_wired_into_ci()
+    assert len(problems) == 1
+    assert "无法执行，不得静默通过" in problems[0]
+
+
+def test_注释里的门禁名骗不过R4():
+    """`gates.yml` 的注释里就写着 `check_reading_ledger.py`。
+
+    不剥注释就会被自己的注释骗过——命令删掉了，子串还在，R4 静默通过。
+    2026-08-24 跑 R4 自己的负控制时当场撞上。
+    """
+    yaml_with_only_a_comment = "jobs:\n  gates:\n    steps:\n      # python scripts/check_x.py\n      - run: echo hi\n"
+    stripped = cg._strip_yaml_comments(yaml_with_only_a_comment)
+    assert "check_x.py" not in stripped
+    assert "echo hi" in stripped
+
+
+def test_剥注释不误伤真实命令():
+    """行尾注释要剥掉，命令本身要留下。"""
+    stripped = cg._strip_yaml_comments("      - run: python scripts/check_x.py  # 说明\n")
+    assert "python scripts/check_x.py" in stripped
+    assert "说明" not in stripped

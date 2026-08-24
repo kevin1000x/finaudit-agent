@@ -29,6 +29,12 @@ F-2 此前**只有识别方法，没有执行机制**——本脚本是它的执
 两道门禁一个用 `subprocess` 跑真脚本、一个直接调 `check_file()`，
 形状启发式在这里必然二选一失手（这条判据本身出自 `notes-part3` 的 C-A9）。
 
+**R4 —— 已登记的门禁必须真的出现在 CI 工作流里。**
+`GATES` 里每条 `entry` 的命令必须能在 `.github/workflows/gates.yml` 里找到。
+2026-08-23 落地第五道门时**漏了整整一天没进 CI**，而工作流步骤名已经改成「五道门」、
+`echo` 仍写「四道门」、实际跑四条——**三者不一致，没有任何检查会发现**。
+注册表里本来就有命令行字面量，这一条把那个回归钉死。
+
 **R3 —— 恒真断言不算断言。**
 `assert True` / `assert 1` / `assert "x"` / `assert x == x` 这类**构造上不可能红**的断言
 不计入 R1 的可失败点。`invariants.md:5` 逐字禁止「断言 service/method 存在」这类恒真物。
@@ -36,8 +42,13 @@ F-2 此前**只有识别方法，没有执行机制**——本脚本是它的执
 **R1 的唯一合法例外：断言就是「不抛异常」。**
 这类测试确实没有可写的断言（例：非 UTF-8 文件不能让扫描器崩）。
 **给它编一个断言就是 F-2 本身**——拿手边能求值的东西凑一个。
-harness 对这种情况给了正解（`invariants.md:5`）：**必须写显式的、该模块特有的、
-固定前缀开头的理由，模板化措辞由脚本拒绝。** 照办：
+harness 对这种情况给了正解（**`invariants.md:59`**，逐字见
+`references/deepseek-harness-docs-part2.md`）：必须写显式的、该模块特有的、
+**固定前缀开头**的理由（对方用的是 `No runtime invariant:`），
+**模板化措辞由脚本拒绝**。照办：
+（初版此处误写 `invariants.md:5`——那一条管的是**断言对象白名单**
+「never service or method presence」，即本脚本的 R3，不含前缀与反模板。
+2026-08-24 独立复核抓出；`rules/failure-modes.md` 那处分对了。）
 
 写法（此处用单引号示意，实际写在测试的 docstring 里）：
 
@@ -59,7 +70,17 @@ harness 对这种情况给了正解（`invariants.md:5`）：**必须写显式�
 - **抓不到间接断言。** 若测试把断言封进一个 helper（`_expect_red(...)`），
   R1 会误报。目前仓库里没有这种写法；出现时应显式登记进 `INDIRECT_ASSERT_HELPERS`，
   **而不是放宽 R1**——放宽会让 R1 退化。
-- **不检查门禁本身是不是绿的。** 那是那五道门自己的事，本脚本只看「它们会不会红」。
+- **不检查门禁本身是不是绿的。** 那是各道门自己的事，本脚本只看「它们会不会红」。
+- **可达性只判到常量条件为止。** 2026-08-24 的独立复核抓出六类「构造上不会红却被放行」
+  的形态，已全部修掉并有回归测试锁住（`pytest.xfail` 调用、`@pytest.mark.skip/skipif/xfail`、
+  常量假分支、`return`/`raise` 之后、未被调用的嵌套函数）。**但下面这些仍然抓不到**：
+  - 条件是运行时可求值的假（`if 1 > 2:` / `if os.environ.get("NEVER"):`）
+  - 断言被 `try` 包住又被裸 `except` 吞掉
+  - 通过 `conftest.py` 的 `pytest_collection_modifyitems` 之类在收集期被跳过的测试
+  - 断言写对了但断言的对象不对（同上一条，无法机械判定）
+- **R4 只查字面量出现，不查它在 CI 里是否真的会被执行。** 命令若被写进一个
+  永远不满足 `if:` 条件的 step，或被 `continue-on-error: true` 吞掉退出码，
+  R4 照样通过。**它挡的是「忘了加」，不是「加了但没生效」。**
 
 ## 豁免
 
@@ -142,7 +163,24 @@ EXEMPT_TESTS: frozenset[str] = frozenset()
 # R1 的合法例外前缀。见 docstring。
 NO_ASSERT_PREFIX = "NO-ASSERT-BY-DESIGN:"
 
-_PYTEST_FAILERS = {"raises", "fail", "warns", "deprecated_call", "xfail"}
+# R4 的检查对象。改路径要同步 `rules/commands.md` 的 CI 一节。
+CI_WORKFLOW = pathlib.Path(".github") / "workflows" / "gates.yml"
+
+# 能让测试变红的 pytest 入口。
+# **`xfail` 不在此列**：`pytest.xfail(reason)` 是命令式地把本次测试标成 xfailed 并
+# 立即中止，它在任何情况下都不会红。初版把它写进来了——一个保证不会失败的调用
+# 进了「可失败点」白名单，正是 F-2 的形状出现在为 F-2 而写的脚本里。
+# 2026-08-24 独立复核抓出，实跑佐证：`pytest.xfail(...)` 的测试报 `1 xfailed`。
+_PYTEST_FAILERS = {"raises", "fail", "warns", "deprecated_call"}
+
+# 让整个测试不被执行的 mark。被它们装饰的测试，函数体里有多少断言都不会跑。
+_SKIP_MARKS = {"skip", "skipif", "xfail"}
+
+# 不下降进去的作用域：嵌套函数/类不属于「这个测试的函数体」。
+# `_test_functions` 的 docstring 早就这么写了，而初版的 `_failure_points` 用
+# `ast.walk` 走进了嵌套函数——两处对「函数体」的定义不一致，于是
+# 「断言写在一个从未被调用的内部函数里」被判为有可失败点。
+_OPAQUE_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
 
 
 def _is_tautological(node: ast.Assert) -> bool:
@@ -154,11 +192,26 @@ def _is_tautological(node: ast.Assert) -> bool:
         return True
     if isinstance(test, ast.Compare) and len(test.ops) == 1:
         if isinstance(test.ops[0], (ast.Eq, ast.Is)):
-            try:
-                return ast.dump(test.left) == ast.dump(test.comparators[0])
-            except Exception:  # pragma: no cover - ast.dump 不应失败
-                return False
+            left, right = test.left, test.comparators[0]
+            # **只在两侧都无副作用时才判自比较**：`next(it) == next(it)` 结构相同
+            # 但求值不同，会真的红。2026-08-24 独立复核指出这个误报风险——
+            # 门禁误报的代价是有人去放宽 R1，而放宽会让 R1 退化。
+            if _side_effect_free(left) and _side_effect_free(right):
+                return ast.dump(left) == ast.dump(right)
     return False
+
+
+def _side_effect_free(node: ast.expr) -> bool:
+    """名字、常量、纯属性链、下标——求值两次结果相同。
+
+    含任何调用/推导/await 即判为有副作用：宁可漏判恒真，也不误报。
+    """
+    for sub in ast.walk(node):
+        if isinstance(sub, (ast.Call, ast.Await, ast.Yield, ast.YieldFrom, ast.NamedExpr)):
+            return False
+        if isinstance(sub, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            return False
+    return True
 
 
 def _nonempty_literal(node: ast.expr) -> bool:
@@ -169,14 +222,119 @@ def _nonempty_literal(node: ast.expr) -> bool:
     return False
 
 
-def _failure_points(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
-    """数这个函数体里有几处**可能失败**的地方。"""
+def _is_skipped(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """被 `@pytest.mark.skip` / `skipif` / `xfail` 装饰 ⇒ 断言一条都不会跑。
+
+    R2 声称「负控制存在且满足 R1」，但一个被 skip 的负控制既不会跑也不会红——
+    加一行 `@pytest.mark.skip` 就能让它形同虚设而门禁照样说通过。
+    2026-08-24 独立复核在第五道门的负控制上实测复现。
+
+    `skipif` 的条件可能为假（那样测试会跑），但**判不出来**，按 fail-closed
+    一律当作不可依赖：负控制不该有条件。
+    """
+    for dec in fn.decorator_list:
+        node = dec.func if isinstance(dec, ast.Call) else dec
+        if isinstance(node, ast.Attribute) and node.attr in _SKIP_MARKS:
+            if isinstance(node.value, ast.Attribute) and node.value.attr == "mark":
+                return True
+    return False
+
+
+def _falsy_constant(node: ast.expr) -> bool:
+    """`if False:` / `while 0:` —— 分支体在语法上不可达。"""
+    if isinstance(node, ast.Constant):
+        return not node.value
+    if isinstance(node, (ast.List, ast.Tuple, ast.Dict, ast.Set)):
+        return not _nonempty_literal(node)
+    return False
+
+
+def _truthy_constant(node: ast.expr) -> bool:
+    if isinstance(node, ast.Constant):
+        return bool(node.value)
+    if isinstance(node, (ast.List, ast.Tuple, ast.Dict, ast.Set)):
+        return _nonempty_literal(node)
+    return False
+
+
+def _count_stmts(body: list[ast.stmt]) -> int:
+    """按**可达性**数一段语句里的可失败点。
+
+    三条排除（均由 2026-08-24 的独立复核实测抓出，此前一律放行）：
+    - `return` / `raise` / `break` / `continue` 之后的语句
+    - 常量假分支的 `if` 体、常量假条件的 `while` 体
+    - 嵌套的 `def` / `class` / `lambda` 内部（见 `_OPAQUE_SCOPES`）
+
+    **仍然抓不到**：条件为运行时可求值的假（`if 1 > 2:`）、
+    被 `try` 包住又被裸 `except` 吞掉的断言。见模块 docstring 的「明确抓不到什么」。
+    """
     count = 0
-    for node in ast.walk(fn):
-        if isinstance(node, ast.Assert):
-            if not _is_tautological(node):
+    for stmt in body:
+        count += _count_expr_level(stmt)
+
+        if isinstance(stmt, ast.If):
+            if _truthy_constant(stmt.test):
+                count += _count_stmts(stmt.body)
+            elif _falsy_constant(stmt.test):
+                count += _count_stmts(stmt.orelse)
+            else:
+                count += _count_stmts(stmt.body) + _count_stmts(stmt.orelse)
+        elif isinstance(stmt, ast.While):
+            if not _falsy_constant(stmt.test):
+                count += _count_stmts(stmt.body)
+            count += _count_stmts(stmt.orelse)
+        elif isinstance(stmt, ast.Try):
+            count += _count_stmts(stmt.body)
+            for handler in stmt.handlers:
+                count += _count_stmts(handler.body)
+            count += _count_stmts(stmt.orelse) + _count_stmts(stmt.finalbody)
+        elif isinstance(stmt, (ast.For, ast.AsyncFor)):
+            count += _count_stmts(stmt.body) + _count_stmts(stmt.orelse)
+        elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+            count += _count_stmts(stmt.body)
+        elif isinstance(stmt, ast.Assert):
+            if not _is_tautological(stmt):
                 count += 1
-        elif isinstance(node, ast.Call):
+        elif isinstance(stmt, (ast.Return, ast.Raise, ast.Break, ast.Continue)):
+            break  # 本块后面的语句都不可达
+
+    return count
+
+
+def _header_exprs(stmt: ast.stmt) -> list[ast.expr]:
+    """复合语句自身的表达式（不含它的子语句块）。
+
+    **`with pytest.raises(...)` 的调用就在这里**——初版把复合语句整个跳过，
+    于是它被漏判。子语句块由 `_count_stmts` 递归处理，两边不重叠也不重复。
+    """
+    if isinstance(stmt, (ast.If, ast.While)):
+        return [stmt.test]
+    if isinstance(stmt, (ast.For, ast.AsyncFor)):
+        return [stmt.iter]
+    if isinstance(stmt, (ast.With, ast.AsyncWith)):
+        return [item.context_expr for item in stmt.items]
+    return []
+
+
+def _count_expr_level(stmt: ast.stmt) -> int:
+    """数这条语句**自身表达式**里的失败调用，不下降进子语句块与嵌套作用域。"""
+    if isinstance(stmt, _OPAQUE_SCOPES):
+        return 0
+
+    if isinstance(stmt, (ast.If, ast.While, ast.Try, ast.For, ast.AsyncFor, ast.With, ast.AsyncWith)):
+        roots: list[ast.AST] = list(_header_exprs(stmt))
+    else:
+        roots = [stmt]
+
+    count = 0
+    for root in roots:
+        for node in ast.walk(root):
+            if isinstance(node, _OPAQUE_SCOPES):
+                continue
+            if not isinstance(node, ast.Call):
+                continue
+            if _inside_opaque_scope(root, node):
+                continue
             f = node.func
             if isinstance(f, ast.Attribute):
                 if f.attr in _PYTEST_FAILERS and _root_name(f) == "pytest":
@@ -188,6 +346,23 @@ def _failure_points(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
             elif isinstance(f, ast.Name) and f.id in INDIRECT_ASSERT_HELPERS:
                 count += 1
     return count
+
+
+def _inside_opaque_scope(root: ast.AST, target: ast.AST) -> bool:
+    """target 是否被 root 内部的某个嵌套函数/类包着。"""
+    for node in ast.walk(root):
+        if isinstance(node, _OPAQUE_SCOPES) and node is not root:
+            for inner in ast.walk(node):
+                if inner is target:
+                    return True
+    return False
+
+
+def _failure_points(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
+    """数这个函数体里有几处**可达且可能失败**的地方。"""
+    if _is_skipped(fn):
+        return 0
+    return _count_stmts(fn.body)
 
 
 def _root_name(attr: ast.Attribute) -> str | None:
@@ -331,17 +506,59 @@ def check_reasons_are_not_templated(declared: dict[str, str]) -> list[str]:
     return problems
 
 
+def _strip_yaml_comments(text: str) -> str:
+    """去掉 `#` 注释行再做字面量检查。
+
+    **不去掉就会被自己的注释骗过**：`gates.yml` 里有一条注释写着
+    「`check_reading_ledger.py`（2026-08-23 落地的第五道门）从未进过 CI」，
+    命令即使被删掉，这个子串依然在文件里——R4 会静默通过。
+    2026-08-24 跑 R4 自己的负控制时当场撞上，正是「检查存在 ≠ 检查有效」。
+
+    只处理整行注释与行尾注释。YAML 的 `#` 在引号内不算注释，
+    但门禁命令不会写在引号里，这个近似足够且偏保守（宁可少认字面量）。
+    """
+    out = []
+    for line in text.splitlines():
+        idx = line.find("#")
+        out.append(line if idx < 0 else line[:idx])
+    return "\n".join(out)
+
+
+def check_gates_are_wired_into_ci() -> list[str]:
+    """R4：每道已登记门禁的命令必须出现在 CI 工作流里。
+
+    只做字面量包含检查——**它挡的是「忘了加」，不是「加了但没生效」**，
+    见 docstring 的「明确抓不到什么」。
+    """
+    path = REPO / CI_WORKFLOW
+    if not path.exists():
+        return [f"CI 工作流 {CI_WORKFLOW.as_posix()} 不存在 —— R4 无法执行，不得静默通过"]
+
+    text = _strip_yaml_comments(path.read_text(encoding="utf-8"))
+    problems = []
+    for gate in GATES:
+        # `entry` 写成 `python xxx`，CI 里也是 `python xxx`；去掉前缀比整串更稳
+        needle = gate.entry.removeprefix("python ").strip()
+        if needle not in text:
+            problems.append(
+                f"门禁 `{gate.entry}` 没有出现在 {CI_WORKFLOW.as_posix()} 里 —— "
+                f"它在本地跑而在 CI 不跑，两处门禁定义已分叉"
+            )
+    return problems
+
+
 def main() -> int:
     problems: list[str] = []
     declared: dict[str, str] = {}
-    for path in sorted(TESTS_DIR.glob("test_*.py")):
+    for path in sorted(TESTS_DIR.rglob("test_*.py")):
         module_problems, module_declared = check_module(path)
         problems.extend(module_problems)
         declared.update(module_declared)
     problems.extend(check_reasons_are_not_templated(declared))
     problems.extend(check_gates_have_negative_controls())
+    problems.extend(check_gates_are_wired_into_ci())
 
-    scanned = sorted(p.name for p in TESTS_DIR.glob("test_*.py"))
+    scanned = sorted(p.name for p in TESTS_DIR.rglob("test_*.py"))
     print(f"扫描 {len(scanned)} 个测试模块，{len(GATES)} 道已登记门禁。")
     print(f"已登记豁免 {len(EXEMPT_TESTS)} 条，间接断言 helper {len(INDIRECT_ASSERT_HELPERS)} 条（均应为 0）。")
     print(f"`{NO_ASSERT_PREFIX}` 声明 {len(declared)} 条 —— **它长起来就等于 R1 在退化**。")
