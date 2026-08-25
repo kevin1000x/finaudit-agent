@@ -6,9 +6,9 @@ current_phase: "01.5"
 current_phase_name: 数据接入层
 status: phase-1-complete-landing-t1-done-phase-1.5-not-planned
 stopped_at: Phase 1 已收口；**Phase 1.5 六份 PLAN 已产出并通过 plan-checker（无 blocker）**，wave 1–5，提交 `72612ec`；落实阶段 T-1…T-5 全部完成；**下一步 `/gsd-execute-phase 01.5`，尚未开始执行**；Phase 0 尚未开始
-last_updated: "2026-08-25T02:50:00Z"
+last_updated: "2026-08-25T12:00:00Z"
 last_activity: 2026-08-25
-last_activity_desc: **`/gsd-plan-phase 01.5` 已执行**——planner 独立上下文产出六份 PLAN（wave 1 tracer 切片 / wave 2 十四字段探测 / wave 3 映射表与列绑定 / wave 4 数值执行与 D-020 / wave 5 收口），plan-checker 独立复核判 **PASS 无 blocker**，仅一条 scope 警告（plan-01 有 21 个 files_modified，但拆开就不再是 tracer）。CONTEXT §7 的 12 条约束逐条有落点（我自己 grep 复核过），J-5/J-6/J-7 在位，三条红线（D-012 冻结产物 / D-014 AGPL / D-020 metrics 边界）均未触碰。三处 `checkpoint:decision` 经复核确属未决，不是回避。顺带修掉第一道门负控制的编码脆弱性（子进程强制 UTF-8）
+last_activity_desc: 三处 checkpoint 裁决落为 **D-023…D-026**（selection 进记录 / 批次身份键 / 勾稽理由码第 9 支 / SC-2 规则先定结果后判）；容差 checkpoint 后移并补 A2 探测（原排序要求在没证据时选数）；**沉淀审计查出 T-4 首轮漏了 9 条**本该进本阶段的约束，已并进 CONTEXT §7.7；登记册新增「已并进计划」一档，当前 OPEN 39 / 已并进计划 19 / BLOCKED 8 / 已落地 7 / 已关闭 4 / 依据 4 / DECIDED 1。432 passed，六道门 + 两处冻结校验全绿
 progress:
   total_phases: 6
   completed_phases: 1
@@ -191,7 +191,9 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 
 推荐入口：**`/gsd-execute-phase 01.5`**。六份 PLAN 已通过 plan-checker。
 
-**执行时要盯的三件事**（都是复核明确点出来的）：
+**三处 `checkpoint:decision` 已于 2026-08-25 全部裁决**（D-023…D-026），阻塞点从 3 处减到 1 处（容差，且已补上 A2 探测作前置）。
+
+**执行时要盯的三件事**：
 
 1. **`01.5-01` 是最大的一份**（21 个 `files_modified`，估 90k tokens，`confidence: low`）。
    tracer 按定义要穿过所有层，拆开就不再是「先证明架构再横向扩展」。
