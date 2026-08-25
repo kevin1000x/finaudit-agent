@@ -45,6 +45,10 @@ class RefusalCode(Enum):
     UNEVALUABLE_CONDITION = "条件无法对给定数据求值"
     CROSS_VERSION_COMPARISON = "两期结论由不同版本的口径定义产出"
     CROSS_BASIS_VERSION_COMPARISON = "两期所依据的准则版本不同"
+    # 以下两支由 Phase 1.5 加入。前七支**全部是「口径或数据本身有问题」**，
+    # 接上真实数据源与真实报表之后会撞上另外两类，没有一支表达得了。
+    UNAVAILABLE = "口径服务或数据源不可达"  # D-022 决策一
+    RECONCILIATION_FAILED = "该抽取批次的会计恒等式校验未通过"  # D-025
 
 
 @dataclass(frozen=True)
@@ -53,6 +57,10 @@ class Refusal:
     detail: str
     metric_id: str | None = None
     condition_index: int | None = None
+    # 责任方标识（L-9）：**哪个**数据源或**哪条**口径规则拒的。
+    # 只说「证据不足」不合格——复核者据此无从判断该去修哪一处。
+    # 形如 `cninfo:hisAnnouncement/query` 或 `reconcile:balance_sheet_identity`。
+    source: str | None = None
 
     def to_dict(self) -> dict:
         """AC-02 的交付形式：键名固定、可直接 json.dumps。"""
@@ -63,6 +71,7 @@ class Refusal:
             "detail": self.detail,
             "metric_id": self.metric_id,
             "condition_index": self.condition_index,
+            "source": self.source,
         }
 
 
@@ -293,6 +302,10 @@ def render_refusal(
             f"  含义：{outcome.code.value}",
             f"  详情：{outcome.detail}",
         ]
+        if outcome.source:
+            # 责任方要在**人看的那一面**也出现（L-9）。只进 to_dict 不进正文，
+            # 等于把它做成了一个可选返回值——ARCHITECTURE §8.5 的实证是那种字段会被丢掉。
+            lines.append(f"  责任方：{outcome.source}")
         if outcome.metric_id:
             lines.append(f"  指标：{outcome.metric_id}")
         if outcome.condition_index is not None:

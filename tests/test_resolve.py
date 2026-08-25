@@ -276,7 +276,18 @@ def test_unevaluable_trigger_refuses_rather_than_dropping_flag(tmp_path):
 # --------------------------------------------------------------------------
 
 
-def test_refusal_codes_are_exactly_seven():
+def test_refusal_codes_are_exactly_nine():
+    """取值域是 AC-02 的对外契约，成员集合被逐字锁住，改动必须先改决策。
+
+    七支 → 九支：D-022 加 `UNAVAILABLE`（数据源不可达），
+    D-025 加 `RECONCILIATION_FAILED`（批次勾稽不通过）。
+
+    ⚠️ **D-022 的「改动面已实测」一节说错了一句**：它写着
+    `grep 'len(RefusalCode)|list(RefusalCode)'` 零命中，据此断言
+    「不存在『枚举恰为 7 个』的锁死测试」。锁死测试一直在这里，
+    只是写法是 `{c.name for c in RefusalCode}`，那两个模式串扫不到。
+    ——「我查的范围能不能覆盖它可能存在的位置」，即 F-1。
+    """
     assert {c.name for c in RefusalCode} == {
         "METRIC_NOT_DEFINED",
         "ALIAS_AMBIGUOUS",
@@ -285,6 +296,8 @@ def test_refusal_codes_are_exactly_seven():
         "UNEVALUABLE_CONDITION",
         "CROSS_VERSION_COMPARISON",
         "CROSS_BASIS_VERSION_COMPARISON",
+        "UNAVAILABLE",
+        "RECONCILIATION_FAILED",
     }
 
 
