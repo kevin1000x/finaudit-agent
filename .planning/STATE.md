@@ -6,9 +6,9 @@ current_phase: "01.5"
 current_phase_name: 数据接入层
 status: phase-1-complete-landing-t1-done-phase-1.5-not-planned
 stopped_at: Phase 1 已收口；**Phase 1.5 六份 PLAN 已产出并通过 plan-checker（无 blocker）**，wave 1–5，提交 `72612ec`；落实阶段 T-1…T-5 全部完成；**下一步 `/gsd-execute-phase 01.5`，尚未开始执行**；Phase 0 尚未开始
-last_updated: "2026-08-25T12:00:00Z"
-last_activity: 2026-08-25
-last_activity_desc: 三处 checkpoint 裁决落为 **D-023…D-026**（selection 进记录 / 批次身份键 / 勾稽理由码第 9 支 / SC-2 规则先定结果后判）；容差 checkpoint 后移并补 A2 探测（原排序要求在没证据时选数）；**沉淀审计查出 T-4 首轮漏了 9 条**本该进本阶段的约束，已并进 CONTEXT §7.7；登记册新增「已并进计划」一档，当前 OPEN 39 / 已并进计划 19 / BLOCKED 8 / 已落地 7 / 已关闭 4 / 依据 4 / DECIDED 1。432 passed，六道门 + 两处冻结校验全绿
+last_updated: "2026-08-26T04:00:00Z"
+last_activity: 2026-08-26
+last_activity_desc: **Phase 1.5 开工**——wave 1 的 Task 1（抽取记录形状，D-023/D-024 落成代码，含 L-10 的三态）与 Task 2（巨潮下载三步链路 + RefusalCode 9 支 + 单向依赖 AST 门禁）已提交，470 passed（+38），六道门全绿；**并行沉淀**（独立 worktree）把 12 条落进 ARCHITECTURE §8、7 条落进 pitfalls 第 12–18 条，**OPEN 39 → 21、已落地 7 → 25**；顺带查出登记册两条目的地标错（外部项目的错不该进 failure-modes）
 progress:
   total_phases: 6
   completed_phases: 1

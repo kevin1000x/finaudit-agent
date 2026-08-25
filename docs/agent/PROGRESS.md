@@ -26,6 +26,45 @@
 
 ## 变更日志
 
+### 2026-08-26 — Phase 1.5 开工（wave 1 前两个 task）+ 并行沉淀，OPEN 39 → 21
+
+模式 `IMPLEMENT`。两个子 agent 并行：执行走主工作树，沉淀走独立 git worktree，两边零文件重叠。
+**两个 agent 都被会话上限中途打断**，但各自的成果都已提交或已由我补完。
+
+**执行侧（Phase 1.5 wave 1，两个 task 已提交）**
+
+- `98b6d4d` **抽取记录的形状** —— D-023 / D-024 落成代码。`src/extractor/record.py` 465 行：
+  `Selection` 三元组（`sampling` / `order_key` / `truncation`，缺一即构造失败）、
+  `ExtractionRecord`、`make_batch_id` 确定性派生。
+  **`ExtractionStatus` 三态**（`got_value` / `absent` / `attempted_unknown`）——
+  这是 §7.7 第二轮并入的 `L-10`，SC-3 原本只要求两态。
+- `369c6d1` **巨潮下载三步链路** —— `src/extractor/download.py` 420 行，纯标准库 `urllib`，
+  零新增依赖；`RefusalCode` 加到 **9 支**（`UNAVAILABLE` 由 D-022、
+  `RECONCILIATION_FAILED` 由 D-025）；单向依赖的 AST 门禁（D-015）。
+
+**我自己复核过，不是采信 agent 的话**：`RefusalCode` 实测 9 支且成员名逐一对得上；
+`record.py` 里 `Selection` / `ExtractionRecord` / `ExtractionStatus` 三个类都在，
+三态字面量齐全。**470 passed**（+38），六道门 + 两处冻结校验全绿。
+
+**沉淀侧（独立 worktree，已合并回主树）**
+
+- `cfd80d8` **12 条落进 `ARCHITECTURE.md` §8**（226 行），补节而非新建决策，含 R5 要求的回标
+- 另 **7 条落进 `rules/pitfalls.md`**（第 12–18 条）——agent 写完但死在提交前，
+  由我补完回标与状态同步
+
+⇒ **`OPEN` 39 → 21，`已落地` 7 → 25。** 82 条里现在 **53 条已进入项目**，
+8 条正当阻塞（U-01 / U-03），21 条仍只在登记册里。
+
+**顺带查出登记册自身的一处错**：`L-21` 与 `L-68` 的目的地列写的是
+`rules/failure-modes.md`，但那份文件开头明写「**只放已经真实犯过的错，不放假想风险**」
+——**外部项目犯的错不算我们犯过的**。两条已按正确目的地（`pitfalls.md`）落地，
+登记册的目的地列已就地更正。**这是 agent 自己判断出来并拒绝硬塞的**，
+不是我事后发现的——给它的 prompt 里写了「判断不了就不要硬塞，如实报告目的地标错」。
+
+**未做**：wave 1 的 Task 0（pdfplumber 供应链人工审计）与其后的 task；
+两个 agent 的完整报告因会话中断未取回。
+
+
 ### 2026-08-25 — 三处 checkpoint 裁决落为 D-023…D-026；沉淀审计查出 T-4 首轮漏了 9 条
 
 模式 `PLAN` → `IMPLEMENT`。

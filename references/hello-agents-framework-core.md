@@ -1561,6 +1561,10 @@ hello-agents 是同一个病的**更严重版本**：harness 至少还有个 `er
 
 #### B-6　不借：让测试给缺陷发合格证
 
+> **→ 已落地 2026-08-26**（登记册 **`L-68`**，`rules/pitfalls.md` 第 18 条）。
+> ⚠️ 本条原标落地点为 `failure-modes.md`，**标错了**——那份文件只放
+> 「我们自己真犯过的错」，外部项目犯的错属预防性告诫，归 `pitfalls.md`。
+
 **框架怎么做**：§7.7 —— `test_compress`（`test_context_engineering.py:117-138`）
 逐条断言「前 3 轮已消失、只剩一条摘要」并判定通过；
 `test_simple_summary_generation`（`test_smart_summary.py:47-70`）
