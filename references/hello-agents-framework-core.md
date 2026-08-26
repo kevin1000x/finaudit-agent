@@ -1444,7 +1444,12 @@ assert "总消息数：4 条" in summary
 对照 §4.2：全包三个裸 `except:`（`react_agent.py:1055` 与 `file_tools.py:189/196`）
 会把 `KeyboardInterrupt` 与 `SystemExit` 一起吃掉。
 
-**落地点：未落地。**
+**落地点：~~未落地~~ → 已落地 2026-08-27**（登记册 **`L-66`**，`rules/pitfalls.md` **第 20 条**）。
+两个候选落点里选了 `rules/pitfalls.md`——它是**预防性陷阱**而不是验证命令。
+（登记册该行的「目的地」列原写「实现约定」，**那不是一份文件**，落不了笔，已就地更正。）
+落地时把「现实理由」接到了本仓已有的两条上：半截产物正好命中第 19 条
+（基准集合派生自被检查物）与 `L-22`（陈旧产物导致的假通过）。
+以下为原文，保留不改：
 应作为一条具体写法补进 **`rules/commands.md`**（或 `rules/pitfalls.md`）：
 **本项目禁止裸 `except:`；`except Exception` 不得覆盖 `BaseException`；
 中断信号必须能穿透到顶层，而清理逻辑放 `finally`。**
