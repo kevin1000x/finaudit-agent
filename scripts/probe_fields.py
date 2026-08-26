@@ -331,8 +331,13 @@ def main(argv: list[str] | None = None) -> int:
     path = pathlib.Path(args.out)
     if path.parent != pathlib.Path(""):
         path.parent.mkdir(parents=True, exist_ok=True)
+    # 显式 newline：Windows 下 write_text 默认写 CRLF，而 .gitattributes 强制 LF 入库
+    # —— 于是工作树里的文件与仓库里的逐字节不同。固件不在冻结集内所以不违反 D-012，
+    # 但「工作树与仓库不一致」本身就是下一个哈希类结论的坑，在这里堵掉。
     path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+        newline="\n",
     )
     if "refusal" in payload:
         print(f"拒答：{payload['refusal']}", file=sys.stderr)
