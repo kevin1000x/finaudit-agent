@@ -6,9 +6,9 @@ current_phase: "01.5"
 current_phase_name: 数据接入层
 status: phase-1-complete-landing-t1-done-phase-1.5-not-planned
 stopped_at: Phase 1 已收口；**Phase 1.5 六份 PLAN 已产出并通过 plan-checker（无 blocker）**，wave 1–5，提交 `72612ec`；落实阶段 T-1…T-5 全部完成；**下一步 `/gsd-execute-phase 01.5`，尚未开始执行**；Phase 0 尚未开始
-last_updated: "2026-08-26T04:00:00Z"
-last_activity: 2026-08-26
-last_activity_desc: **Phase 1.5 开工**——wave 1 的 Task 1（抽取记录形状，D-023/D-024 落成代码，含 L-10 的三态）与 Task 2（巨潮下载三步链路 + RefusalCode 9 支 + 单向依赖 AST 门禁）已提交，470 passed（+38），六道门全绿；**并行沉淀**（独立 worktree）把 12 条落进 ARCHITECTURE §8、7 条落进 pitfalls 第 12–18 条，**OPEN 39 → 21、已落地 7 → 25**；顺带查出登记册两条目的地标错（外部项目的错不该进 failure-modes）
+last_updated: "2026-08-27T06:00:00Z"
+last_activity: 2026-08-27
+last_activity_desc: **Phase 1.5 wave 1 收口**——tracer 打通：巨潮下载 → PDF(SHA-256) → 合并资产负债表锚点 → 三个 bs 字段 → 勾稽闸门(差额 0.00) → 封闭算术解析器 → **debt_to_asset_ratio = 0.1798**（已独立复算，两个被除数逐字在证据链里）；pdfplumber 过供应链人工审计（76 版本无 yanked / MIT / 传递闭包零 AGPL / 月下载 5750 万，RESEARCH 的 SUS 判定证实为工具取数失败）；561 passed，六道门 + 供应链 + 冻结校验全绿；**沉淀登记册 OPEN 归零**（21 → 0），并查出 R5 的一个方向性盲区与 editable .pth 导致的worktree 门禁失效
 progress:
   total_phases: 6
   completed_phases: 1
