@@ -94,6 +94,12 @@ def license_denied(name: str, fields: list[str]) -> str | None:
 EXPECTED_UPSTREAM = {
     "pyyaml": "github.com/yaml/pyyaml",
     "pytest": "github.com/pytest-dev/pytest",
+    # 2026-08-26 登记（01.5-01 Task 0 的供应链核实，D-014 指定的 PDF 主库）：
+    # 76 个版本自 2015-08-24 连续发布、无一 yanked；author 为 Jeremy Singer-Vine；
+    # classifier 为 MIT；传递闭包 8 个包（pdfminer.six / Pillow / pypdfium2 /
+    # charset-normalizer / cryptography / cffi / pycparser / typing-extensions）
+    # 零 AGPL 命中，PyMuPDF / fitz 不在闭包内。
+    "pdfplumber": "github.com/jsvine/pdfplumber",
 }
 
 # 近月下载量下限。门禁原文要求「千万级」，此处按月取 1e7。
