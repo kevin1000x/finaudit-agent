@@ -1,0 +1,44 @@
+# 资产负债表字段在年报 PDF 上的取数口径（D-016）。
+#
+# 本文件是 tracer 切片的三条，其余 12 条 bs.* 与另外四份文件在 01.5-03-PLAN.md 补齐。
+# D-016 判据 2 的「五份文件 key 并集恰好等于 30 个 source_fields」那条断言也在那里落地
+# —— tracer 阶段五份文件还不全，现在写那条断言只会得到一条永远红的测试。
+#
+# label_fragments 是**按顺序、逐字整行相等**的片段序列，不是子串、不是拼接串。
+# 片段字面量取自贵州茅台 2023 年报的真实版面（p59 / p60 / p61），
+# 不取「读起来应该是这样」的折法。
+#
+# column_header 写的是**口径名**（期末余额），不是版面上印的那串字。
+# 茅台这份的表头印的是「2023年12月31日」，两者的对应由 locate.bind_columns
+# 按会计年度显式判定并把判定依据记进 ColumnBinding.resolution。
+
+namespace: bs
+mapping_version: 1
+
+entries:
+  - field_id: bs.total_assets
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["资产总计"]
+
+  - field_id: bs.total_liabilities
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["负债合计"]
+
+  - field_id: bs.total_equity
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      # 不折行的版面（其他公司年报常见形态）
+      - label_fragments: ["所有者权益（或股东权益）合计"]
+      # 茅台 2023 p61 的真实折行处在「权益」两字之间，数值行夹在两个片段之间：
+      #     所有者权益（或股东权
+      #     223,656,469,294.82   204,938,081,263.86
+      #     益）合计
+      - label_fragments: ["所有者权益（或股东权", "益）合计"]

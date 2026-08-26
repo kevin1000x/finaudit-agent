@@ -284,3 +284,71 @@ def test_记录可序列化为可机读字典():
     assert payload["page"] == 60 and payload["anchor_page"] == 59
     assert payload["retrieval"] == "got_value"
     assert payload["field_id"] == "bs.total_assets"
+
+
+# --------------------------------------------------------------------------
+# L-55：留痕的采集点只有包装层一处
+# --------------------------------------------------------------------------
+
+
+def test_留痕采集点唯一():
+    """`_stamp_provenance` 的调用点在整个 `src/extractor/` 下只出现在 `pipeline.py`。
+
+    实证依据：hello-agents 把截断放在**调用点**，`truncator.py` 的文档写着
+    「统一截断工具输出」而实际 **6 个调用点只覆盖了 2 个**（L-55 / ARCHITECTURE §8.5）。
+    ⇒ **凡是要求「每次都做」的事，就不能放在调用点。**
+
+    走 AST 不走行首正则：D-015 判据 2 已经为依赖方向立过同一条规矩，
+    理由一样 —— 函数体内与 `if TYPE_CHECKING:` 块里的东西，行首正则扫不到。
+    """
+    import ast
+    from pathlib import Path
+
+    package = Path(__file__).resolve().parent.parent / "src" / "extractor"
+    modules = sorted(package.glob("*.py"))
+    assert len(modules) >= 5, f"抽取器包只找到 {len(modules)} 个模块，扫描范围可疑"
+
+    callers = {}
+    for module in modules:
+        tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = (
+                func.id
+                if isinstance(func, ast.Name)
+                else func.attr
+                if isinstance(func, ast.Attribute)
+                else None
+            )
+            if name == "_stamp_provenance":
+                callers.setdefault(module.name, 0)
+                callers[module.name] += 1
+
+    assert set(callers) == {"pipeline.py"}, (
+        f"留痕采集点散落到了 {sorted(callers)}。"
+        "凡是要求「每次都做」的事就不能放在调用点（L-55）。"
+    )
+    assert callers["pipeline.py"] == 1, (
+        f"pipeline.py 里有 {callers['pipeline.py']} 处采集点，期望恰好 1 处"
+    )
+
+
+def test_留痕采集点唯一这条断言不是空转():
+    """负控制（J-5）：把一个假调用点放进 AST，上面那条必须红。
+
+    没有这一条的话，`_stamp_provenance` 哪天被改名，上面那条会因为
+    「一个调用点都没找到」而静默通过 —— 集合相等对空集也成立。
+    """
+    import ast
+
+    tree = ast.parse("def f():\n    return _stamp_provenance(x=1)\n")
+    found = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Name)
+        and n.func.id == "_stamp_provenance"
+    ]
+    assert len(found) == 1
