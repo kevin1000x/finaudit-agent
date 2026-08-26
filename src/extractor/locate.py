@@ -67,6 +67,7 @@ CONTEXT §6 记着 cninfo `pdf_parser.py:302` 无条件把第 0 行当表头
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
@@ -82,6 +83,15 @@ __all__ = [
     "SheetHeader",
     "ReconstructedRow",
     "find_statement_anchors",
+    "strip_invisible",
+    "SectionAnchor",
+    "find_section_anchors",
+    "next_anchor_after",
+    "read_applicability",
+    "applicability_from_lines",
+    "CHECKBOX_APPLICABLE",
+    "CHECKBOX_NOT_APPLICABLE",
+    "ApplicabilityUnreadable",
     "bind_columns",
     "rows_in_span",
     "parse_amount",
@@ -132,6 +142,21 @@ _LITERAL_ROLES = {
 }
 _DATE_HEADER_RE = re.compile(r"^(\d{4})年\d{1,2}月\d{1,2}日$")
 
+#: 章节标题的序号前缀，如 `九、` / `十一、`。**只允许中文数字加顿号**，别的一律不算前缀。
+_SECTION_NUMERAL_RE = re.compile(r"^([一二三四五六七八九十百]+、)")
+
+#: 子项的序号前缀。实测**跨公司不一致**：茅台 2023 是 `1、`，万华化学 2019 是 `1.`。
+#: 顿号、半角句点、全角句点三种都收；正文照旧逐字。
+_SUBITEM_NUMERAL_RE = re.compile(r"^(\d+\s*[、.．]\s*)")
+
+#: 披露模板的适用性复选项。**两种形态穷举，不做模糊匹配。**
+#:
+#: 版面上它是**一整行**：`√适用□不适用` 或 `□适用√不适用`（实测 p120–p121 逐行如此）。
+#: 之所以按整行逐字相等判而不按「行里有没有 √」判：`□适用√不适用` 里也有一个 `√`，
+#: 只看有没有 `√` 会把「不适用」读成「适用」——**方向恰好读反**，且不报任何错。
+CHECKBOX_APPLICABLE = "√适用□不适用"
+CHECKBOX_NOT_APPLICABLE = "□适用√不适用"
+
 #: 非数据行：书眉与页脚。**显式按文字形态剔除，不按 y 的魔法阈值剔除。**
 #: 页脚形如 `58 / 143`，被 `extract_words` 拆成三个词，故按整行文本判。
 _RUNNING_HEAD_RE = re.compile(r"^\d{4}年年度报告$")
@@ -139,6 +164,15 @@ _PAGE_FOOTER_RE = re.compile(r"^\d+\s*/\s*\d+$")
 
 #: 表头之后、数据之前的说明行，不参与行重组。
 _SHEET_META_PREFIXES = ("编制单位", "单位:", "单位：", "币种")
+
+
+class ApplicabilityUnreadable(LookupError):
+    """某个披露子项底下读不到**恰好一条**合法的适用性复选行。
+
+    **不返回「不适用」这个看起来安全的默认。** 读不出来和读出「不适用」是两回事：
+    前者是「够不着」，后者是一条事实陈述。混同它们，A-8 记的那种真实假阴性
+    就会从「flag 不置位」退化成「flag 不置位且无人知道为什么」。
+    """
 
 
 class SheetHeaderNotFound(LookupError):
@@ -185,6 +219,32 @@ class StatementAnchor:
             "page": self.page,
             "y": round(self.y, 2),
             "is_consolidated": self.is_consolidated,
+        }
+
+
+@dataclass(frozen=True)
+class SectionAnchor:
+    """一条**章节**标题，带 y 坐标。与 `StatementAnchor` 同形，语义不同。
+
+    为什么不复用 `StatementAnchor`：它有 `is_consolidated`，而章节没有合并/母公司之分。
+    给章节塞一个恒为 False 的字段，就是造一个永远不会正确触发的属性（F-2 的形状）。
+    """
+
+    title: str
+    page: int
+    y: float
+    #: 版面上这一行的完整文字，含 `九、` 这类序号前缀。`title` 是不含序号的正文。
+    #: 两个都留：证据链要指的是**纸上印的那串字**，而定位用的是正文。
+    printed_text: str
+    numeral_prefix: str
+
+    def to_dict(self) -> dict:
+        return {
+            "title": self.title,
+            "page": self.page,
+            "y": round(self.y, 2),
+            "printed_text": self.printed_text,
+            "numeral_prefix": self.numeral_prefix,
         }
 
 
@@ -318,6 +378,41 @@ class ReconstructedRow:
         )
 
 
+#: Unicode 的「不可见」类别：`Cc` 控制字符、`Cf` 格式字符（含 ZWSP / BOM）。
+_INVISIBLE_CATEGORIES = frozenset({"Cc", "Cf"})
+
+
+def strip_invisible(text: str) -> str:
+    """剔除文本层里的不可见字符，**只用于比对，不用于留证**。
+
+    ## 为什么需要它（2026-08-27 实测，顺丰控股 002352 2021 年报）
+
+    该报 p250 的章节标题，`extract_words` 取出来是 `'五、合并范围的变更'`
+    —— 「五」与「、」之间夹着一个 **U+0007（BEL）控制字符**。
+    它在任何打印输出里都看不见，`print()` 看不见，肉眼对照 PDF 也看不见。
+
+    后果是逐字相等匹配**静默零命中**，而零命中的表现形式是
+    「这份年报里找不到『合并范围的变更』这一节」——
+    与「这家公司确实没披露」**在输出上完全不可区分**。
+    这正是 `F-1` 那一类：把「我没匹配到」当成「它不存在」，
+    只不过这次连人工复核都会被骗，因为字符不可见。
+
+    ## 为什么剔除它不算把匹配放松
+
+    `Cc` / `Cf` **不是可打印字形**。剔除它们没有去掉任何一个人能看见的字。
+    这与「去掉空格」「忽略标点」不同 —— 那些会让两个肉眼可区分的串变成同一个。
+
+    ## 留证仍用原文
+
+    `SectionAnchor.printed_text` 存的是**未经处理的原始行**，
+    证据链要指的是字节流里真实存在的那串东西。
+    **归一化只发生在比对的那一刻。**
+    """
+    return "".join(
+        ch for ch in text if unicodedata.category(ch) not in _INVISIBLE_CATEGORIES
+    )
+
+
 def parse_amount(text: str) -> Decimal:
     """`-6,061,727.51` → `Decimal('-6061727.51')`。
 
@@ -393,7 +488,8 @@ def find_statement_anchors(pdf, y_tolerance: float = DEFAULT_Y_TOLERANCE) -> lis
     anchors: list[StatementAnchor] = []
     for page_number, page in enumerate(pdf.pages, start=1):
         for word in page.extract_words():
-            title = word["text"]
+            raw = word["text"]
+            title = strip_invisible(raw)
             if title in STATEMENT_TITLES:
                 anchors.append(
                     StatementAnchor(
@@ -407,10 +503,180 @@ def find_statement_anchors(pdf, y_tolerance: float = DEFAULT_Y_TOLERANCE) -> lis
     return anchors
 
 
-def next_anchor_after(
-    anchors: list[StatementAnchor], anchor: StatementAnchor
-) -> StatementAnchor | None:
-    """区间右端点。**允许与 `anchor` 同页**（失效模式 2）。"""
+def find_section_anchors(
+    pdf, titles: tuple[str, ...], y_tolerance: float = DEFAULT_Y_TOLERANCE
+) -> list[SectionAnchor]:
+    """章节标题的锚点。与 `find_statement_anchors` **同一个模型，不同的判定单元**。
+
+    区间模型完全一样：标题当带 y 坐标的锚点，区间 = `[本标题, 下一标题)`，跨页。
+    差别只在拿什么去比：
+
+    - 报表标题：**整词**逐字相等。`合并资产负债表` 是 `extract_words` 的一个词。
+    - 章节标题：**整行**比对。实测 p5 的 `七、` 与 `近三年主要会计数据和财务指标`
+      是两个词，p120 的 `九、` 与 `合并范围的变更` 也是；但它们各自独占一行。
+
+    ## `titles` 给的是**不含序号的正文**
+
+    `("合并范围的变更", "在其他主体中的权益")`，不是 `("九、合并范围的变更", ...)`。
+    一行命中的条件是二选一：
+
+    1. 整行逐字等于某个 `title`；或
+    2. 整行 = **中文数字序号前缀** + 逐字等于某个 `title`。
+
+    ⚠️ **序号必须容差，正文必须逐字，两条缺一不可。**
+
+    - **为什么序号要容差**：`合并范围的变更` 在茅台 2023 上排在 `九、`，
+      而这个序号**跨公司会变**（附注章节的条数不一样）。把序号写死等于给第二家公司
+      写了一条永远零命中的规则 —— `F-2` 的形状。
+    - **为什么正文必须逐字、不能退成 `^[一二三四五六七八九十]+、` 的形态匹配**：
+      形态匹配在茅台这一份上**当场误报三处**：
+      p117 `二、现金等价物3,000,000,000.00` 是表格里的一行，
+      p124 `一、持续的公允价` 与 p125 `二、非持续的公允` 是折行的半截标题。
+      **形态对了不等于它是标题。**
+
+    上面三处误报在本规则下全部落空：把序号剥掉之后，
+    `现金等价物3,000,000,000.00` / `持续的公允价` / `非持续的公允`
+    都不逐字等于任何一个 `title`。
+
+    返回**全部**命中，按 `(page, y)` 升序。同一 `title` 命中多次时由调用方处置：
+    这里不替它选一个（目录页与正文页同名是真实存在的形态）。
+    """
+    wanted = frozenset(titles)
+    anchors: list[SectionAnchor] = []
+    for page_number, page in enumerate(pdf.pages, start=1):
+        for line in _cluster_lines(page, page_number, y_tolerance):
+            raw = line.text
+            text = strip_invisible(raw)
+            if text in wanted:
+                body, prefix = text, ""
+            else:
+                match = _SECTION_NUMERAL_RE.match(text)
+                if match is None:
+                    continue
+                prefix = match.group(1)
+                body = text[len(prefix) :]
+                if body not in wanted:
+                    continue
+            anchors.append(
+                SectionAnchor(
+                    title=body,
+                    page=page_number,
+                    y=line.y,
+                    printed_text=raw,
+                    numeral_prefix=prefix,
+                )
+            )
+    anchors.sort(key=lambda a: (a.page, a.y))
+    return anchors
+
+
+def _subitem_body(text: str, wanted: frozenset[str]) -> str:
+    """子项标题剥掉序号前缀后的正文；不是子项标题就原样返回。
+
+    序号形态**跨公司不一致**（茅台 `1、` / 万华 `1.`），正文一致。
+    与 `find_section_anchors` 同一处置：**序号容差，正文逐字**。
+    非子项的行原样返回，于是复选行 `√适用□不适用` 不受影响。
+    """
+    if text in wanted:
+        return text
+    match = _SUBITEM_NUMERAL_RE.match(text)
+    if match is None:
+        return text
+    body = text[len(match.group(1)) :]
+    return body if body in wanted else text
+
+
+def read_applicability(
+    pdf,
+    anchor: SectionAnchor,
+    next_anchor: SectionAnchor | None,
+    sub_titles: tuple[str, ...],
+    y_tolerance: float = DEFAULT_Y_TOLERANCE,
+) -> dict[str, bool]:
+    """读一个章节里若干子项各自的「√适用 / □不适用」。
+
+    **定位锚在章节区间内，不靠关键词满篇找。** 这一条不是洁癖：茅台 2023 的 p77 有
+    `6.同一控制下和非同一控制下企业合并的会计处理方法`，那是**会计政策**，
+    不是交易事实。按关键词匹配会把它算成「发生了企业合并」——
+    与 cninfo `extract_financial_statements()`「最后一个匹配的表静默胜出」同型（D-013）。
+    本函数的区间是 `[anchor, next_anchor)`，p77 在构造上就进不来。
+
+    子项的复选行**不一定紧跟标题**：实测 `4、处置子公司` 与它的复选行之间隔着一行
+    `本期是否存在丧失子公司控制权的交易或事项`。所以取的是「本子项标题之后、
+    下一子项标题之前的**第一条**合法复选行」。
+
+    读不到、或读到不止一条形态不同的复选行，一律抛 `ApplicabilityUnreadable`。
+    """
+    wanted = frozenset(sub_titles)
+    lines: list[_TextLine] = []
+    last_page = len(pdf.pages) if next_anchor is None else next_anchor.page
+    for page_number in range(anchor.page, last_page + 1):
+        for line in _cluster_lines(pdf.pages[page_number - 1], page_number, y_tolerance):
+            position = (page_number, line.y)
+            if position <= (anchor.page, anchor.y):
+                continue
+            if next_anchor is not None and position >= (next_anchor.page, next_anchor.y):
+                continue
+            lines.append(line)
+
+    return applicability_from_lines(
+        [line.text for line in lines],
+        sub_titles,
+        where=f"章节 {anchor.title!r}（p{anchor.page}）",
+    )
+
+
+def applicability_from_lines(
+    texts: list[str], sub_titles: tuple[str, ...], where: str = "给定区间"
+) -> dict[str, bool]:
+    """`read_applicability` 的纯函数内核：**只吃行文本，不碰 PDF**。
+
+    分出这一层是为了让回归用例跑在**抽取产物**（`tests/fixtures/*.json` 里 dump 的行）
+    上，而不是每次重下 3.5 MB 的 PDF —— 与 `pipeline.StatementView.from_dict`
+    分层的理由相同。
+    """
+    wanted = frozenset(sub_titles)
+    normalized = [_subitem_body(strip_invisible(text), wanted) for text in texts]
+    out: dict[str, bool] = {}
+    for index, text in enumerate(normalized):
+        if text not in wanted:
+            continue
+        if text in out:
+            raise ApplicabilityUnreadable(f"子项 {text!r} 在{where}内出现不止一次。")
+        verdict: bool | None = None
+        for follower_text in normalized[index + 1 :]:
+            if follower_text in wanted:
+                break
+            if follower_text == CHECKBOX_APPLICABLE:
+                verdict = True
+                break
+            if follower_text == CHECKBOX_NOT_APPLICABLE:
+                verdict = False
+                break
+        if verdict is None:
+            raise ApplicabilityUnreadable(
+                f"子项 {text!r}（{where}第 {index + 1} 行）之后、下一子项之前"
+                f"读不到 {CHECKBOX_APPLICABLE!r} 或 {CHECKBOX_NOT_APPLICABLE!r}。"
+                "不取「不适用」作默认 —— 读不出来与读出「不适用」是两回事。"
+            )
+        out[text] = verdict
+
+    missing = [t for t in sub_titles if t not in out]
+    if missing:
+        raise ApplicabilityUnreadable(
+            f"{where}内找不到子项 {missing}。"
+            "子项缺一即拒绝返回部分结果：一份只填了一半的适用性表，"
+            "读起来与「其余都不适用」无法区分。"
+        )
+    return out
+
+
+def next_anchor_after(anchors, anchor):
+    """区间右端点。**允许与 `anchor` 同页**（失效模式 2）。
+
+    对 `StatementAnchor` 与 `SectionAnchor` 通用 —— 它只用 `(page, y)`，
+    两者在这一点上同形。
+    """
     ordered = sorted(anchors, key=lambda a: (a.page, a.y))
     for candidate in ordered:
         if (candidate.page, candidate.y) > (anchor.page, anchor.y):

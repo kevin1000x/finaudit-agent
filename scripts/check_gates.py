@@ -169,6 +169,10 @@ GATES: tuple[Gate, ...] = (
 # `scripts/` 下**不是门禁**的东西，写在这里以示这不是漏登记。
 NOT_GATES: dict[str, str] = {
     "backlog_status.py": "统计工具，不产生通过/不通过判定，其 docstring 已写明",
+    "probe_fields.py": (
+        "探测工具，只 dump 版面原文供人判定，不产生通过/不通过判定；"
+        "它一旦开始替人判「这一行是不是那个字段」，SC-8 就在探测阶段先失守。其 docstring 已写明"
+    ),
 }
 
 # 把断言封进 helper 的测试。**保持为空**，见 docstring「抓不到什么」。
