@@ -892,7 +892,8 @@ harness 直接在契约层把这类断言划为非法。
 > **没有准入条件**——什么错该进、什么错不该进没有判据，
 > 长期会变成「所有犯过的错都往里堆」。
 > 这三条（subtle / systemic / costly to rediscover）应当直接写进 `rules/failure-modes.md` 开头。
-> 尤其第二条 **「not a one-off typo」**：F 类条目必须是**流程漏洞**，不是单次手滑。**未落地。**
+> 尤其第二条 **「not a one-off typo」**：F 类条目必须是**流程漏洞**，不是单次手滑。
+> ~~**未落地。**~~ → **已落地 2026-08-27**（登记册 **`L-24`**，见本文件 §12 表第 14 行的回标）。
 
 ### 7.2 故障本身：`inject` 声明是对的，被 loader 的一行 `??` 丢掉了
 
@@ -1289,7 +1290,7 @@ capability split」的完整论述都**未读**。
 | 11 | **可见性与可执行性必须同源**：模型 prompt 里看到的指标集与取数层允许的指标集由**同一个解析器**产出 | `subagent.md:80-87`「vanish from the child's prompt AND refuse to execute (**one visibility**)」、`:99`「visibility-not-authority rationale」 | **未落地（且待核）。** 落 `ARCHITECTURE` 新增一节。先核：`PROJECT_SPEC` / `ARCHITECTURE` 里这两个集合现在是不是两处各写一份。分叉的表现是「模型答了一个它本不该能答的指标」——这类 bug 不会报错 |
 | 12 | **两道闸，位置不同**：入口闸（问题里无可解析指标 ⇒ 不进模型）+ **副作用闸**（要落一个数之前，口径必须已解析，闸门在计算体内部的落数点上） | `tool-execution-pipeline.md:44-45`（`toolBody --> fsGate --> toolBody`）、`:60`（`read-before-edit checks stay **below** tool-fs`） | **未落地。** `ARCHITECTURE §8.1` 只描述了入口闸。落 `ARCHITECTURE` 新增 §8.6「副作用闸」。理由：通用管线看不懂领域不变量，领域闸门必须自己一层且贴着副作用点 |
 | 13 | **文档里粘贴的类型/枚举，用 gate 与源码焊死**（清单 `{doc, symbol, source}` + 解析器提取 + 1:1 对应校验） | `development.md:163-171`（`ts type-equiv` + `verify-type-equiv`） | **未落地。** 落 `rules/commands.md` 新增 `verify-doc-symbol`，用 Python `ast` 而非正则。D-012 的 SHA-256 只覆盖**文件级**，覆盖不了「文档里说 `RefusalCode` 是 7 项、代码里已经 8 项」这个粒度——而第 10 条恰好就要动这个枚举 |
-| 14 | **postmortem 的准入条件是三条硬判据**：subtle（机制非显然）+ systemic（漏网原因是流程/工具缺口，**not a one-off typo**）+ costly to rediscover | `postmortem/README.md:9`、`:7`（与「设计决策记录」划清界限） | **未落地。** 落 `rules/failure-modes.md` 开头。现在 F-1…F-8 是扁平清单、**没有准入条件**，长期会变成「所有犯过的错都往里堆」。尤其 `not a one-off typo` 这条 |
+| 14 | **postmortem 的准入条件是三条硬判据**：subtle（机制非显然）+ systemic（漏网原因是流程/工具缺口，**not a one-off typo**）+ costly to rediscover | `postmortem/README.md:9`、`:7`（与「设计决策记录」划清界限） | ~~**未落地。**~~ → **已落地 2026-08-27**（登记册 **`L-24`**，`rules/failure-modes.md` 开头新增「准入条件」一节）。三条判据照 `postmortem/README.md:9` 的逐字写成一张表，并加了原文没有的两样：① **不满足时该去哪**一列——决策去 `DECISIONS.md`、预防性告诫去 `rules/pitfalls.md`，本文件只收事故，依据是 `:7` 划的「post-mortem is NOT an Agent Note（记录 deliberate design decision 的那种）」那条界；② **只约束新增、不追溯**——回头拿新准入条件删已记下的事故，等于用今天的标准改昨天的记录，与 `D-012`「不修改后重用」同源。**落地当场就有三个实例**：登记册 `L-21` / `L-68` / `L-23` 的目的地列原写 `failure-modes.md`，逐栏填表后全部改道 `pitfalls.md`，卡住它们的是 **systemic** 那一栏——外部项目的错填不出「我们的哪个流程缺口漏掉了它」。以下为原文，保留不改：落 `rules/failure-modes.md` 开头。现在 F-1…F-8 是扁平清单、**没有准入条件**，长期会变成「所有犯过的错都往里堆」。尤其 `not a one-off typo` 这条 |
 | 15 | **不调模型的主流程，必须有无密钥、走真实入口的 CI 测试** | `postmortem/0001:112`「When the headline operation does not call the model, that test needs no API key — so it belongs in CI, not behind a key gate」 | **未落地。** 本项目的口径解析、拒答判定、证据链装配**全部不调模型**，因此都属于这一类。落 `rules/commands.md` 与 `gates.yml`（D-021 已建 CI 门禁，此条是给它加内容） |
 | 16 | **正交事实各自独立上报，不许把一个塞进另一个的分支里** | `defensive-patterns.md:7-9`（`timedOut` / `signal` / `exitCode`） | **未落地。**「取到数了」「口径已确认」「数据源新鲜」是三个正交事实，不能嵌套。落 `ARCHITECTURE §8.3`（终态三分已经是这个方向，但只分了终态，没分这三个正交维度） |
 | 17（= 登记册 **`L-46`**，已落地于 **D-022 决策二**，提交 `c6d5c6e`） | **「外部世界的失败」与「我们自己的 bug」在类型上必须分开** | `defensive-patterns.md:11-13`（`LlmRuntime.stream()` 只以终止 chunk 暴露模型请求失败；中间件与消费者缺陷仍然抛出） | **已落地（D-022 决策二，提交 `c6d5c6e`）。** **回标（2026-08-23，T-5）**：本条写作时确为缺口；D-022 已把界线定为**「是否可预期结果」**——检验方法是「能不能写进文档告诉用户这可能会发生」，能写就是 `Refusal`，写不出来（意味着我们写错了）就是异常。并明写了不按「是否在语义层内部」划（会与第 10 条的 `UNAVAILABLE` 直接矛盾）、不按「是否可重试」划（那是运行时属性，契约会不稳）。**标注此前未回改，属 T-1 查出的 4 条 `STALE` 之一。** 以下为原文，保留不改： `ARCHITECTURE §8.2` 规定了 `Refusal` 要封闭枚举，但**没规定「哪些情况必须是异常而不是 Refusal」**。缺了这一半，第 10 条很容易被做成「把所有异常都塞进 RefusalCode」，那是反向的错 |
