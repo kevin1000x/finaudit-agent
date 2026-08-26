@@ -99,6 +99,153 @@ trap 'cp /tmp/backup.py tests/target.py; rm -f /tmp/backup.py' EXIT
 # ...造回归、看红...
 ```
 
+## 第 0 步：确认被测对象是**当前工作树**的产出（2026-08-27 新增，登记册 `L-22`）
+
+**跑任何门禁之前先问一句：我刚才改的那份文件，是它读的那份吗？**
+
+出处 `references/deepseek-harness-notes-part3.md` C-A15
+（源 `HN-B13:82`；`HN-` 是来源前缀，指 harness `.agents/notes/implemented/bug-fix` 第 13 篇
+——原编号裸写会被 `check_xrefs.py` 解析成本仓台账 B 区的条目）：
+对方的 `WorkspaceBrowser.module.css` **从来不进 `apps/web/dist`**，
+于是只重跑 `build:web` 的负控制跑的是**陈旧 bundle**，把那条声明整个删掉**照样通过**。
+笔记自己的判词是「这读起来像一个空洞的测试，而不是一个无效的控制」。
+**且 CI 从未暴露，只有本地脚本暴露。**
+
+⇒ 它与本文件下面记的 UTF-8 那条是**镜像**：那条是「CI 常绿、本地红」，
+这条是「本地绿、CI 会红」。两条合起来的结论不是「以哪边为准」，而是——
+**「跑过了」这三个字必须连带说清跑的是谁的产出。**
+
+### 本仓已经实地命中一次，就在写这一节的同一个会话里（2026-08-27）
+
+在 `.claude/worktrees/` 的独立工作树里、用主仓 `.venv` 的解释器跑门禁：
+
+```bash
+.venv/Scripts/python -c "import semantic_layer; print(semantic_layer.__file__)"
+# → ...07-finaudit-agent\src\semantic_layer\__init__.py       ← 主工作树
+# 期望的是 ...\.claude\worktrees\<name>\src\semantic_layer\__init__.py
+```
+
+根因是 `.venv/Lib/site-packages/__editable__.finaudit_semantic_layer-0.1.0.pth`
+——editable 安装把一个**固定绝对路径**钉进了解释器，`import` 从此不跟 cwd 走。
+于是 `python -m semantic_layer scan` / `validate` 这两道门**读的是主工作树的代码与
+`metrics/`**，而主工作树此刻正有另一个 agent 在写 Phase 1.5 的代码。
+
+**同一个解释器、同一个 cwd，`pytest` 却没有这个问题**：
+`pyproject.toml` 的 `[tool.pytest.ini_options] pythonpath = ["src"]`
+让 pytest 把 **rootdir 下的 `src`** 插到 `sys.path` 最前面，而 rootdir 由
+worktree 里的那份 `pyproject.toml` 决定（实测 `rootdir:` 打的就是 worktree 路径）。
+⇒ **两条命令导入的是两份代码，而输出里没有任何东西会告诉你这件事。**
+
+⇒ **在非主工作树里跑门禁，必须显式覆盖 `PYTHONPATH`**：
+
+```bash
+PYTHONPATH="$PWD/src" .venv/Scripts/python -m semantic_layer scan
+PYTHONPATH="$PWD/src" .venv/Scripts/python -m semantic_layer validate
+```
+
+⚠️ **这不是「worktree 的坑」，是「editable 安装 + 多工作树」的坑。**
+识别方法一句话：**跑之前先让它把 `__file__` 打出来**——
+和 C-A15 原文的做法同型（先确认产物是刚构建出来的，再谈验证结果）。
+⚠️ 目前**没有门禁强制这一步**：写一条「断言 `semantic_layer.__file__` 在 rootdir 下」
+的测试是可行的，但它属于 `tests/`，本轮不动。**如实记在这里，不假装有覆盖。**
+
+## 本项目的测试写法约定（2026-08-27 新增，登记册 `L-65`）
+
+出处 `references/hello-agents-framework-core.md` FC-A3（该文 §7.3「回归型三件」）。
+挑出来的三条是那套仓库里**唯一写对了的一批测试**的共同点——
+同仓「演示型六件」174 条断言里 `==` 只占 76 条，回归型三件 50 条里占 46 条。
+
+1. **自建假客户端，不用 mock 框架。**
+   （`test_llm_streaming.py:27-75` 的 `FakeClient` / `FakeAsyncStream`）
+   确定性、可离线、无需 mock 库，**读起来本身就是一份行为规格**。
+   本项目的对应物：PDF 抽取的假页面、AKShare 的假响应，一律写成显式的假对象。
+2. **精确等值断言，不用存在性断言。**
+   （`:91` `assert chunks == ["hello"]`，`:92-96` 断言整个 usage 字典）
+   与本文件第六道门的 R3、`pitfalls.md` 第 18 条是同一条：
+   **`in` / `is not None` / `hasattr` 测的是形状，缺陷在生产者。**
+3. **把「不该发生的事」升级成错误。**
+   （`test_pydantic_v2_serialization.py:30-31`
+   `warnings.simplefilter("error", PydanticDeprecatedSince20)`
+   ——全套件唯一一处断言「某事不该发生」的写法）
+   **本项目最该用这条的两处**：`AC-02`（口径缺失时拒答）与
+   `AC-09`（静态校验拒绝危险样本）。两处都写成
+   `pytest.raises` + **断言精确的理由码**，
+   **不写「返回值非空」**——非空可以由一句错误字符串满足。
+
+## 门禁断言的元判据：说不出它什么时候会红，就删掉（2026-08-27 新增，登记册 `L-32`）
+
+出处 `references/hello-agents-framework-core.md` FC-B5（该文 §7.6）：
+两个**构造上不可能失败**的测试
+（`test_all_agents.py:238-249`、`test_context_engineering.py:357-419`）
+都答不出「它在什么情况下会红」这句话，而它们**至今挂在套件里显示为绿**。
+
+⇒ **新增或修改任何门禁断言时，必须能用一句话说出它会红的那个场景。**
+说不出来的两个处置，二选一，没有第三种：**删掉**，或**按上面的「造回归 → 看红 → 回退」
+把那个场景真的造出来**。
+
+**与第六道门 R2 的关系**：R2 是这条元判据的**机械化的一半**——
+它要求每道门禁在 `GATES` 注册表里具名声明一个负控制，且那个负控制自己满足 R1。
+**但 R2 只保证「存在一个会红的负控制」，保证不了「这条断言本身答得出那句话」。**
+剩下那一半没有机械判据，只有这条人执行的规矩。
+⚠️ 不许把「R2 通过」读成「每条断言都说得出它什么时候会红」。
+
+## 已识别、但**尚未机械化**的门禁缺口（2026-08-27 新增）
+
+**这一节记的是「约束已经成立、门禁还没写」，不是待办清单。**
+写在这里而不是留在登记册里，理由是：**这些约束现在就在约束我们怎么写代码与文档**，
+而门禁什么时候写是另一回事。⚠️ **不许把本节读成「已经有检查了」。**
+
+### (1) 类型注解必须由 checker 执行；死抽象必须被发现（登记册 `L-25`，**部分落地**）
+
+三份产物指向同一个缺口：
+
+| 来源 | 实证 |
+|---|---|
+| `hello-agents-ch06-frameworks.md` X6-2 | LangGraph Demo 三个节点全部注解 `-> SearchState`，实际返回的是**部分字段的 dict**（`:42` / `:80` / `:132`）；`code/chapter6/` **零测试、零 mypy、零 pyproject** |
+| `hello-agents-ch07-framework.md` C7-X13 | **死抽象：声明了但零消费**——`Config` 全包零消费，`max_history_length` 声明了历史上限而**没有任何地方裁剪历史** |
+| 同上 C7-X9 | 位置传参 + 签名不统一 ⇒ **静默参数错绑**：`system_prompt` 被绑到父类的 `tool_registry` 形参上，因为子类从不读它，**这个错误永远不会表现出来** |
+
+X6-2 的判词值得逐字留着：**有类型注解但不跑 checker，比没有类型更危险**
+——它制造「我们有类型」的错觉，于是运行时校验被省掉。
+
+⇒ **本项目现在就成立的三条约束**：
+① 新增的类型注解必须是**能被 checker 验的**（不写 checker 验不了的注解来充数）；
+② **公开接口声明了就必须有消费者**，没有消费者的先别声明；
+③ **构造函数与跨模块调用一律关键字传参**。
+⇒ **未做的那一半**：把 mypy / pyright 加进这份文件的门禁命令与 `gates.yml`。
+`D-015` 已经用对了同一个机制（依赖方向由测试强制），但它只覆盖依赖方向。
+
+### (2) 文档里出现的字段名 / 类名必须在代码中存在（登记册 `L-26`，**部分落地**）
+
+出处 `references/hello-agents-ch06-frameworks.md` §9.5，它把 X6-7（派生数据被物化）
+的适用范围扩大了一层：**文档也是一份派生数据。**
+README 里的类定义、架构图、文件清单，全是从代码派生出来的事实的第二份拷贝，
+**而且是唯一没有任何机制校验的那一份**——该章两份 README **全烂了**。
+
+**本仓已经有一个成功对照**：`scripts/check_xrefs.py` 让 `D-0xx` / `AC-xx` / `OQ-xx`
+这类交叉引用**悬空即非零退出**，所以这类引用不会腐烂；
+而字段名、类名、文件清单**没有这类校验**。
+（对方的做法是 `development.md:163-171` 的 `verify-type-equiv`：
+一份 `{doc, symbol, source}` 清单 + 解析器提取 + 1:1 校验。
+本项目若要做，**用 Python `ast` 而不是正则**。）
+
+⇒ **现在就成立的约束**：文档里写死一个字段名 / 类名 / 枚举值时，
+必须是**从代码里复制出来的**，且改代码时同步改文档。
+⇒ **未做的那一半**：`verify-doc-symbol` 这道门。
+
+### (3) 不调模型的主流程必须有**无密钥、走真实入口**的 CI 测试（登记册 `L-27`）
+
+出处 `references/deepseek-harness-docs-part2.md` HD2-15，逐字引自 `postmortem/0001:112`：
+
+> When the headline operation does not call the model, that test needs no API key
+> — so it belongs in CI, **not behind a key gate**.
+
+**本项目的口径解析、拒答判定、证据链装配全部不调模型**，因此**整个主流程都属于这一类**。
+⇒ **判据**：这三条链路的测试**不得**以「需要密钥」为由被排除在 `gates.yml` 之外；
+若某条测试确实需要密钥，那说明它测的不是主流程，应当拆开。
+现状：`gates.yml` 跑的六道门**全部无密钥**，本条**当前成立**；
+它约束的是未来——接了模型之后，不许顺手把主流程测试挪到密钥门后面。
+
 ## CI（2026-08-22 新增，D-021 第二条豁免）
 
 `.github/workflows/gates.yml` 在 push / PR 时跑**同一组门禁**，不新增检查项。
