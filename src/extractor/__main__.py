@@ -19,8 +19,10 @@ from pathlib import Path
 from semantic_layer.resolve import Refusal
 
 from .download import UnknownStockCode, fetch_annual_report
+from .formula import compute_metric
 from .mapping import load_pdf_mapping
 from .pipeline import MappingZeroHit, extract_batch
+from .reconcile import reconcile_batch
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -51,6 +53,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="把版面事实（锚点 / 列绑定 / 重组行）写成 JSON 固件，供回归用例使用",
     )
     e.add_argument("--json", action="store_true", dest="as_json")
+
+    c = sub.add_parser("compute", help="过勾稽闸门后算一个指标，输出完整证据链")
+    c.add_argument("--metric", required=True, help="指标 id 或别名，例如 debt_to_asset_ratio")
+    c.add_argument("--stock", required=True)
+    c.add_argument("--year", required=True, type=int)
+    c.add_argument("--namespace", default="bs")
+    c.add_argument("--statement", default="合并资产负债表")
+    c.add_argument("--metrics-dir", default="metrics")
+    c.add_argument("--pdf", default=None, help="用本地 PDF 复跑，不联网")
+    c.add_argument("--json", action="store_true", dest="as_json")
 
     return parser
 
@@ -99,6 +111,8 @@ def _cmd_extract(args) -> int:
     if args.dump_view is not None:
         _dump_view(args, batch)
 
+    # 闸门对**一次抽取批次整体**跑一次，结果写进批次元数据，随后批次闩死（D-018 / L-13）。
+    gate = reconcile_batch(batch)
     payload = {
         "batch_id": batch.batch_id,
         "entity": batch.entity,
@@ -106,8 +120,46 @@ def _cmd_extract(args) -> int:
         "pdf_sha256": batch.pdf_sha256,
         "mapping_namespace": args.namespace,
         "statement": args.statement,
+        "reconciliation": gate.to_dict(),
+        "sealed": batch.sealed,
         "records": [r.to_dict() for r in batch.records],
     }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_compute(args) -> int:
+    """`extract` → 闸门 → 封闭算术解析器 → 证据链 JSON。**抽取路径与计算路径是同一条。**
+
+    cninfo 的病根是这两条路径不相交（`pipeline.py:758` 硬编码空报表字典，
+    计算侧从不读它）。这里 `compute_metric` 的唯一输入就是 `extract_batch` 的产物，
+    没有第二条路。
+    """
+    try:
+        batch = extract_batch(
+            args.stock,
+            args.year,
+            namespace=args.namespace,
+            statement=args.statement,
+            pdf_path=args.pdf,
+        )
+    except (UnknownStockCode, MappingZeroHit, ValueError) as exc:
+        print(f"调用错误：{exc}", file=sys.stderr)
+        return 2
+    if isinstance(batch, Refusal):
+        return _print_refusal(batch, args.as_json)
+
+    gate = reconcile_batch(batch)
+    outcome = compute_metric(args.metric, batch, args.metrics_dir)
+    if isinstance(outcome, Refusal):
+        return _print_refusal(outcome, args.as_json)
+
+    payload = outcome.to_dict()
+    payload["reconciliation"] = gate.to_dict()
+    payload["inputs"] = [
+        batch.by_field(path).to_dict() for path in outcome.inputs
+    ]
+    payload["input_field_ids"] = list(outcome.inputs)
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
@@ -178,6 +230,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_fetch(args)
     if args.command == "extract":
         return _cmd_extract(args)
+    if args.command == "compute":
+        return _cmd_compute(args)
     raise AssertionError(f"未接线的子命令：{args.command!r}")
 
 
