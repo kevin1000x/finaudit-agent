@@ -4,17 +4,17 @@ milestone: v0.1
 milestone_name: 骨架与 cninfo 延伸
 current_phase: "01.5"
 current_phase_name: 数据接入层
-status: phase-1.5-wave-2-complete
-stopped_at: Phase 1 已收口；**Phase 1.5 wave 1 与 wave 2 已收口**（提交 `e821386` / `4883620` / `580b993`）；**SC-2 达成 29/29**（1 条按 D-026 第 1 类作废，作废率 3.33%）；**下一步 wave 3 —— `01.5-03`：五份映射表 + `column_header` 列绑定（A-9 的实现）**；Phase 0 尚未开始
-last_updated: "2026-08-27T14:40:00Z"
+status: phase-1.5-wave-3-complete
+stopped_at: Phase 1 已收口；**Phase 1.5 wave 1 / 2 / 3 已收口**；SC-2 达成 29/29、SC-3 两个方向各有回归、A-9 由推导变成会红的测试、A-2 判据达成（有息负债率 0.0011869876）；**下一步 wave 4 —— `01.5-04`：≥5 指标真实数值 + AKShare 对照，容差 checkpoint 前先跑 Task 1.5（A2 探测）并读 `AKSHARE-A2.md`**；Phase 0 尚未开始
+last_updated: "2026-08-27T18:10:00Z"
 last_activity: 2026-08-27
-last_activity_desc: **三项待裁决收口（L-7/L-23 归属选 a、AC-05 削弱 / AC-09 加强、§8.5.7 升格 D-027）+ Phase 1.5 wave 2 收口**——14 个零实测字段全部探过：13 个取到值并逐个人工核对正确（每个有独立验算，四处差额 0.00），1 个判 D-026 第 1 类作废 ⇒ **29/29 ≥ 24，SC-2 达成**；正样本万华化学 600309·2019 第 1/2 项企业合并**同时**√适用，**反过来证伪了 notes.business_combination_type 的单值枚举**（台账 N-39 待裁决）；撞出三条跨公司失效模式（U+0007 控制字符使逐字匹配静默零命中 / 章节与子项序号形态跨公司都变 / 披露模板不是普遍格式）；**575 passed**，六道门全绿；两条负控制按三步程序实跑（2 红 / 7 红 / 回退 14 绿）
+last_activity_desc: **N-39/N-38 裁决落地（D-028 集合值字段 + D-020 补充节）+ Phase 1.5 wave 3 收口**——五份 PDF 映射表齐（bs 15/is 8/cfs 2/notes 4/kpi 1 = 30），实跑真实年报 25 个字段全部取到值；列角色补第三条规则 `^(\d{4})年度$`，补之前利润表与现金流量表一个字段都取不出来；**A-9 从推导变成会红的测试**——期初列恒等式差额在真实数据上也是精确 0.00，新增 reconcile.check_column_binding，核心用例里 `reconcile.passed is True` 那句是 D-016 补充节判据的可执行形态；**写测试当场抓到一个真缺陷**：header_inherited 算出来了却在接线时被丢掉（ARCHITECTURE §8.5 的形状，头一次出现在我们自己的代码里）；A-2 判据达成，有息负债率 0.0011869876，metrics/ diff 为空；RecordKind 扩两支不做行匹配的类别，解掉 L-36 与两个非印刷字段的冲突；L-37 落全，30 个 id 只有一份运行时物化的权威来源；**601 passed**，六道门全绿；两条负控制按三步程序实跑（2 红 / 10 红 / 回退全绿）
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 14
-  completed_plans: 10
-  percent: 25
+  completed_plans: 11
+  percent: 29
 ---
 
 # 项目状态
