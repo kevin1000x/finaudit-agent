@@ -381,11 +381,94 @@ def test_算出来的值可由证据链里的记录独立复算(gated_batch):
 
 
 def test_派生值带着输入字段的指针且标了derived(gated_batch):
-    """L-54：派生指标必须标 `derived` 并携带其输入字段的指针。"""
+    """L-54：派生指标必须标 `derived` 并携带其输入字段的**显式指针**。
+
+    ⚠️ 2026-08-27 由 `tuple[str, ...]` 升级为 `tuple[InputPointer, ...]`：
+    一个字符串要靠「同一次批次」「同一个写入顺序」这类**隐式假设**才能定位到记录，
+    而 `ARCHITECTURE` §8.5 记的正是「指针只要不在返回类型里且可为空，就会被丢掉」。
+    """
     outcome = compute_metric("debt_to_asset_ratio", gated_batch, METRICS_DIR)
     assert outcome.derived is True
-    assert outcome.inputs == ("bs.total_liabilities", "bs.total_assets")
-    assert all(gated_batch.by_field(f) is not None for f in outcome.inputs)
+    assert [p.field_id for p in outcome.inputs] == [
+        "bs.total_liabilities",
+        "bs.total_assets",
+    ]
+    for pointer in outcome.inputs:
+        record = gated_batch.by_field(pointer.field_id)
+        assert record is not None
+        # 指针要能**独立**定位到那条记录，不靠调用方记得它在哪一批
+        assert pointer.batch_id == record.batch_id
+        assert pointer.page == record.page
+        assert pointer.value == record.value
+        assert isinstance(pointer.page, int)
+
+
+def test_inputs_长度等于formula引用的字段数(gated_batch):
+    """少一个指针 = 证据链里少一条输入，而结论照样给得出来。"""
+    from extractor.formula import field_refs, parse_formula
+
+    outcome = compute_metric("debt_to_asset_ratio", gated_batch, METRICS_DIR)
+    from semantic_layer.resolve import Registry
+
+    defn = Registry.load(METRICS_DIR).resolve("debt_to_asset_ratio")
+    assert len(outcome.inputs) == len(field_refs(parse_formula(defn.formula)))
+    assert all(p.field_id and isinstance(p.page, int) for p in outcome.inputs)
+
+
+def test_删掉一条输入记录后改为拒答而不是算出少一项的数(gated_batch):
+    """`L-80` 的判据：计算失败不得降级成一个**形态合法**的返回值。
+
+    从批次里把 `bs.total_liabilities` 拿掉之后，`debt_to_asset_ratio`
+    必须拒答 —— 不许返回 0、空串、`None`，更不许拿剩下那一项算出个数。
+    """
+    import dataclasses
+
+    from semantic_layer.resolve import Refusal
+
+    crippled = dataclasses.replace(
+        gated_batch,
+        records=[r for r in gated_batch.records if r.field_id != "bs.total_liabilities"],
+    )
+    outcome = compute_metric("debt_to_asset_ratio", crippled, METRICS_DIR)
+    assert isinstance(outcome, Refusal), outcome
+    assert "bs.total_liabilities" in outcome.detail
+
+
+def test_口径版本取自批次快照而不是当前metrics(gated_batch, tmp_path):
+    """`L-38`：复核时按**抽取时刻**冻结的版本求值，不按当前配置。
+
+    把批次快照里的版本改成一个当前 `metrics/` 里不存在的值，
+    复算拿到的必须仍是快照里那个 —— 否则同一条证据在两个时间点复核会得到不同结果，
+    `D-012` 的冻结就失去意义。
+    """
+    import dataclasses
+
+    from semantic_layer.resolve import Registry
+
+    current = int(Registry.load(METRICS_DIR).resolve("debt_to_asset_ratio").version)
+    frozen = current + 41  # 一个当前 metrics/ 里绝不会有的值
+    aged = dataclasses.replace(
+        gated_batch,
+        definition_versions={**gated_batch.definition_versions, "debt_to_asset_ratio": frozen},
+    )
+    outcome = compute_metric("debt_to_asset_ratio", aged, METRICS_DIR)
+    assert outcome.definition_version == frozen
+    assert outcome.definition_version != current
+    assert outcome.version_source == "batch-snapshot"
+
+
+def test_快照里没有该指标时回退当前定义且把回退记进证据链(gated_batch):
+    """回退是允许的（历史批次），但**回退这件事必须看得见**。
+
+    不留证的话，一次「用当前口径复核历史证据」的运行与一次正常运行
+    在输出上完全不可区分 —— 那正是 `L-38` 要防的。
+    """
+    import dataclasses
+
+    aged = dataclasses.replace(gated_batch, definition_versions={})
+    outcome = compute_metric("debt_to_asset_ratio", aged, METRICS_DIR)
+    assert outcome.version_source == "current-metrics-dir"
+    assert outcome.to_dict()["version_source"] == "current-metrics-dir"
 
 
 def test_比率的单位如实写成无量纲而不是照抄元(gated_batch):

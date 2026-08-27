@@ -422,6 +422,20 @@ class ExtractionBatch:
     records: list[ExtractionRecord] = field(default_factory=list)
     reconciliation: Any = None
     sealed: bool = False
+    #: 抽取时刻 `metrics/` 里每份定义的 `version` 快照（`L-38`）。
+    #:
+    #: **为什么快照放批次而不是放每条记录**：`version` 是**指标**的属性，
+    #: 而记录是**字段**级的 —— 一个字段可以被多个指标引用，把指标版本塞进字段记录
+    #: 就得在每条记录里存一张表，那是同一事实的多个结构表示。
+    #:
+    #: **为什么必须冻结**：`L-38` 原话是「复核时按记录里的版本求值，而非按当前配置」。
+    #: 不冻结的话，同一条证据在两个时间点复核会得到不同结果 ——
+    #: `D-012` 的冻结就失去意义了。
+    #:
+    #: 空 dict 表示**这批没做快照**，与「快照里没有这个指标」是两回事：
+    #: 前者是历史批次（快照机制上线前建的），后者是这个指标当时就不存在。
+    #: 两者的处置不同，所以不合并成一个「取不到」。
+    definition_versions: Mapping[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         _require_text(self.batch_id, "batch_id")
@@ -436,12 +450,19 @@ class ExtractionBatch:
             )
 
     @classmethod
-    def open(cls, entity: str, period: int, pdf_sha256: str) -> "ExtractionBatch":
+    def open(
+        cls,
+        entity: str,
+        period: int,
+        pdf_sha256: str,
+        definition_versions: Mapping[str, int] | None = None,
+    ) -> "ExtractionBatch":
         return cls(
             batch_id=make_batch_id(entity, period, pdf_sha256),
             entity=entity,
             period=period,
             pdf_sha256=pdf_sha256,
+            definition_versions=dict(definition_versions or {}),
         )
 
     def add_record(self, record: ExtractionRecord) -> None:

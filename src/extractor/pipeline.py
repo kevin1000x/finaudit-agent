@@ -69,8 +69,10 @@ __all__ = [
     "ExtractionSource",
     "StatementView",
     "read_statement",
+    "snapshot_definition_versions",
     "extract_records",
     "extract_batch",
+    "DEFAULT_EXTRACTION_PLAN",
 ]
 
 DEFAULT_STATEMENT = "合并资产负债表"
@@ -174,6 +176,26 @@ class StatementView:
                 tuple(seq) for seq in data["all_label_sequences"]
             ),
         )
+
+
+def snapshot_definition_versions(metrics_dir: Path | str = "metrics") -> dict[str, int]:
+    """抽取时刻 `metrics/` 里每份定义的 `version`（`L-38`）。
+
+    **在建批次那一刻拍一次，之后不再读 `metrics/`。**
+    复核时按批次里冻结的版本求值，不按当时的配置 ——
+    否则同一条证据在两个时间点复核会得到不同结果，`D-012` 的冻结就没有意义。
+
+    ⚠️ **拍的是全部定义，不是「这批用得上的」**：抽取的时候还不知道之后要算哪个指标，
+    按需拍等于把一个「以后才知道」的条件塞进一个「现在必须做完」的动作里。
+    """
+    from semantic_layer.definition import iter_definition_paths, load_definition
+
+    out: dict[str, int] = {}
+    for path in iter_definition_paths(metrics_dir):
+        definition = load_definition(path)
+        if definition.metric_id and isinstance(definition.version, int):
+            out[definition.metric_id] = definition.version
+    return out
 
 
 def _all_label_sequences(
@@ -301,6 +323,7 @@ def extract_records(
     mapping: PdfMappingTable,
     source: ExtractionSource,
     statement: str = DEFAULT_STATEMENT,
+    batch: ExtractionBatch | None = None,
 ) -> ExtractionBatch:
     """把版面事实 + 映射表 → 一个批次的抽取记录。**不联网、不读盘。**
 
@@ -321,7 +344,17 @@ def extract_records(
             "**分派点在这里，实现不在这里**（L-55：各类别的处理逻辑不该堆在包装层）。"
             "NOTE_CHECKBOX / COLUMN_HEADER_PRESENCE / REPORT_METADATA 三支由 01.5-05 实现。"
         )
-    batch = ExtractionBatch.open(source.stock_code, source.fiscal_year, source.pdf_sha256)
+    # `batch` 给了就往里并 —— 跨报表算指标时（如毛利率要 `is` 两个字段、
+    # 而勾稽闸门建在 `bs` 三个字段上）必须是**同一个批次**：
+    # 批次身份键是 `(stock_code, fiscal_year)`（D-024），一次抽取一家一年就是一批。
+    # 拆成多批的话，闸门只闩得住其中一批，另一批的记录会绕过读入边界的 fail-closed。
+    if batch is None:
+        batch = ExtractionBatch.open(
+            source.stock_code,
+            source.fiscal_year,
+            source.pdf_sha256,
+            definition_versions=snapshot_definition_versions(),
+        )
     for entry in entries:
         column = view.header.by_role(entry.column_header)
         if column is None:
@@ -349,6 +382,18 @@ def extract_records(
     return batch
 
 
+#: 跨报表抽取的默认计划：`(namespace, statement)`。
+#:
+#: 只列三张**合并**报表：`notes` / `kpi` 的三支 `kind` 尚未实现（wave 5），
+#: 现在写进来会在分派点抛 `NotImplementedError` —— 那不是「还没做」的正确表达方式，
+#: 正确的表达是**这张表不在计划里**。
+DEFAULT_EXTRACTION_PLAN = (
+    ("bs", "合并资产负债表"),
+    ("is", "合并利润表"),
+    ("cfs", "合并现金流量表"),
+)
+
+
 def extract_batch(
     stock_code: str,
     year: int,
@@ -357,6 +402,7 @@ def extract_batch(
     client=None,
     mapping_dir=None,
     pdf_path: Path | str | None = None,
+    plan: tuple[tuple[str, str], ...] | None = None,
 ) -> ExtractionBatch | Refusal:
     """端到端：取回年报 → 定位 → 匹配 → 盖出处 → 一个批次。
 
@@ -365,17 +411,21 @@ def extract_batch(
     """
     import pdfplumber  # 局部 import：`fetch` 子命令不需要它，装不上时不该连下载都跑不了
 
-    mapping = (
-        load_pdf_mapping(namespace)
-        if mapping_dir is None
-        else load_pdf_mapping(namespace, mapping_dir)
-    )
+    steps = plan if plan is not None else ((namespace, statement),)
+    mappings = {
+        ns: (load_pdf_mapping(ns) if mapping_dir is None else load_pdf_mapping(ns, mapping_dir))
+        for ns, _ in steps
+    }
 
     def _run(path: Path, source: ExtractionSource) -> ExtractionBatch | Refusal:
         try:
             with pdfplumber.open(str(path)) as pdf:
-                view = read_statement(pdf, statement, year)
-                return extract_records(view, mapping, source, statement)
+                batch: ExtractionBatch | None = None
+                for ns, stmt in steps:
+                    view = read_statement(pdf, stmt, year)
+                    batch = extract_records(view, mappings[ns], source, stmt, batch=batch)
+                assert batch is not None
+                return batch
         except locate.SheetHeaderNotFound as exc:
             # 版面与实测形态不符 = 够不着那份数据，不是我们写错了（D-022 决策二）。
             return Refusal(RefusalCode.UNAVAILABLE, f"{exc}", source=SOURCE_PDF_LAYOUT)

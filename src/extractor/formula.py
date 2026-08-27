@@ -73,7 +73,9 @@ __all__ = [
     "parse_formula",
     "field_refs",
     "evaluate_formula",
+    "InputPointer",
     "compute_metric",
+    "compute_metrics",
     "ComputeResult",
 ]
 
@@ -414,6 +416,43 @@ def evaluate_formula(node: Node, batch: ExtractionBatch) -> Decimal | Refusal:
 
 
 @dataclass(frozen=True)
+class InputPointer:
+    """一条参与运算的抽取记录的**显式**指针（`L-54`）。
+
+    ## 为什么不是一个 `field_id` 字符串
+
+    字符串要靠「同一次抽取批次」「同一个写入顺序」这类**隐式假设**才能定位到记录。
+    `01.5-RESEARCH` Q4 记着 harness 的 `sourceEventSeqs` 是**显式数组引用**
+    而不是靠事件先后推断关联，理由同此。
+
+    而 `ARCHITECTURE` §8.5 记的那个反面更直接：
+    `full_output_path` 只是个**可选返回值**，于是在唯二两个调用点全被丢掉。
+    ⇒ **指针只要不在返回类型里、且可为空，接线时一定会被丢掉。**
+    所以 `ComputeResult.inputs` 不可为空、不可为可选，且每个元素是这个结构而不是一个名字。
+    """
+
+    field_id: str
+    page: int
+    anchor_page: int
+    batch_id: str
+    value: Decimal | str | None
+    mapping_version: int
+    #: 版面上印的那列的字（`2023年12月31日`）。列错是勾稽闸门抓不到的那一类（`A-9`）。
+    column_header: str | None
+
+    def to_dict(self) -> dict:
+        return {
+            "field_id": self.field_id,
+            "page": self.page,
+            "anchor_page": self.anchor_page,
+            "batch_id": self.batch_id,
+            "value": None if self.value is None else str(self.value),
+            "mapping_version": self.mapping_version,
+            "column_header": self.column_header,
+        }
+
+
+@dataclass(frozen=True)
 class ComputeResult:
     """一个算出来的指标值，连同它的全部输入指针（L-54）。
 
@@ -428,19 +467,53 @@ class ComputeResult:
     unit: str
     currency: str
     batch_id: str
-    inputs: tuple[str, ...]
+    inputs: tuple[InputPointer, ...]
+    #: 本期**置位**的可比性标记。`flags_status` 为 `unevaluable` 时它必为空 ——
+    #: 空集在那种情形下表示「判不了」而不是「一个都没触发」，两者靠 `flags_status` 区分。
+    flags: tuple[str, ...] = ()
+    #: `evaluated` / `unevaluable`，外加 `unevaluable` 时的理由。
+    #:
+    #: 🔴 **这个字段是 2026-08-27 接上真实字段后补的，它记的是一个真实缺口**：
+    #: 8 个指标里 6 个的 `restated` 触发条件引用 `notes.restatement_flag`，
+    #: 而那个字段的 `kind` 是 `COLUMN_HEADER_PRESENCE`，wave 5 才实现
+    #: ⇒ **数值算得出来，它的可比性标记判不了**。
+    #:
+    #: 补这个字段之前，`ComputeResult` 里没有任何东西透露这件事 ——
+    #: 一个「资产负债率 = 0.1798」被产出时，调用方无从知道它的 `restated` 状态未知。
+    #: 那正是 `ARCHITECTURE` §8.5 的形状，只是方向不同：不是指针被丢掉，
+    #: 是**两条本该耦合的路径根本没接线**。
+    #:
+    #: ⚠️ **本轮不让它阻断计算**：接上就有 6 个指标全数拒答，SC-5 直接不成立。
+    #: 该不该阻断要等 wave 5 把那三支 `kind` 实现之后、拿真实取值再定 ——
+    #: 现在定就是在没有数据的情况下拍板。**但缺口必须在证据链里看得见。**
+    flags_status: str = "evaluated"
+    flags_note: str = ""
+    #: `definition_version` 是从批次快照取的，还是回退到了当前 `metrics/`。
+    #: **留证，不是调试开关**：回退意味着这次复核用的不是抽取时刻的口径，
+    #: 而那正是 `L-38` 要防的事 —— 它必须在证据链里看得见。
+    version_source: str = "batch-snapshot"
     derived: bool = True
+
+    def __post_init__(self) -> None:
+        if not self.inputs:
+            raise ArithmeticError(
+                f"{self.metric_id}：`inputs` 不可为空。派生值必须携带它的输入指针（L-54）。"
+            )
 
     def to_dict(self) -> dict:
         return {
             "metric_id": self.metric_id,
             "definition_version": self.definition_version,
+            "version_source": self.version_source,
             "formula": self.formula,
             "value": str(self.value),
             "unit": self.unit,
             "currency": self.currency,
             "batch_id": self.batch_id,
-            "inputs": list(self.inputs),
+            "inputs": [p.to_dict() for p in self.inputs],
+            "flags": list(self.flags),
+            "flags_status": self.flags_status,
+            "flags_note": self.flags_note,
             "derived": self.derived,
         }
 
@@ -503,22 +576,60 @@ def compute_metric(
             value.code, value.detail, metric_id=metric_id, source=value.source
         )
 
-    inputs = field_refs(tree)
-    records = [batch.by_field(path) for path in inputs]
-    units = {r.unit for r in records if r is not None}
-    currencies = {r.currency for r in records if r is not None}
+    paths = field_refs(tree)
+    records = [batch.by_field(path) for path in paths]
+    missing = [p for p, r in zip(paths, records) if r is None]
+    if missing:
+        # 走到这里说明 `evaluate_formula` 没拦住 —— 属实现缺陷，但**仍然拒答**，
+        # 绝不返回一个少了几项的数（`L-80`：失败不得降级成形态合法的返回值）。
+        return Refusal(
+            RefusalCode.UNEVALUABLE_CONDITION,
+            f"批次 {batch.batch_id} 里找不到输入字段 {missing}，拒答。",
+            metric_id=metric_id,
+            source=SOURCE_FORMULA,
+        )
+    units = {r.unit for r in records}
+    currencies = {r.currency for r in records}
     if len(units) != 1 or len(currencies) != 1:
         # 混单位的算术没有意义，且这个错误不会自己暴露出来。
         return Refusal(
             RefusalCode.UNEVALUABLE_CONDITION,
-            f"输入字段的单位或币种不一致：单位 {sorted(units)}，币种 {sorted(currencies)}。",
+            f"输入字段的单位或币种不一致：单位 {sorted(units)}，币种 {sorted(currencies)}。"
+            "拒答并置 unit_scale_mismatch，不替调用方换算。",
             metric_id=metric_id,
             source=SOURCE_FORMULA,
         )
 
+    # `L-38`：口径版本取自**抽取时刻冻结在批次里的快照**，不取当前 `metrics/`。
+    snapshot = dict(batch.definition_versions or {})
+    if metric_id in snapshot:
+        version, version_source = snapshot[metric_id], "batch-snapshot"
+    else:
+        # 快照里没有 = 这批是快照机制上线前建的，或该指标当时不存在。
+        # 回退到当前定义，但**把回退这件事记进证据链** —— 见 `version_source` 的注释。
+        version, version_source = int(defn.version), "current-metrics-dir"
+
+    # 可比性标记：**求得了就记触发结果，求不了就记「判不了」**。
+    # 两者都要在证据链里看得见 —— 「一个都没触发」与「根本判不了」
+    # 在下游看来后果完全不同，混成一个空集就再也分不开了。
+    from semantic_layer.resolve import active_flags
+
+    row = {r.field_id: r.value for r in batch.records}
+    flag_outcome = active_flags(defn, row)
+    if isinstance(flag_outcome, Refusal):
+        flags, flags_status = (), "unevaluable"
+        flags_note = flag_outcome.detail
+    else:
+        flags, flags_status = tuple(sorted(flag_outcome)), "evaluated"
+        flags_note = ""
+
     return ComputeResult(
         metric_id=metric_id,
-        definition_version=int(defn.version),
+        definition_version=version,
+        version_source=version_source,
+        flags=flags,
+        flags_status=flags_status,
+        flags_note=flags_note,
         formula=defn.formula.strip(),
         value=value,
         # 比率是无量纲的：两个同单位金额相除，单位与币种都被约掉。
@@ -526,8 +637,31 @@ def compute_metric(
         unit="无量纲" if _is_ratio(tree) else units.pop(),
         currency="不适用" if _is_ratio(tree) else currencies.pop(),
         batch_id=batch.batch_id,
-        inputs=inputs,
+        inputs=tuple(
+            InputPointer(
+                field_id=r.field_id,
+                page=r.page,
+                anchor_page=r.anchor_page,
+                batch_id=r.batch_id,
+                value=r.value,
+                mapping_version=r.mapping_version,
+                column_header=r.column_header,
+            )
+            for r in records
+        ),
     )
+
+
+def compute_metrics(
+    metric_ids, batch, metrics_dir: Path | str = "metrics"
+) -> list["ComputeResult | Refusal"]:
+    """算一批指标。**逐个独立求值，一个拒答不影响其余的。**
+
+    不做「有一个失败就整批失败」：拒答是**正确行为**不是错误（`D-003`），
+    把它传染给其余指标会让一次本可部分完成的回答退化成什么都答不出。
+    批次级的 fail-closed 已经由勾稽闸门在每次 `compute_metric` 的第一步做掉了。
+    """
+    return [compute_metric(mid, batch, metrics_dir) for mid in metric_ids]
 
 
 def _is_ratio(node: Node) -> bool:

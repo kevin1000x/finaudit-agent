@@ -19,10 +19,10 @@ from pathlib import Path
 from semantic_layer.resolve import Refusal
 
 from .download import UnknownStockCode, fetch_annual_report
-from .formula import compute_metric
+from .formula import compute_metrics
 from .mapping import load_pdf_mapping
-from .pipeline import MappingZeroHit, extract_batch
-from .reconcile import reconcile_batch
+from .pipeline import DEFAULT_EXTRACTION_PLAN, MappingZeroHit, extract_batch
+from .reconcile import check_column_binding, reconcile_batch
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -54,12 +54,22 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     e.add_argument("--json", action="store_true", dest="as_json")
 
-    c = sub.add_parser("compute", help="过勾稽闸门后算一个指标，输出完整证据链")
-    c.add_argument("--metric", required=True, help="指标 id 或别名，例如 debt_to_asset_ratio")
+    c = sub.add_parser("compute", help="过勾稽闸门后算指标，输出完整证据链")
+    c.add_argument(
+        "--metric",
+        required=True,
+        action="append",
+        dest="metrics",
+        help="指标 id 或别名，例如 debt_to_asset_ratio。**可重复**，一次算多个",
+    )
     c.add_argument("--stock", required=True)
     c.add_argument("--year", required=True, type=int)
-    c.add_argument("--namespace", default="bs")
-    c.add_argument("--statement", default="合并资产负债表")
+    c.add_argument(
+        "--namespace",
+        default=None,
+        help="只抽一张表时用；不给则按三张合并报表全抽（跨表指标需要）",
+    )
+    c.add_argument("--statement", default=None)
     c.add_argument("--metrics-dir", default="metrics")
     c.add_argument("--pdf", default=None, help="用本地 PDF 复跑，不联网")
     c.add_argument("--json", action="store_true", dest="as_json")
@@ -135,13 +145,16 @@ def _cmd_compute(args) -> int:
     计算侧从不读它）。这里 `compute_metric` 的唯一输入就是 `extract_batch` 的产物，
     没有第二条路。
     """
+    single = args.namespace is not None or args.statement is not None
+    plan = None if single else DEFAULT_EXTRACTION_PLAN
     try:
         batch = extract_batch(
             args.stock,
             args.year,
-            namespace=args.namespace,
-            statement=args.statement,
+            namespace=args.namespace or "bs",
+            statement=args.statement or "合并资产负债表",
             pdf_path=args.pdf,
+            plan=plan,
         )
     except (UnknownStockCode, MappingZeroHit, ValueError) as exc:
         print(f"调用错误：{exc}", file=sys.stderr)
@@ -150,18 +163,37 @@ def _cmd_compute(args) -> int:
         return _print_refusal(batch, args.as_json)
 
     gate = reconcile_batch(batch)
-    outcome = compute_metric(args.metric, batch, args.metrics_dir)
-    if isinstance(outcome, Refusal):
-        return _print_refusal(outcome, args.as_json)
+    # 两道闸门**并列跑，都留证**：勾稽证明「同一列内部自洽」，
+    # 列绑定证明「取的是对的那一列」。二者不可互相替代（A-9 / D-016 补充节）。
+    namespaces = [ns for ns, _ in plan] if plan else [args.namespace or "bs"]
+    bindings = {
+        ns: check_column_binding(batch, load_pdf_mapping(ns), args.year)
+        for ns in namespaces
+    }
+    results = compute_metrics(args.metrics, batch, args.metrics_dir)
 
-    payload = outcome.to_dict()
-    payload["reconciliation"] = gate.to_dict()
-    payload["inputs"] = [
-        batch.by_field(path).to_dict() for path in outcome.inputs
-    ]
-    payload["input_field_ids"] = list(outcome.inputs)
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
-    return 0
+    payloads = []
+    refused = 0
+    for outcome in results:
+        if isinstance(outcome, Refusal):
+            refused += 1
+            payloads.append(outcome.to_dict())
+            continue
+        item = outcome.to_dict()
+        item["reconciliation"] = gate.to_dict()
+        item["column_binding"] = {ns: r.to_dict() for ns, r in bindings.items()}
+        payloads.append(item)
+
+    if args.as_json:
+        print(json.dumps(payloads, ensure_ascii=False, indent=2))
+    else:
+        for outcome in results:
+            if isinstance(outcome, Refusal):
+                print(f"拒答 [{outcome.code.name}] {outcome.metric_id}：{outcome.detail}")
+            else:
+                print(f"{outcome.metric_id} = {outcome.value}（{outcome.unit}）")
+    # **一个拒答不让整批退出码变成 0**：拒答是正确行为，但调用方要看得见。
+    return 3 if refused and refused == len(results) else 0
 
 
 #: 固件里 `all_label_sequences` 的取值范围。**刻意窄于运行时。**
