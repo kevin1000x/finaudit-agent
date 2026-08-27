@@ -1,0 +1,26 @@
+# 合并现金流量表字段在年报 PDF 上的取数口径（D-016）。
+#
+# 列头口径名同利润表（时段表）：`本期金额` / `上期金额`，版面印的是 `2023年度`。
+#
+# cash_paid_for_fixed_intangible_and_other_long_term_assets 的标签折成两片段，
+# 中间夹着纯数值行 —— A-6 失效模式 3 在现金流量表上同样成立（PROBE-14.md §2）。
+# 片段逐字复制自固件，**不拼接**：拼接会把「折行处该不该补字」这个判断
+# 偷偷塞进 locate，而那本来是映射表要显式写清的事。
+
+namespace: cfs
+mapping_version: 1
+
+entries:
+  - field_id: cfs.net_cash_flow_from_operating_activities
+    statement: 合并现金流量表
+    column_header: 本期金额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["经营活动产生的现金流量净额"]
+
+  - field_id: cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets
+    statement: 合并现金流量表
+    column_header: 本期金额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["购建固定资产、无形资产和其他长", "期资产支付的现金"]

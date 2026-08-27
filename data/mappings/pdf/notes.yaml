@@ -1,0 +1,105 @@
+# 财务报表附注侧字段的取数口径（D-016）。
+#
+# ⚠️ **这四条不同构，用了三个不同的 kind。** D-016 那句「为什么按命名空间拆而不是
+# 单一全局文件」说的正是这件事：notes 与报表行是两种结构，塞进一份文件就得引入判别式联合。
+# 本文件内部**也**是一个判别式联合 —— 每个 kind 的必需键与禁止键写在
+# mapping.KEYS_BY_KIND 里，加载时按 kind 校验。
+#
+# | field_id                              | kind                   | 值从哪来 |
+# |---------------------------------------|------------------------|---------|
+# | nonrecurring_pl_net_attributable_to_parent | STATEMENT_LINE    | 章节内表格的一行 |
+# | business_combination_type             | NOTE_CHECKBOX          | 六个 √适用/□不适用 |
+# | restatement_flag                      | COLUMN_HEADER_PRESENCE | 某个列头在不在 |
+# | reporting_period_months               | REPORT_METADATA        | 报告类型，纸上不印 |
+#
+# 后两个 kind 是 wave 2 实测逼出来的（PROBE-14.md §3 / §7 第 3 条）。
+# 硬把它们塞进 STATEMENT_LINE，就得给它们编一条**必然零命中**的 label_variants，
+# 而 L-36 规定整份 PDF 零命中 = 整批失败 ⇒ 编出来的规则会让每一批都失败。
+#
+# ⚠️ **notes.consolidation_scope_change 不在本文件里。** D-020 新增了它，
+# 但它在 metrics/ 里还不存在（定义侧的改动在 01.5-05-PLAN.md）。
+# 现在加进来 = 映射表 31 条 vs 定义 30 条，assert_mapping_covers_definitions() 必红。
+# **相等断言是 D-016 判据 2 的硬要求，它赢。** 那条映射与它的定义在 wave 5 一起落。
+
+namespace: notes
+mapping_version: 1
+
+entries:
+  # 章节内的一张表，取「合计」那一行。
+  #
+  # 🔴 标签是 `合计` —— **全篇最没有区分度的词**。实测：整份茅台 2023 上
+  # 以「合计」开头的行有 112 行，分布在 50 页（PROBE-14.md §3）。
+  # ⇒ **它在结构上不可能靠标签匹配取到**，必须先锚章节再在区间内取。
+  # 这不是优化，是可行性前提。
+  #
+  # statement 在这里承载的是**章节正文**（不含序号），不是八条报表标题之一。
+  # 序号跨公司会变（茅台排「十、」），正文不变 —— locate.find_section_anchors
+  # 对序号容差、对正文逐字。
+  #
+  # ⚠️ metrics/ 里写的章节名是「非经常性损益项目**及**金额」，年报印的是
+  # 「非经常性损益项目**和**金额」。一字之差，逐字相等匹配下是零命中。
+  # 本文件按**版面印的字**写；metrics/ 的表述是给人读的口径说明，不参与匹配。
+  - field_id: notes.nonrecurring_pl_net_attributable_to_parent
+    statement: 非经常性损益项目和金额
+    column_header: 本期金额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["合计"]
+
+  # 六个 √适用 / □不适用 的复选项，不是行值。
+  #
+  # label_variants 在这个 kind 下承载的是**子项正文**（不含序号），
+  # 序号形态跨公司不一致：茅台 2023 是 `1、`，万华化学 2019 是 `1.`
+  # （PROBE-COMBINATION.md §3(c)）。
+  #
+  # ⚠️ 只有前三项属于「企业合并类型」。后三项（处置子公司 / 其他原因的合并范围变动
+  # / 其他）属于合并范围变动，由 D-020 新增的 notes.consolidation_scope_change 承载。
+  # 茅台 2023 的实证正是这个分工的理由：企业合并三项全「不适用」而第 5 项「适用」
+  # ——把六项混成一个字段，A-8 那处真实假阴性就修不掉。
+  #
+  # ⚠️ 取值是**集合**（D-028）：万华化学 2019 第 1 项与第 2 项同时「√适用」。
+  # 空集 = 本期无企业合并。`反向购买` 在册但**零正样本**（茅台与万华都是不适用）。
+  - field_id: notes.business_combination_type
+    statement: 合并范围的变更
+    kind: NOTE_CHECKBOX
+    label_variants:
+      - label_fragments: ["非同一控制下企业合并"]
+      - label_fragments: ["同一控制下企业合并"]
+      - label_fragments: ["反向购买"]
+
+  # 判「调整后 / 调整前」这两个列头在不在，**不取任何行的值**。
+  #
+  # 实测（PROBE-14.md §3）：没有一行印着「本期是否经追溯重述或会计政策变更调整」。
+  # 值来自两条都印在纸上的证据 —— p5 主要会计数据/主要财务指标两张表的比较期列头
+  # 逐字是 `调整后` / `调整前`（y=223.8 / 384.3 / 586.8），
+  # 且 p5 y=487.2 逐字写着「本公司对比较期间相关财务数据进行追溯调整」。
+  #
+  # ⚠️ **单样本，跨排版未验证。** 「有 调整后/调整前 列 ⟺ 发生追溯重述」这条规则
+  # 在茅台 2023 上成立且与文字互证，但反例形态（未重述却拆两列，或重述了却没拆）
+  # 一次都没观察到，也没有去找。按 F-2 不写成「已验证」。
+  #
+  # ⚠️ 命名空间前缀是 notes，印刷位置却在第三节「近三年主要会计数据和财务指标」。
+  # 这个错配本身是 wave 2 的探测结论之一，不是笔误。
+  - field_id: notes.restatement_flag
+    statement: 近三年主要会计数据和财务指标
+    column_header: 调整后
+    kind: COLUMN_HEADER_PRESENCE
+    derived_from: >
+      比较期列头出现「调整后 / 调整前」即判定本期比较数经追溯重述；
+      茅台 2023 另有 p5 y=487.2「本公司对比较期间相关财务数据进行追溯调整」互证。
+
+  # 纸上不印这一行。
+  #
+  # 实测的否定证据（PROBE-14.md §3，按 F-1 只说「我在这份 PDF 上没搜到」）：
+  # 整份 143 页逐行搜「月份数」/「报告期涵盖」/「报告期月」/「涵盖的月」四个串，
+  # 全部零命中；「个月」12 处命中逐条读过，全部无关。
+  #
+  # ⇒ 按 D-026 判为**第 1 类**（不是报表上印出来的值），走 EVAL_CASES §2.2 的作废通道。
+  # 它仍需一条映射条目：D-016 判据 2 要求映射表 field_id 并集**恰好等于**
+  # metrics/ 的 source_fields 集合，少一条同样是不相等。
+  - field_id: notes.reporting_period_months
+    statement: 近三年主要会计数据和财务指标
+    kind: REPORT_METADATA
+    derived_from: >
+      由报告类型决定：年度报告 ⇒ 12。报表上没有对应的行项目，
+      不从版面取值。按 D-026 第 1 类，SC-2 计数时走作废通道。

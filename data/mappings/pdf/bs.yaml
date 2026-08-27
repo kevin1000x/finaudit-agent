@@ -1,21 +1,48 @@
-# 资产负债表字段在年报 PDF 上的取数口径（D-016）。
+# 合并资产负债表字段在年报 PDF 上的取数口径（D-016）。
 #
-# 本文件是 tracer 切片的三条，其余 12 条 bs.* 与另外四份文件在 01.5-03-PLAN.md 补齐。
-# D-016 判据 2 的「五份文件 key 并集恰好等于 30 个 source_fields」那条断言也在那里落地
-# —— tracer 阶段五份文件还不全，现在写那条断言只会得到一条永远红的测试。
+# 15 条，等于 metrics/ 里全部 bs.* 的 source_fields。
+# **这句话不是清单**：真正的相等断言在 mapping.assert_mapping_covers_definitions()，
+# 它运行时遍历 metrics/ 物化那个集合（L-37：派生集合不得与权威表并列存储）。
 #
 # label_fragments 是**按顺序、逐字整行相等**的片段序列，不是子串、不是拼接串。
 # 片段字面量取自贵州茅台 2023 年报的真实版面（p59 / p60 / p61），
-# 不取「读起来应该是这样」的折法。
+# 逐字复制自 tests/fixtures/maotai_2023_bs_rows.json，**不是手打**——
+# PROBE-14.md §1(c) 记着两个长得一样的减号（全角 U+FF0D 与 ASCII U+002D）。
 #
 # column_header 写的是**口径名**（期末余额），不是版面上印的那串字。
 # 茅台这份的表头印的是「2023年12月31日」，两者的对应由 locate.bind_columns
 # 按会计年度显式判定并把判定依据记进 ColumnBinding.resolution。
+#
+# ⚠️ 四个「行在但格子空」的字段（短期借款 / 交易性金融负债 / 长期借款 / 应付债券）
+# 在本样本上照样要有映射条目：它们的行**印在报表上**，只是格子空。
+# 「格子空 = 0」与「整行不存在 = 缺失」的区分是 SC-3，实现在 pipeline，不在这里。
 
 namespace: bs
 mapping_version: 1
 
 entries:
+  # ---- 资产侧 ----
+  - field_id: bs.accounts_receivable
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["应收账款"]
+
+  - field_id: bs.inventory
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["存货"]
+
+  - field_id: bs.total_current_assets
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["流动资产合计"]
+
   - field_id: bs.total_assets
     statement: 合并资产负债表
     column_header: 期末余额
@@ -23,12 +50,78 @@ entries:
     label_variants:
       - label_fragments: ["资产总计"]
 
+  # ---- 负债侧 ----
+  # 下面四条在茅台 2023 上都是「行在、格子空」，正确结论是 0 而不是缺失（A-2）。
+  - field_id: bs.short_term_borrowings
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["短期借款"]
+
+  - field_id: bs.trading_financial_liabilities
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["交易性金融负债"]
+
+  - field_id: bs.long_term_borrowings
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["长期借款"]
+
+  - field_id: bs.bonds_payable
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["应付债券"]
+
+  - field_id: bs.accounts_payable
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["应付账款"]
+
+  - field_id: bs.non_current_liabilities_due_within_one_year
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["一年内到期的非流动负债"]
+
+  - field_id: bs.lease_liabilities
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["租赁负债"]
+
+  - field_id: bs.total_current_liabilities_period_end
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["流动负债合计"]
+
   - field_id: bs.total_liabilities
     statement: 合并资产负债表
     column_header: 期末余额
     kind: STATEMENT_LINE
     label_variants:
       - label_fragments: ["负债合计"]
+
+  # ---- 权益侧 ----
+  - field_id: bs.minority_interests
+    statement: 合并资产负债表
+    column_header: 期末余额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["少数股东权益"]
 
   - field_id: bs.total_equity
     statement: 合并资产负债表

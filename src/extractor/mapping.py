@@ -66,16 +66,52 @@ from .record import RecordKind
 __all__ = [
     "DEFAULT_MAPPING_DIR",
     "REQUIRED_ENTRY_KEYS",
+    "KEYS_BY_KIND",
+    "MappingCoverageError",
     "FieldMapping",
     "PdfMappingTable",
     "load_pdf_mapping",
+    "load_all_pdf_mappings",
+    "declared_field_ids",
+    "assert_mapping_covers_definitions",
     "match_row",
 ]
 
 DEFAULT_MAPPING_DIR = Path("data") / "mappings" / "pdf"
 
-#: 五个键都是必需的（D-016）。缺一即拒绝加载。
-REQUIRED_ENTRY_KEYS = ("field_id", "statement", "column_header", "label_variants", "kind")
+#: 所有类别共有的必需键。缺一即拒绝加载（D-016）。
+REQUIRED_ENTRY_KEYS = ("field_id", "statement", "kind")
+
+#: **每个类别各自的必需键与禁止键。**
+#:
+#: 为什么不是一张全局的「五个键都必需」表：wave 2 实测出两个字段**根本不从行取值**
+#: （`docs/agent/phase-01.5/PROBE-14.md` §3）——
+#: `notes.reporting_period_months` 纸上不印这一行，`notes.restatement_flag`
+#: 判的是「`调整后` / `调整前` 这两个列头在不在」。
+#:
+#: 硬要它们填 `label_variants`，就得编一条**必然零命中**的规则，
+#: 而 `L-36` 规定整份 PDF 零命中 = 整批失败 ⇒ 一条编出来的规则会让每一批都失败。
+#: 这正是 `D-016` 那句「塞进一份文件就得引入判别式联合」在类别维度上的同一件事。
+#:
+#: **禁止键与必需键一样重要**：`REPORT_METADATA` 若允许带 `label_variants`，
+#: 下一个人会顺手填一条，而它永远不会被匹配路径读到 —— 一条**看起来在生效、
+#: 实际从不求值**的规则，是本项目反复记的那个形状。
+KEYS_BY_KIND: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    # kind: (额外必需键, 禁止键)
+    "STATEMENT_LINE": (("column_header", "label_variants"), ("derived_from",)),
+    "KPI_DISCLOSED": (("column_header", "label_variants"), ("derived_from",)),
+    "NOTE_CHECKBOX": (("label_variants",), ("column_header", "derived_from")),
+    "COLUMN_HEADER_PRESENCE": (("column_header", "derived_from"), ("label_variants",)),
+    "REPORT_METADATA": (("derived_from",), ("column_header", "label_variants")),
+}
+
+
+class MappingCoverageError(AssertionError):
+    """映射表与 `metrics/` 的 `source_fields` 不是同一个集合（D-016 判据 2）。
+
+    **两个方向都要报**：少一条 = 有字段没人抽；多一条 = 映射表在为一个
+    没有任何定义引用的字段维护规则，而那条规则不会被任何东西校验。
+    """
 
 
 @dataclass(frozen=True)
@@ -88,9 +124,16 @@ class FieldMapping:
 
     field_id: str
     statement: str
-    column_header: str
-    label_variants: tuple[tuple[str, ...], ...]
     kind: RecordKind
+    #: 取哪一列的**口径名**（`期末余额` / `本期金额`…），不是版面上印的那串字。
+    #: `NOTE_CHECKBOX` 不取列，此处为 None（由 `KEYS_BY_KIND` 强制）。
+    column_header: str | None = None
+    #: 行标签的片段序列。不从行取值的两个类别此处为空元组。
+    label_variants: tuple[tuple[str, ...], ...] = ()
+    #: 值从哪儿来的一句话。**只有不从行取值的两个类别才有**，
+    #: 且它是给人读的出处说明，不参与任何匹配 —— 参与匹配的东西必须能被机械校验，
+    #: 而这一句不能，所以它明确不参与。
+    derived_from: str | None = None
 
     def matches(self, label_lines: tuple[str, ...]) -> bool:
         return any(variant == tuple(label_lines) for variant in self.label_variants)
@@ -160,7 +203,7 @@ def load_pdf_mapping(
         if missing:
             raise ValueError(
                 f"{where}（{entry.get('field_id', '未命名')!r}）缺少必需键 {missing}。"
-                "五个键缺一即拒绝加载 —— 补默认值会让漏写变成静默取错列。"
+                "共有键缺一即拒绝加载 —— 补默认值会让漏写变成静默取错列。"
             )
 
         field_id = entry["field_id"]
@@ -174,47 +217,141 @@ def load_pdf_mapping(
                 f"{where}的 field_id {field_id!r} 不以命名空间前缀 {namespace + '.'!r} 开头"
             )
 
-        for key in ("statement", "column_header"):
-            if not isinstance(entry[key], str) or not entry[key].strip():
-                raise ValueError(f"{where}（{field_id}）的 {key} 必须是非空字符串")
-
         kind_name = entry["kind"]
         if kind_name not in RecordKind.__members__:
             raise ValueError(
                 f"{where}（{field_id}）的 kind {kind_name!r} 不在 "
                 f"{sorted(RecordKind.__members__)} 内。类别只能显式声明（L-35）。"
             )
+        if kind_name not in KEYS_BY_KIND:
+            raise ValueError(
+                f"{where}（{field_id}）的 kind {kind_name!r} 没有在 KEYS_BY_KIND 里"
+                "登记它的必需键与禁止键。**新增类别必须同时登记**，"
+                "否则它会绕过全部按类别的键校验。"
+            )
+        extra_required, forbidden = KEYS_BY_KIND[kind_name]
+        missing_for_kind = [k for k in extra_required if k not in entry]
+        if missing_for_kind:
+            raise ValueError(
+                f"{where}（{field_id}）的 kind={kind_name} 缺少该类别的必需键 "
+                f"{missing_for_kind}。"
+            )
+        present_forbidden = [k for k in forbidden if k in entry]
+        if present_forbidden:
+            raise ValueError(
+                f"{where}（{field_id}）的 kind={kind_name} 不允许出现键 "
+                f"{present_forbidden} —— 该类别的匹配路径不会读它，"
+                "留着就是一条看起来在生效、实际从不求值的规则。"
+            )
 
-        variants = entry["label_variants"]
-        if not isinstance(variants, list) or not variants:
-            raise ValueError(f"{where}（{field_id}）的 label_variants 必须是非空列表")
+        for key in ("statement",):
+            if not isinstance(entry[key], str) or not entry[key].strip():
+                raise ValueError(f"{where}（{field_id}）的 {key} 必须是非空字符串")
+        for key in ("column_header", "derived_from"):
+            if key in entry and (not isinstance(entry[key], str) or not entry[key].strip()):
+                raise ValueError(f"{where}（{field_id}）的 {key} 必须是非空字符串")
+
         parsed_variants: list[tuple[str, ...]] = []
-        for v_index, variant in enumerate(variants):
-            v_where = f"{where}（{field_id}）的第 {v_index + 1} 个 label 变体"
-            if not isinstance(variant, dict) or "label_fragments" not in variant:
-                raise ValueError(f"{v_where}必须是含 label_fragments 键的映射")
-            fragments = variant["label_fragments"]
-            if not isinstance(fragments, list) or not fragments:
-                raise ValueError(f"{v_where}的 label_fragments 必须是非空列表")
-            if not all(isinstance(f, str) and f.strip() for f in fragments):
-                raise ValueError(f"{v_where}的 label_fragments 每一项都必须是非空字符串")
-            parsed_variants.append(tuple(fragments))
-        if len(set(parsed_variants)) != len(parsed_variants):
-            raise ValueError(f"{where}（{field_id}）的 label 变体有重复")
+        if "label_variants" in entry:
+            variants = entry["label_variants"]
+            if not isinstance(variants, list) or not variants:
+                raise ValueError(f"{where}（{field_id}）的 label_variants 必须是非空列表")
+            for v_index, variant in enumerate(variants):
+                v_where = f"{where}（{field_id}）的第 {v_index + 1} 个 label 变体"
+                if not isinstance(variant, dict) or "label_fragments" not in variant:
+                    raise ValueError(f"{v_where}必须是含 label_fragments 键的映射")
+                fragments = variant["label_fragments"]
+                if not isinstance(fragments, list) or not fragments:
+                    raise ValueError(f"{v_where}的 label_fragments 必须是非空列表")
+                if not all(isinstance(f, str) and f.strip() for f in fragments):
+                    raise ValueError(f"{v_where}的 label_fragments 每一项都必须是非空字符串")
+                parsed_variants.append(tuple(fragments))
+            if len(set(parsed_variants)) != len(parsed_variants):
+                raise ValueError(f"{where}（{field_id}）的 label 变体有重复")
 
         entries.append(
             FieldMapping(
                 field_id=field_id,
                 statement=entry["statement"],
-                column_header=entry["column_header"],
-                label_variants=tuple(parsed_variants),
                 kind=RecordKind[kind_name],
+                column_header=entry.get("column_header"),
+                label_variants=tuple(parsed_variants),
+                derived_from=entry.get("derived_from"),
             )
         )
 
     return PdfMappingTable(
         namespace=namespace, mapping_version=version, entries=tuple(entries)
     )
+
+
+def load_all_pdf_mappings(
+    mapping_dir: Path | str = DEFAULT_MAPPING_DIR,
+) -> dict[str, PdfMappingTable]:
+    """五个命名空间一次全加载。**任何一份出问题就整体失败。**
+
+    命名空间清单取自 `semantic_layer.dsl.ROOT_NAMESPACES`，**不在本模块再写一份**。
+    仓库里已有 `tests/test_conformance.py` 断言 `scan_rules.yaml` 的
+    `allowed_field_prefixes` 与它不漂移；映射文件名是**第三处**，并进同一套心智模型。
+    """
+    from semantic_layer.dsl import ROOT_NAMESPACES
+
+    return {ns: load_pdf_mapping(ns, mapping_dir) for ns in sorted(ROOT_NAMESPACES)}
+
+
+def declared_field_ids(metrics_dir: Path | str = "metrics") -> frozenset[str]:
+    """`metrics/*.yaml` 全部 `source_fields[].id` 的集合，**运行时物化**。
+
+    ⚠️ **仓库里不许存在第二份这个清单**（`L-37`）——不在代码里、不在测试里、
+    也不在任何一份文档里。派生集合与权威表并列存储时，两份一定会分叉，
+    而**文档那一份是唯一没有机制校验的**。
+
+    一处例外要说清，免得下一个人误删：
+    `docs/agent/phase-01.5/PROBE-14.md` 里列着 14 个 id。
+    那**不是并列存储的清单**——它是一次观测的记录（哪个字段在哪一页取到什么值），
+    不被任何代码读取，也不作为权威。区别在于**有没有人拿它当真相源**。
+    """
+    from semantic_layer.definition import iter_definition_paths, load_definition
+
+    ids: set[str] = set()
+    for path in iter_definition_paths(metrics_dir):
+        definition = load_definition(path)
+        for field in definition.source_fields:
+            ids.add(field.id)
+    return frozenset(ids)
+
+
+def assert_mapping_covers_definitions(
+    mapping_dir: Path | str = DEFAULT_MAPPING_DIR,
+    metrics_dir: Path | str = "metrics",
+    tables: dict[str, PdfMappingTable] | None = None,
+) -> None:
+    """D-016 判据 2：五份映射文件的 `field_id` 并集**恰好等于** `source_fields[].id`。
+
+    **相等，不是包含。** 两个方向各有各的病：
+
+    - **少一条** ⇒ 某个定义引用的字段没有任何抽取规则，
+      而它会在运行到那个指标时才炸，不会在加载时炸。
+    - **多一条** ⇒ 映射表在为一个没有任何定义引用的字段维护规则。
+      那条规则**不被任何东西校验**，会一直活着直到有人当它是对的。
+
+    `tables` 可传入内存副本，供负向测试构造「少一条 / 多一条」而不改磁盘文件。
+    """
+    tables = tables if tables is not None else load_all_pdf_mappings(mapping_dir)
+    mapped = {entry.field_id for table in tables.values() for entry in table.entries}
+    declared = declared_field_ids(metrics_dir)
+    missing = sorted(declared - mapped)
+    extra = sorted(mapped - declared)
+    if missing or extra:
+        parts = []
+        if missing:
+            parts.append(f"定义里有、映射表里没有：{missing}")
+        if extra:
+            parts.append(f"映射表里有、定义里没有：{extra}")
+        raise MappingCoverageError(
+            "映射表与 metrics/ 的 source_fields 不是同一个集合（D-016 判据 2）。"
+            + "；".join(parts)
+        )
 
 
 def match_row(row, mapping: FieldMapping) -> bool:

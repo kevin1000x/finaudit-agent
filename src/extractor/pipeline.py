@@ -50,6 +50,7 @@ from .download import DownloadResult, fetch_annual_report
 from .mapping import FieldMapping, PdfMappingTable, load_pdf_mapping, match_row
 from .record import (
     BasisConfirmation,
+    RecordKind,
     CellState,
     ExtractionBatch,
     ExtractionRecord,
@@ -73,6 +74,17 @@ __all__ = [
 ]
 
 DEFAULT_STATEMENT = "合并资产负债表"
+
+#: **本模块只处理从「某一行取某一列」的两个类别。**
+#:
+#: 另外三支（`NOTE_CHECKBOX` / `COLUMN_HEADER_PRESENCE` / `REPORT_METADATA`）
+#: 结构上不取行值，由 `01.5-05` 在各自的模块里实现。
+#: 这里只建**分派点**并对未实现的类别显式抛错 ——
+#: 按 `L-35` 类别判定只能靠显式 `kind`，按 `L-55` 各类别的处理逻辑不该堆在包装层里。
+#:
+#: ⚠️ 抛 `NotImplementedError` 而不是跳过：跳过会让那些字段**静默地不出现在批次里**，
+#: 而调用方看到的是一个「成功」的批次，只是少了几条记录。
+_KIND_HANDLED_HERE = frozenset({RecordKind.STATEMENT_LINE, RecordKind.KPI_DISCLOSED})
 
 #: 取数口径三元组（D-023 / L-2 / J-7）。整表逐行读时三个子字段取**显式值**，
 #: 不留空 —— `sampling="整表逐行"` 陈述的是「这是整表」，本身是信息。
@@ -298,6 +310,15 @@ def extract_records(
     if not entries:
         raise MappingZeroHit(
             f"映射表 {mapping.namespace!r} 里没有任何声明 statement={statement!r} 的条目。"
+        )
+    unsupported = [e for e in entries if e.kind not in _KIND_HANDLED_HERE]
+    if unsupported:
+        raise NotImplementedError(
+            "本函数只处理 "
+            f"{sorted(k.name for k in _KIND_HANDLED_HERE)}；"
+            f"以下条目的 kind 尚未实现：{[(e.field_id, e.kind.name) for e in unsupported]}。"
+            "**分派点在这里，实现不在这里**（L-55：各类别的处理逻辑不该堆在包装层）。"
+            "NOTE_CHECKBOX / COLUMN_HEADER_PRESENCE / REPORT_METADATA 三支由 01.5-05 实现。"
         )
     batch = ExtractionBatch.open(source.stock_code, source.fiscal_year, source.pdf_sha256)
     for entry in entries:

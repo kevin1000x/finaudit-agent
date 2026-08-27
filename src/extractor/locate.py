@@ -49,11 +49,12 @@ CONTEXT §6 记着 cninfo `pdf_parser.py:302` 无条件把第 0 行当表头
 `ColumnBinding.role` 只由两条**写死的**规则产生，且把用了哪条记进 `resolution`：
 
 - `literal` —— 表头文字逐字就是「期末余额」/「期初余额」
-- `fiscal-year-match` —— 表头文字形如 `2023年12月31日`，其**年份等于本次抽取的会计年度**
-  即为期末余额，等于会计年度减一即为期初余额
+- `fiscal-year-match` —— 表头文字形如 `2023年12月31日`（时点表）或 `2023年度`（时段表），
+  其**年份等于本次抽取的会计年度**即为本期，等于会计年度减一即为上期。
+  时点表产出 `期末余额` / `期初余额`，时段表产出 `本期金额` / `上期金额`。
 
 第二条不是「取靠右那一列」也不是「取较晚的日期」这类启发式：会计年度是调用方传进来的
-已知量，年份相等是一个**事实比对**。两条都不适用时 `role` 为 None，
+已知量，年份相等是一个**事实比对**。都不适用时 `role` 为 None，
 由调用方 fail-closed，**不取一个「合理默认」**（L-34）。
 
 ## 本模块明确**不**做
@@ -134,13 +135,25 @@ _CURRENCY_RE = re.compile(r"币种[:：]\s*(\S+)")
 #: 表头行的判定锚：报表表头第一格逐字是「项目」。
 _HEADER_MARKER = "项目"
 
-#: 表头文字 → 语义角色的两条规则（见模块 docstring）。
+#: 表头文字 → 语义角色的字面量规则（见模块 docstring）。
 _LITERAL_ROLES = {
     "期末余额": "期末余额",
     "期初余额": "期初余额",
     "上年年末余额": "期初余额",
 }
 _DATE_HEADER_RE = re.compile(r"^(\d{4})年\d{1,2}月\d{1,2}日$")
+
+#: 时段表（利润表 / 现金流量表）的列头，实测形态是 `2023年度` / `2022年度`
+#: （`docs/agent/phase-01.5/PROBE-14.md` §1）。
+#:
+#: **为什么必须单列第三条规则**：wave 2 实测发现 `2023年度` 与上面两条**都不匹配**，
+#: 于是 `role=None`、`resolution="unrecognized"`，按 `L-34` fail-closed
+#: ⇒ **利润表与现金流量表当时一个字段都取不出来**。
+#: 值取得到，取不到的是**列的语义角色** —— 这两件事是分开的。
+#:
+#: 它与 `_DATE_HEADER_RE` **同构**：都是拿列头里的年份与调用方传入的会计年度
+#: 做一次**事实比对**，不是「取靠右那一列」这类启发式（`L-34`）。
+_PERIOD_HEADER_RE = re.compile(r"^(\d{4})年度$")
 
 #: 章节标题的序号前缀，如 `九、` / `十一、`。**只允许中文数字加顿号**，别的一律不算前缀。
 _SECTION_NUMERAL_RE = re.compile(r"^([一二三四五六七八九十百]+、)")
@@ -690,7 +703,17 @@ def next_anchor_after(anchors, anchor):
 
 
 def _role_of(header_text: str, fiscal_year: int) -> tuple[str | None, str]:
-    """表头文字 → `(role, resolution)`。两条规则都不适用时 `role` 为 None。"""
+    """表头文字 → `(role, resolution)`。三条规则都不适用时 `role` 为 None。
+
+    ## 时点口径与时段口径用两套角色名，这是故意的
+
+    资产负债表是时点表，角色是 `期末余额` / `期初余额`；
+    利润表与现金流量表是时段表，角色是 `本期金额` / `上期金额`。
+    **不合并成一套**：把利润表的本期数叫「期末余额」是把一个流量说成存量，
+    而 `metrics/` 里的 `line_item` 逐字写的就是「本期金额」——
+    合并会让映射表的 `column_header` 与定义的口径描述**用不同的词说同一件事**，
+    那正是「同一事实的多个结构表示」。
+    """
     if header_text in _LITERAL_ROLES:
         return _LITERAL_ROLES[header_text], "literal"
     match = _DATE_HEADER_RE.match(header_text)
@@ -700,6 +723,14 @@ def _role_of(header_text: str, fiscal_year: int) -> tuple[str | None, str]:
             return "期末余额", "fiscal-year-match"
         if year == fiscal_year - 1:
             return "期初余额", "fiscal-year-match"
+        return None, "fiscal-year-mismatch"
+    match = _PERIOD_HEADER_RE.match(header_text)
+    if match:
+        year = int(match.group(1))
+        if year == fiscal_year:
+            return "本期金额", "fiscal-year-match"
+        if year == fiscal_year - 1:
+            return "上期金额", "fiscal-year-match"
         return None, "fiscal-year-mismatch"
     return None, "unrecognized"
 

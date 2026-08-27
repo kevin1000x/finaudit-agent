@@ -80,6 +80,15 @@ class RecordKind(Enum):
     NOTE_CHECKBOX = "附注披露模板的适用性标记"
     KPI_DISCLOSED = "年报「主要会计数据和财务指标」章节的已披露值"
 
+    # 下面两支由 wave 2 的实测逼出来（`docs/agent/phase-01.5/PROBE-14.md` §3 / §7 第 3 条）。
+    # 它们与上面三支的**结构差别**是：上面三支都从「某一行取某一列的值」，
+    # 这两支根本不取行值。硬把它们塞进 STATEMENT_LINE，就得给它们编一条
+    # 必然零命中的 `label_variants` —— 那是 F-2 的形状，而且会与 L-36
+    # 「整份 PDF 零命中即整批失败」直接对撞。
+
+    COLUMN_HEADER_PRESENCE = "判某个列头在不在，不取任何行的值"
+    REPORT_METADATA = "由报告类型决定的元数据，纸上不印这一行"
+
 
 class ExtractionStatus(Enum):
     """**这次抽取本身**的成败。与 `CellState`（格子的事实）正交。"""

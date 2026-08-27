@@ -1,0 +1,82 @@
+# 合并利润表字段在年报 PDF 上的取数口径（D-016）。
+#
+# ⚠️ **列头口径名与资产负债表不同**：这里是 `本期金额` / `上期金额`，
+# 资产负债表是 `期末余额` / `期初余额`。利润表是**时段表**，把它的本期数叫
+# 「期末余额」是把流量说成存量，而 metrics/ 里的 line_item 逐字写的就是「本期金额」。
+# 版面上印的是 `2023年度` / `2022年度`，由 locate._role_of 的第三条规则
+# （`^(\d{4})年度$` 与会计年度做事实比对）显式判定并把依据记进 resolution。
+#
+# 🔴 **operating_revenue_current 与 operating_revenue_prior_as_presented
+# 匹配的是同一行（p63 y=250.9），区别只在 column_header。**
+# 这是 A-9 的原型：两个字段全取上期列，revenue_growth_yoy 会算出 0，
+# 而没有任何恒等式会不平 —— 勾稽闸门在结构上抓不到整列取错。
+#
+# 🔴 **`其中：营业收入` 不能写成 `营业收入`。** 版面上还有一行「一、营业总收入」
+# = 150,560,330,316.45，而营业收入是 147,693,604,994.14，两者差 28.7 亿
+# （茅台有财务公司，利息收入单列）。逐字相等匹配下写 `营业收入` 是零命中（L-36 抛错），
+# 若当初松成「包含」则两行同时命中、取哪一个由行序决定。
+#
+# ⚠️ **片段逐字复制自 tests/fixtures/maotai_2023_probe_rows.json，不是手打。**
+# net_profit 那行用的是全角减号 `－`(U+FF0D)，
+# net_profit_attributable_to_parent 那行用的是 ASCII 连字符 `-`(U+002D)。
+# 抄错一个字符就是零命中。生成方式见 PROBE-14.md §1(c)。
+
+namespace: is
+mapping_version: 1
+
+entries:
+  - field_id: is.operating_revenue_current
+    statement: 合并利润表
+    column_header: 本期金额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["其中：营业收入"]
+
+  - field_id: is.operating_revenue_prior_as_presented
+    statement: 合并利润表
+    column_header: 上期金额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["其中：营业收入"]
+
+  - field_id: is.operating_cost
+    statement: 合并利润表
+    column_header: 本期金额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["其中：营业成本"]
+
+  - field_id: is.selling_expense
+    statement: 合并利润表
+    column_header: 本期金额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["销售费用"]
+
+  - field_id: is.administrative_expense
+    statement: 合并利润表
+    column_header: 本期金额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["管理费用"]
+
+  - field_id: is.financial_expense
+    statement: 合并利润表
+    column_header: 本期金额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["财务费用"]
+
+  - field_id: is.net_profit
+    statement: 合并利润表
+    column_header: 本期金额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["五、净利润（净亏损以“－”号填", "列）"]
+
+  - field_id: is.net_profit_attributable_to_parent
+    statement: 合并利润表
+    column_header: 本期金额
+    kind: STATEMENT_LINE
+    label_variants:
+      - label_fragments: ["1.归属于母公司股东的净利润", "（净亏损以“-”号填列）"]
