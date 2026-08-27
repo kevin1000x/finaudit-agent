@@ -134,21 +134,21 @@
           },
           {
             "header_text": "2023年度",
-            "role": null,
+            "role": "本期金额",
             "x0": 350.71,
             "x1": 395.59,
             "page": 63,
             "header_inherited": false,
-            "resolution": "unrecognized"
+            "resolution": "fiscal-year-match"
           },
           {
             "header_text": "2022年度",
-            "role": null,
+            "role": "上期金额",
             "x0": 456.1,
             "x1": 500.98,
             "page": 63,
             "header_inherited": false,
-            "resolution": "unrecognized"
+            "resolution": "fiscal-year-match"
           }
         ]
       },
@@ -1648,21 +1648,21 @@
           },
           {
             "header_text": "2023年度",
-            "role": null,
+            "role": "本期金额",
             "x0": 351.55,
             "x1": 393.79,
             "page": 66,
             "header_inherited": false,
-            "resolution": "unrecognized"
+            "resolution": "fiscal-year-match"
           },
           {
             "header_text": "2022年度",
-            "role": null,
+            "role": "上期金额",
             "x0": 457.42,
             "x1": 499.66,
             "page": 66,
             "header_inherited": false,
-            "resolution": "unrecognized"
+            "resolution": "fiscal-year-match"
           }
         ]
       },

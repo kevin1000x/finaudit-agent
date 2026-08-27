@@ -288,6 +288,7 @@ def _stamp_provenance(
         unit=view.header.unit,
         currency=view.header.currency,
         column_header=column.header_text,
+        header_inherited=column.header_inherited,
         mapping_version=mapping_version,
         selection=FULL_TABLE_SELECTION,
         truncation_stats={},

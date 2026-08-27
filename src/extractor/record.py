@@ -247,6 +247,17 @@ class ExtractionRecord:
     unit: str
     currency: str
     column_header: str
+    #: 这一行的列归属是不是**从首页表头继承来的**。
+    #:
+    #: 它是 `ColumnBinding.header_inherited` 的下游消费点。加这个字段是因为
+    #: 2026-08-27 写列绑定回归时当场发现：`inherited_to()` 把这个布尔算了出来，
+    #: 而 `_stamp_provenance` 只取了 `column.header_text` —— **算出来的留证在接线时被丢掉**。
+    #: 那正是 `ARCHITECTURE` §8.5 记的形状：指针只要不是必填参数，就会在接线时被丢掉。
+    #:
+    #: 为什么这件事非记不可：cninfo `pdf_parser.py:302` 无条件把第 0 行当表头，
+    #: 续页因此**静默吃掉一行真实数据**，而它的文档宣称「支持跨页表格识别」。
+    #: 继承是允许的，但**继承这件事本身必须在证据里看得见**。
+    header_inherited: bool
     mapping_version: int
     selection: Selection
     truncation_stats: Mapping[str, int]

@@ -101,6 +101,7 @@ def _batch_with(field_id: str, **overrides) -> ExtractionBatch:
         unit="元",
         currency="人民币",
         column_header="2023年12月31日",
+        header_inherited=False,
         mapping_version=1,
         selection=SELECTION,
         truncation_stats={},

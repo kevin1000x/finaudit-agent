@@ -94,6 +94,7 @@ __all__ = [
     "CHECKBOX_NOT_APPLICABLE",
     "ApplicabilityUnreadable",
     "bind_columns",
+    "role_of",
     "rows_in_span",
     "parse_amount",
 ]
@@ -700,6 +701,15 @@ def next_anchor_after(anchors, anchor):
 # --------------------------------------------------------------------------
 # 列绑定
 # --------------------------------------------------------------------------
+
+
+def role_of(header_text: str, fiscal_year: int) -> tuple[str | None, str]:
+    """`_role_of` 的公开入口。**判定逻辑只有一份**（L-39：同名口径常量只允许一个定义点）。
+
+    分出这个名字是因为列绑定校验（`reconcile.check_column_binding`）要把
+    「版面上印的那串字」重新解回口径名，而它不该 import 一个下划线开头的私有函数。
+    """
+    return _role_of(header_text, fiscal_year)
 
 
 def _role_of(header_text: str, fiscal_year: int) -> tuple[str | None, str]:

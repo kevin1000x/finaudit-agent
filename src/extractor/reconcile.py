@@ -34,6 +34,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+from . import locate
 from .record import CellState, ExtractionBatch, RetrievalOutcome
 
 __all__ = [
@@ -41,8 +42,11 @@ __all__ = [
     "IDENTITY_FIELDS",
     "DEFAULT_TOLERANCE",
     "SOURCE_RECONCILE",
+    "SOURCE_COLUMN_BINDING",
     "ReconcileResult",
+    "ColumnBindingResult",
     "reconcile_batch",
+    "check_column_binding",
 ]
 
 #: 恒等式的**原文**。进证据链时逐字原样展示，不重新拼。
@@ -149,3 +153,79 @@ def reconcile_batch(
     if seal:
         batch.seal(result)
     return result
+
+
+# --------------------------------------------------------------------------
+# 列绑定校验 —— 与勾稽闸门**并列且不可互相替代**（D-016 补充节 / A-9）
+# --------------------------------------------------------------------------
+
+#: 责任方标识（L-9）。与 `SOURCE_RECONCILE` 分开：两道闸门失败时归因不同。
+SOURCE_COLUMN_BINDING = "reconcile:column_binding"
+
+
+@dataclass(frozen=True)
+class ColumnBindingResult:
+    """一次列绑定判定的完整留证。
+
+    `mismatches` 的每一项是 `(field_id, 版面上印的列头, 解出来的口径, 映射表要的口径)`
+    —— 四样都留，因为「取错列」的复核**必须能看到版面原文**：
+    只报「口径不符」的话，复核者无法判断是抽取器解错了还是映射表写错了。
+    """
+
+    passed: bool
+    checked: int
+    mismatches: tuple[tuple[str, str, str | None, str], ...] = ()
+
+    def to_dict(self) -> dict:
+        return {
+            "passed": self.passed,
+            "checked": self.checked,
+            "mismatches": [list(m) for m in self.mismatches],
+            "source": SOURCE_COLUMN_BINDING,
+        }
+
+
+def check_column_binding(
+    batch: ExtractionBatch, mapping, fiscal_year: int
+) -> ColumnBindingResult:
+    """每条记录**版面上印的那列**，解回口径后是否等于映射表要的那一列。
+
+    ## 为什么这道闸门不能被勾稽闸门替代
+
+    `A-9` 的推论在真实数据上**确凿成立**（茅台 2023 实测）：
+
+        期末列：272,699,660,092.25 = 49,043,190,797.43 + 223,656,469,294.82  差额 0.00
+        期初列：254,500,826,096.02 = 49,562,744,832.16 + 204,938,081,263.86  差额 0.00
+
+    三个数**全取期初列**时，`reconcile_batch` 照样 `passed=True`。
+    **勾稽证明的是「同一列内部自洽」，不是「取的是对的那一列」。**
+
+    ## 判定方式是事实比对，不是启发式
+
+    记录里存的 `column_header` 是**版面上印的那串字**（如 `2023年12月31日`），
+    不是口径名。这里把它交给 `locate.role_of` 用**本次抽取的会计年度**重新解一次，
+    再与映射表条目声明的 `column_header`（口径名）逐字比对。
+    会计年度是调用方传进来的已知量 —— 全程没有「取靠右那一列」这类位置约定。
+
+    ## 不判定的情况
+
+    映射表里没有对应条目的记录、以及 `column_header` 为 `None` 的记录（不取列的类别）
+    **不计入 `checked`**。把它们算成通过会让 `checked` 变成一个虚高的数。
+    """
+    mismatches: list[tuple[str, str, str | None, str]] = []
+    checked = 0
+    for record in batch.records:
+        entry = mapping.by_field(record.field_id)
+        if entry is None or entry.column_header is None:
+            continue
+        if record.column_header is None:
+            continue
+        checked += 1
+        resolved, _resolution = locate.role_of(record.column_header, fiscal_year)
+        if resolved != entry.column_header:
+            mismatches.append(
+                (record.field_id, record.column_header, resolved, entry.column_header)
+            )
+    return ColumnBindingResult(
+        passed=not mismatches, checked=checked, mismatches=tuple(mismatches)
+    )
