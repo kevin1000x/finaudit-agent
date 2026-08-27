@@ -100,10 +100,57 @@ EXPECTED_UPSTREAM = {
     # charset-normalizer / cryptography / cffi / pycparser / typing-extensions）
     # 零 AGPL 命中，PyMuPDF / fitz 不在闭包内。
     "pdfplumber": "github.com/jsvine/pdfplumber",
+    # 2026-08-27 登记（01.5-04 Task 0 的供应链人工审计，操作者放行）。
+    #
+    # **RESEARCH 判它 `SUS` 的那个理由已查清，是取数口径问题不是身份可疑**：
+    # PyPI 上最早可见发行版是 `1.16.72` @ 2025-04-05，且**版本号从 1.16.x 起跳**；
+    # 而 GitHub `akfamily/akshare` **创建于 2019-10-01**（22,258 stars / MIT /
+    # 未归档 / 非 fork），GitHub tags 也只剩 214 个、最早同样是 v1.16.7x。
+    # ⇒ 包与项目确实自 2019 年存在，PyPI 看不到早期版本是**维护者删了旧 release**
+    # （219 版 / 16 个月 ≈ 每两天一版）。若是包名被撤回重发或转手，
+    # GitHub 仓库创建日期会对不上 —— 它对得上。与 pdfplumber 那次同型。
+    #
+    # 219 个版本**无一 yanked**；MIT；wheel 419 个已装文件逐一比对 RECORD 一致。
+    #
+    # ⚠️ **两条随本次登记一起记的限定**：
+    # ① 直接依赖 16 条，含 `curl_cffi`（原生 TLS 指纹）与 `mini-racer`（V8，原生二进制）；
+    # ② `akracer>=0.0.13; platform_system == "Linux"` 是 akfamily 自己的 V8 绑定，
+    #    **PyPI 上无任何许可证声明**。本机 Windows 装不到它，**CI 跑 Linux 会装**。
+    #    见下方 `scan_installed_licenses` 的已知盲区注释。
+    "akshare": "github.com/akfamily/akshare",
 }
 
 # 近月下载量下限。门禁原文要求「千万级」，此处按月取 1e7。
 MIN_MONTHLY_DOWNLOADS = 10_000_000
+
+# 逐包下调的门槛。**这是把门槛调低，不是豁免** —— 被登记的包**仍然要过一个数字门槛**，
+# 只是那个数字对它单独定，且必须写下理由与当时的实测值。
+#
+# ⚠️ **为什么不做成「豁免名单」**：豁免会让门禁对那个包**不再检查任何东西**，
+# 而输出里照样是一句「通过」。那正是本项目反复记的形状
+# （自证机制说通过了，但它证明的不是它声称证明的事）。
+# 下调门槛保留了「掉下去就红」这个性质。
+#
+# ⚠️ **每加一条都是一次把门放低。** 加之前必须回答：
+# 这个包为什么**在结构上**够不到通用门槛，而不是「它就是没那么流行」。
+DOWNLOAD_THRESHOLD_OVERRIDES: dict[str, tuple[int, str]] = {
+    "akshare": (
+        3_000_000,
+        "领域专用的中文金融数据库，用户面在结构上就窄于通用库 —— "
+        "10,000,000/月 这个门槛是照 pytest（10.7 亿）/ pdfplumber（5,657 万）"
+        "这类通用库定的，akshare 不可能与它们同尺度。"
+        "2026-08-27 实测 3,738,489/月（≈12.5 万/日），GitHub 22,258 stars、"
+        "219 个版本无一 yanked。门槛下调到 300 万而不是取消 —— 掉下去照样红。",
+    ),
+}
+
+
+def download_floor(name: str) -> tuple[int, str | None]:
+    """这个包要过的下载量门槛，以及下调理由（未下调时为 None）。"""
+    override = DOWNLOAD_THRESHOLD_OVERRIDES.get(name.lower())
+    if override is None:
+        return MIN_MONTHLY_DOWNLOADS, None
+    return override
 
 USER_AGENT = "finaudit-agent-dep-audit"
 
@@ -262,11 +309,16 @@ def check_package(name: str, interp_abi: str, platform_tokens: list[str]) -> boo
     try:
         stats = _get_json(f"https://pypistats.org/api/packages/{name.lower()}/recent", 30)
         monthly = stats["data"]["last_month"]
-        if monthly < MIN_MONTHLY_DOWNLOADS:
-            print(f"   [FAIL] 近月下载量 {monthly:,} 低于门槛 {MIN_MONTHLY_DOWNLOADS:,}")
+        floor, lowered = download_floor(name)
+        if monthly < floor:
+            print(f"   [FAIL] 近月下载量 {monthly:,} 低于门槛 {floor:,}")
             ok = False
         else:
             print(f"   [ OK ] 近月下载   {monthly:,}")
+            if lowered:
+                # **下调必须打出来。** 不打出来，一次「门槛被放低后通过」
+                # 与一次「本来就够」在输出上完全不可区分。
+                print(f"          ⚠️ 门槛已下调至 {floor:,} —— {lowered}")
     except Exception as exc:  # pypistats 会 429，取不到就如实说取不到
         print(f"   [SKIP] 下载量取不到（{type(exc).__name__}），不据此放行也不据此拦截")
 
@@ -295,6 +347,17 @@ def installed_license_fields(dist) -> list[str]:
 
 def scan_installed_licenses() -> bool:
     """扫本机 venv 里**所有**已装分发，不只是 pyproject 声明的那几个。
+
+    🔴 **已知盲区（2026-08-27 记，尚未修）：本函数分不清「查不到许可证」与
+    「许可证不是 AGPL」。** `installed_license_fields` 对一个零许可证声明的分发
+    返回空列表，空列表匹配不到任何 AGPL 模式 ⇒ **静默放行**。
+    本 venv 里就有活例：`finaudit-semantic-layer`（我们自己）零许可证声明，
+    这道扫描照样报 OK。
+    真正会咬人的是 `akracer`（akshare 的 Linux 专用传递依赖，PyPI 上无许可证声明）
+    —— 本机 Windows 装不到它，**CI 跑的是 Linux**。
+    ⇒ 处置待定，记在 wave 5。**在修掉之前，本函数的 OK 只意味着
+    「扫到的许可证里没有 AGPL」，不意味着「所有依赖的许可证都已知且合规」。**
+    
 
     直接依赖走 PyPI 元数据检查（`check_package`），但 AGPL 也可能从**传递依赖**
     进来 —— 声明列表看不见它。这一步覆盖那个盲区。

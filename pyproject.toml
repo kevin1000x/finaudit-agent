@@ -11,6 +11,10 @@ dependencies = ["pyyaml>=6.0.3", "pdfplumber>=0.11.5"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.4.2"]
+# 对照源。**不进主 dependencies** —— AKShare 只作对照不作权威源（D-013），
+# 不该是运行本项目的必要条件：抽取与计算全程只读年报 PDF，
+# 缺了这个 extra 时跨源校验降级为「未做」，而不是整个项目跑不起来。
+crosscheck = ["akshare>=1.18.94"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
