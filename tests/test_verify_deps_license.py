@@ -18,6 +18,9 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 from verify_deps import (  # noqa: E402
     DENIED_LICENSE_PATTERNS,
     LICENSE_EXEMPTIONS,
+    SKIPPED_CHECKS,
+    check_download_floor,
+    download_floor,
     license_denied,
     license_fields,
 )
@@ -135,7 +138,97 @@ def test_exemption_actually_works_when_used():
 
 
 def test_denied_patterns_are_case_insensitive():
-    for pat in DENIED_LICENSE_PATTERNS:
-        assert pat.search(pat.pattern.replace(r"\b", "").upper()) or True
+    # ⚠️ 2026-08-28 删掉了这里原有的一行 `assert pat.search(...) or True` ——
+    # `X or True` **恒为真**，那一行任何输入都不会红，是一条假断言。
+    # 第六道门没抓到它，因为同一个函数里还有两条真断言（它查的是
+    # 「有没有一个能失败的断言」，不是「每一条断言都能失败」）。
+    # ⇒ 这是 `check_gates.py` 的一处已知盲区的实例，已记进登记册。
+    assert DENIED_LICENSE_PATTERNS, "禁列不能是空的，否则下面两条断言在保护一个空规则集"
     assert license_denied("p", ["agpl-3.0"])
     assert license_denied("p", ["AFFERO GENERAL PUBLIC LICENSE"])
+
+
+# --------------------------------------------------------------------------
+# 跳过的检查必须看得见（D-030 判据 2 的保护）
+# --------------------------------------------------------------------------
+
+
+def _drain_skips():
+    """每条用例自己清干净——`SKIPPED_CHECKS` 是模块级的。"""
+    SKIPPED_CHECKS.clear()
+
+
+def test_下载量取不到时登记进跳过清单而不是静默放行():
+    """🔴 2026-08-28 实测撞到的真实情形：pypistats 一次 429。
+
+    此前的行为是：行级打一句 `[SKIP]`，然后总结行照样只写「供应链门禁：通过」。
+    一次「全部检查都跑了且都过了」与一次「有检查根本没跑，剩下的过了」
+    在退出码上相同、在最后一行上也相同 —— 而它们是两件事。
+    """
+    _drain_skips()
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("HTTP Error 429: Too Many Requests")
+
+    assert check_download_floor("akshare", fetch=_boom) is True  # 不据此拦截
+    assert SKIPPED_CHECKS == ["akshare:下载量"]
+    _drain_skips()
+
+
+def test_门槛被下调过的包在检查跳过时也要把下调说出来(capsys):
+    """**输出不许在检查没跑的时候反而更干净。**
+
+    「这个包跑在一条被放低的门槛上」不会因为门槛没被检查而不再成立 ——
+    恰恰相反，那是最该说出来的时刻，因为 `D-030` 判据 2 这一次根本没有生效。
+    """
+    _drain_skips()
+    floor, lowered = download_floor("akshare")
+    assert lowered is not None, "本用例的前提是 akshare 确实是被下调过的那一个"
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("429")
+
+    check_download_floor("akshare", fetch=_boom)
+    out = capsys.readouterr().out
+    assert "门槛是被下调过的" in out
+    assert "D-030" in out
+    assert "没有验证它是否仍在门槛之上" in out
+    _drain_skips()
+
+
+def test_没被下调过的包跳过时不打下调声明(capsys):
+    """负向：别把这句话打在每个包上，那样它会退化成噪音。"""
+    _drain_skips()
+    assert download_floor("pdfplumber")[1] is None
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("429")
+
+    check_download_floor("pdfplumber", fetch=_boom)
+    out = capsys.readouterr().out
+    assert "[SKIP]" in out
+    assert "门槛是被下调过的" not in out
+    _drain_skips()
+
+
+def test_下载量低于门槛时仍然是红的(capsys):
+    """`D-030` 判据 2 的正面：掉下去照样红。跳过机制没有把这条弄丢。"""
+    _drain_skips()
+    floor, _ = download_floor("akshare")
+    low = {"data": {"last_month": floor - 1}}
+    assert check_download_floor("akshare", fetch=lambda *a, **k: low) is False
+    assert SKIPPED_CHECKS == [], "红不是跳过，不许进跳过清单"
+    assert "低于门槛" in capsys.readouterr().out
+    _drain_skips()
+
+
+def test_门槛之上时把下调理由打进输出(capsys):
+    """一次「门槛被放低后通过」与一次「本来就够」在输出上必须可区分。"""
+    _drain_skips()
+    floor, _ = download_floor("akshare")
+    high = {"data": {"last_month": floor + 1}}
+    assert check_download_floor("akshare", fetch=lambda *a, **k: high) is True
+    out = capsys.readouterr().out
+    assert "门槛已下调至" in out
+    assert "D-030" in out
+    _drain_skips()

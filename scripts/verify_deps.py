@@ -140,13 +140,30 @@ MIN_MONTHLY_DOWNLOADS = 10_000_000
 DOWNLOAD_THRESHOLD_OVERRIDES: dict[str, tuple[int, str]] = {
     "akshare": (
         3_000_000,
+        "【D-030，操作者 2026-08-28 裁决接受】"
         "领域专用的中文金融数据库，用户面在结构上就窄于通用库 —— "
         "10,000,000/月 这个门槛是照 pytest（10.7 亿）/ pdfplumber（5,657 万）"
         "这类通用库定的，akshare 不可能与它们同尺度。"
         "2026-08-27 实测 3,738,489/月（≈12.5 万/日），GitHub 22,258 stars、"
-        "219 个版本无一 yanked。门槛下调到 300 万而不是取消 —— 掉下去照样红。",
+        "219 个版本无一 yanked。门槛下调到 300 万而不是取消 —— 掉下去照样红。"
+        "⚠️ 余量很窄：08-28 复跑 3,662,055/月，比门槛只高 22% 且一天内在往下走。"
+        "跌破即红，**处置不是再下调一次** —— 再下调就把这道门变成跟着实测值走的"
+        "橡皮门槛。届时的选项是接受它红并停用 crosscheck extra，或另找对照源。",
     ),
 }
+
+
+#: 本次运行中**跳过了**的检查（查不到，既不放行也不拦截）。
+#:
+#: 🔴 **它存在的唯一理由是：最后那句「供应链门禁：通过」不许把跳过藏起来。**
+#: 一次「全部检查都跑了且都过了」与一次「有检查根本没跑，剩下的过了」
+#: 在退出码上相同、在最后一行上此前也相同 —— 而它们是两件事。
+#: 只在行级打 `[SKIP]` 不够：读的人往往只看最后一行与退出码。
+#:
+#: ⚠️ **跳过不改退出码，这是有意的。** 让 pypistats 的一次 429 把门禁变红，
+#: 会得到一道「红的原因不是它要查的那件事」的门（`b0afe00` 的教训），
+#: 而长期红着的门等于没有门。**处置是让跳过看得见，不是让它变红。**
+SKIPPED_CHECKS: list[str] = []
 
 
 def download_floor(name: str) -> tuple[int, str | None]:
@@ -255,7 +272,10 @@ def check_package(name: str, interp_abi: str, platform_tokens: list[str]) -> boo
         ok = False
     elif not fields:
         # 查不到 ≠ 没有。如实标 SKIP，不据此放行也不据此拦截。
+        # 但**必须进 SKIPPED_CHECKS**：这一支正是「零许可证声明」那个盲区的入口，
+        # 它不出现在总结行里，一次没查过的许可证与一次查过且干净的许可证就分不开。
         print("   [SKIP] PyPI 元数据里没有任何许可证声明，无从判定")
+        SKIPPED_CHECKS.append(f"{name}:许可证")
     else:
         print(f"   [ OK ] 许可证     {fields[0]}")
 
@@ -310,23 +330,47 @@ def check_package(name: str, interp_abi: str, platform_tokens: list[str]) -> boo
     else:
         print(f"   [ OK ] 已装文件   {compared} 个逐一比对 wheel RECORD，全部一致")
 
-    try:
-        stats = _get_json(f"https://pypistats.org/api/packages/{name.lower()}/recent", 30)
-        monthly = stats["data"]["last_month"]
-        floor, lowered = download_floor(name)
-        if monthly < floor:
-            print(f"   [FAIL] 近月下载量 {monthly:,} 低于门槛 {floor:,}")
-            ok = False
-        else:
-            print(f"   [ OK ] 近月下载   {monthly:,}")
-            if lowered:
-                # **下调必须打出来。** 不打出来，一次「门槛被放低后通过」
-                # 与一次「本来就够」在输出上完全不可区分。
-                print(f"          ⚠️ 门槛已下调至 {floor:,} —— {lowered}")
-    except Exception as exc:  # pypistats 会 429，取不到就如实说取不到
-        print(f"   [SKIP] 下载量取不到（{type(exc).__name__}），不据此放行也不据此拦截")
+    ok = check_download_floor(name) and ok
 
     return ok
+
+
+def check_download_floor(name: str, fetch=None) -> bool:
+    """近月下载量是否过门槛。**取不到时登记进 `SKIPPED_CHECKS` 并放行。**
+
+    `fetch` 可注入，供测试在不联网的情况下驱动三条路径（够 / 不够 / 取不到）。
+    """
+    fetch = fetch or _get_json
+    floor, lowered = download_floor(name)
+    try:
+        stats = fetch(f"https://pypistats.org/api/packages/{name.lower()}/recent", 30)
+        monthly = stats["data"]["last_month"]
+    except Exception as exc:  # pypistats 会 429，取不到就如实说取不到
+        print(f"   [SKIP] 下载量取不到（{type(exc).__name__}），不据此放行也不据此拦截")
+        SKIPPED_CHECKS.append(f"{name}:下载量")
+        # 🔴 **下调声明在这条路径上也必须打。**
+        #
+        # 2026-08-28 实测撞到的：pypistats 一次 429，akshare 的下载量检查整个跳过，
+        # 于是那句「⚠️ 门槛已下调至 3,000,000」**也没打出来** ——
+        # **输出在检查没跑的时候反而比检查跑过的时候更干净。**
+        #
+        # 「这个包跑在一条被放低的门槛上」这件事，**不会因为门槛没被检查而不再成立**。
+        # 恰恰相反：那正是最该说出来的时刻，因为 `D-030` 判据 2（掉下去就红）
+        # 这一次根本没有生效。
+        if lowered:
+            print(f"          ⚠️ 且该包的门槛是被下调过的 —— {lowered}")
+            print("          ⇒ **本次运行没有验证它是否仍在门槛之上**（D-030 判据 2 未生效）")
+        return True
+
+    if monthly < floor:
+        print(f"   [FAIL] 近月下载量 {monthly:,} 低于门槛 {floor:,}")
+        return False
+    print(f"   [ OK ] 近月下载   {monthly:,}")
+    if lowered:
+        # **下调必须打出来。** 不打出来，一次「门槛被放低后通过」
+        # 与一次「本来就够」在输出上完全不可区分。
+        print(f"          ⚠️ 门槛已下调至 {floor:,} —— {lowered}")
+    return True
 
 
 def installed_license_fields(dist) -> list[str]:
@@ -417,11 +461,17 @@ def main() -> int:
     results = [check_package(name, interp_abi, platform_tokens) for name in names]
     results.append(scan_installed_licenses())
     print()
-    if all(results):
-        print("供应链门禁：通过")
-        return 0
-    print("供应链门禁：不通过")
-    return 1
+    verdict = "通过" if all(results) else "不通过"
+    if SKIPPED_CHECKS:
+        # **跳过的检查必须出现在总结行里。** 只看最后一行的人占多数，
+        # 而「通过」与「有检查没跑、剩下的通过」是两件事。
+        print(
+            f"供应链门禁：{verdict}"
+            f"（⚠️ 有 {len(SKIPPED_CHECKS)} 项检查未跑：{', '.join(SKIPPED_CHECKS)}）"
+        )
+    else:
+        print(f"供应链门禁：{verdict}")
+    return 0 if all(results) else 1
 
 
 if __name__ == "__main__":
