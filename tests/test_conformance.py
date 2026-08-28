@@ -250,3 +250,71 @@ def test_vocabulary_shape():
         "basis_version_mismatch",
         "source_disagreement",
     }
+
+
+# --------------------------------------------------------------------------
+# 2026-08-27 新增：两条「存量已清零，现在加上去就是绿的」的检查
+#
+# 顺序是故意的：**先清干净再上门禁**。反过来（先上门禁再清）会得到一道
+# 从第一天起就红的门，而一道长期红着的门等于没有门 —— 人会学会忽略它。
+# --------------------------------------------------------------------------
+
+
+def test_被跟踪的md里没有字面控制字符():
+    """`Cc`/`Cf` 字符混进文档会静默改变逐字相等的比对结果。
+
+    2026-08-27 全仓普查抓出 **6 个存量**：`OPEN-ITEMS.md` 4 个、
+    `01.5-06-PLAN.md` 2 个，**全是 U+0008 退格符写在本该是正则 `\b` 字面的位置**。
+    其中台账那 4 个正落在 `N-30` 描述「字面退格符混进源码使正则匹配数变成 0」
+    的那几行里 —— **描述这个坑的文字本身就是一个实例**。
+    `01.5-06-PLAN.md` 那 2 个更实：它们在一条 `grep -rhoE` 验收命令里，**照抄跑不通**。
+
+    ⚠️ 换行与制表符不算 —— 它们是排版的一部分，不是「不可见的意外」。
+    """
+    import unicodedata
+
+    repo = Path(__file__).resolve().parent.parent
+    offenders = {}
+    for path in repo.rglob("*.md"):
+        parts = set(path.parts)
+        if ".venv" in parts or ".git" in parts or "node_modules" in parts:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        bad = [
+            (index, repr(ch))
+            for index, ch in enumerate(text)
+            if unicodedata.category(ch) in ("Cc", "Cf") and ch not in "\n\t"
+        ]
+        if bad:
+            offenders[str(path.relative_to(repo))] = bad[:3]
+    assert not offenders, (
+        f"这些 md 里有字面控制字符（示例为 (偏移, repr) 前三个）：{offenders}。"
+        "描述这类字符时**示例要写转义序列，不能写字符本身** —— "
+        "2026-08-27 就是在写「不可见字符很危险」那份文档时把一个真的 BEL 写了进去。"
+    )
+
+
+def test_语义层导入的是当前工作树而不是主工作树():
+    """`.venv` 的 editable `.pth` 钉了一条**指向主工作树的绝对路径**。
+
+    后果（2026-08-27 实测，`rules/commands.md` 第 0 步）：在任何 worktree 里跑
+    `python -m semantic_layer scan|validate` 读的都是**主树**的 `src/` 与 `metrics/`，
+    而同一解释器同一 cwd 下 `pytest` 却读 worktree（`pythonpath` 走 rootdir）。
+    **两条命令导入两份代码，输出里没有任何东西会告诉你。**
+
+    这条断言把它变成一次会红的测试：`semantic_layer.__file__` 必须落在
+    pytest 的 rootdir 之下。**它守的不是「代码对不对」，是「你测的是不是你改的那份」。**
+    """
+    import semantic_layer
+
+    repo = Path(__file__).resolve().parent.parent
+    module_path = Path(semantic_layer.__file__).resolve()
+    assert repo in module_path.parents, (
+        f"semantic_layer 导入自 {module_path}，而本次测试的 rootdir 是 {repo}。"
+        "多工作树下 editable .pth 会把 import 钉在主树上 —— "
+        "此时 pytest 与 `python -m semantic_layer` 导入的是两份不同的代码。"
+        "处置见 rules/commands.md 第 0 步：显式覆盖 PYTHONPATH。"
+    )

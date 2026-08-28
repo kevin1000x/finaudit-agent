@@ -120,6 +120,10 @@ EXPECTED_UPSTREAM = {
     "akshare": "github.com/akfamily/akshare",
 }
 
+#: 本仓自己的分发。它们不是第三方依赖，许可证由本仓决定，
+#: 不参与「零许可证声明」的拦截。**只收本仓自己的，加别的进来要写理由。**
+SELF_DISTRIBUTIONS = frozenset({"finaudit-semantic-layer"})
+
 # 近月下载量下限。门禁原文要求「千万级」，此处按月取 1e7。
 MIN_MONTHLY_DOWNLOADS = 10_000_000
 
@@ -355,8 +359,9 @@ def scan_installed_licenses() -> bool:
     这道扫描照样报 OK。
     真正会咬人的是 `akracer`（akshare 的 Linux 专用传递依赖，PyPI 上无许可证声明）
     —— 本机 Windows 装不到它，**CI 跑的是 Linux**。
-    ⇒ 处置待定，记在 wave 5。**在修掉之前，本函数的 OK 只意味着
-    「扫到的许可证里没有 AGPL」，不意味着「所有依赖的许可证都已知且合规」。**
+    ✅ **2026-08-27 已修**：零许可证声明的分发现在**单独报出来并拦截**，
+    不再混进「无 AGPL 命中」那句话里 —— 「查不到」与「不是 AGPL」从此是两个不同的输出。
+    本仓自己的包在 `SELF_DISTRIBUTIONS` 里显式豁免。
     
 
     直接依赖走 PyPI 元数据检查（`check_package`），但 AGPL 也可能从**传递依赖**
@@ -368,6 +373,7 @@ def scan_installed_licenses() -> bool:
     """
     print("\n== 已装分发的许可证扫描（含传递依赖）")
     hits = []
+    unlicensed = []
     total = 0
     for dist in distributions():
         name = (dist.metadata.get("Name") or "").strip()
@@ -375,6 +381,8 @@ def scan_installed_licenses() -> bool:
             continue
         total += 1
         fields = installed_license_fields(dist)
+        if not fields:
+            unlicensed.append(name)
         hit = license_denied(name, fields)
         if hit:
             hits.append((name, dist.version, hit))
@@ -384,6 +392,19 @@ def scan_installed_licenses() -> bool:
         return False
     print(f"   [ OK ] 扫描 {total} 个已装分发，无 AGPL 系命中")
     print("          （局限：只覆盖本机此 venv，不能据此断言项目整体无 AGPL 依赖）")
+
+    # **「查不到许可证」与「许可证不是 AGPL」是两件事。**
+    # 不分开的话，一个零声明的分发会因为「匹配不到 AGPL 模式」而静默通过 ——
+    # 而门禁输出里照样是一句 OK。那正是本项目反复记的形状。
+    silent = sorted(x for x in unlicensed if x.lower() not in SELF_DISTRIBUTIONS)
+    if silent:
+        print(f"   [FAIL] {len(silent)} 个已装分发**没有任何许可证声明**：{silent}")
+        print("          零声明 ≠ 不是 AGPL。查不到就是查不到，不据此放行。")
+        return False
+    print(
+        f"   [ OK ] 零许可证声明的第三方分发：0 个"
+        f"（本仓自身 {sorted(SELF_DISTRIBUTIONS)} 已豁免）"
+    )
     return True
 
 
