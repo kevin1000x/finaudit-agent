@@ -80,6 +80,17 @@ NAMESPACES = {
         re.compile(r"^## (F-\d+)", re.M),
         _ref(r"F-\d+"),
     ),
+    # 独立复核的 findings。**单独一个命名空间，不许写成 `F-n`。**
+    #
+    # 2026-08-28 的教训：复核报告原文用 `F-1`…`F-10`，照抄进权威文档之后
+    # `F-9` / `F-10` 被本门禁当场报为悬空引用 —— 而**更糟的是 `F-1`…`F-8`
+    # 不悬空**，它们静默指向了 `rules/failure-modes.md` 里另外八条完全无关的失效模式。
+    # 悬空的会被抓住，不悬空但指错的不会。
+    "RV": (
+        "docs/agent/phase-01.5/REVIEW-TASK3.md",
+        re.compile(r"^## (RV-\d+)", re.M),
+        _ref(r"RV-\d+"),
+    ),
     "AC": (
         "PROJECT_SPEC.md",
         re.compile(r"^- \*\*(AC-\d{2})\*\*", re.M),
