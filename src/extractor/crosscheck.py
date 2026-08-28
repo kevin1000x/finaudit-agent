@@ -33,14 +33,28 @@ system 域标记按 `R4` 根本不会出现在那个列表里。
 
 ## 录制固件
 
-对照默认走**离线固件**（`tests/fixtures/akshare_600519_2023.json`）。
-要重新录制一份真实响应，用 CLI 的 `--record`：
+⚠️ **本节 2026-08-28 改写过 —— 原文有两句是错的**（`F-10`，独立复核查出）。
+原文写「对照默认走离线固件」「`--record` 是唯一会 import akshare 的入口」，
+**两句都不成立**：不给 `--reference` 也不给 `--record` 时，默认路径就是联网。
+同一个文件里 `--reference` 的 help 写的「默认就该给这个 —— 不给才联网」才是对的，
+两处自相矛盾。下面是照代码重写的。
+
+**三条路径，只有第一条不联网**：
+
+| 给的 flag | 行为 |
+|---|---|
+| `--reference PATH` | 读录制好的响应回放，**不联网、不 import akshare** |
+| `--record PATH` | 联网取一份真实响应并写成固件 |
+| 都不给 | **联网**（取不到则 `Refusal(UNAVAILABLE)`，退出码 3，不抛异常） |
+
+**全部测试走第一条**，断网可跑；`import akshare` 只出现在 `_live_fetcher` 里一处。
 
     python -m extractor crosscheck --stock 600519 --year 2023 \
         --pdf data/raw/600519_2023.pdf --record tests/fixtures/akshare_600519_2023.json
 
-`--record` 是**唯一**会真正 import akshare 并联网的入口。其余全部路径
-（含全部测试）走 `load_reference_payload()` 回放，断网可跑。
+⚠️ **`--record` 产出的是裁剪过的固件，不是原始返回。** 仓库里现有那份来自
+`0b312da`，是**未裁剪**的原始返回（`AKSHARE-A2 §2` 逐字这么写的）。
+重录会把它换成裁剪版 —— 裁剪边界见 `keep_columns()` 与 `EVIDENCE_COLUMNS`。
 """
 
 from __future__ import annotations
@@ -349,6 +363,15 @@ class ReferenceValue:
     currency: str
     period: str
     scope: str
+    #: 这张表要求的合并口径，**从映射文件的 `scope_required` 带出来**。
+    #:
+    #: 🔴 为什么它是一个字段而不是一个字面量（`F-2`，独立复核 2026-08-28 查出）：
+    #: 原实现把 `"合并期末"` 硬编码在 `cross_validate` 里，于是 `scope_required`
+    #: 是一个**被加载、被校验、但从不被消费**的配置键 ——
+    #: 三份 YAML 里把它改成任何别的值都零效果，而
+    #: `test_映射表不声明合并口径即拒绝加载` 让它看起来是被锁住的。
+    #: 那条测试锁的是「这个键必须存在」，不是「这个键起作用」。
+    scope_required: str
 
     def as_decimal(self) -> Decimal | None:
         return _reference_decimal(self.raw)
@@ -427,6 +450,7 @@ def references_from_payload(
                 else str(row.get("币种", "")),
                 period=str(row.get("报告日", "")),
                 scope=str(row.get("类型", "")),
+                scope_required=table.scope_required,
             )
     return references
 
@@ -467,6 +491,49 @@ def fetch_reference(
         )
 
 
+#: 报告级元数据列。判定要用（`报告日` / `币种` / `类型`），其余三列是留证。
+METADATA_COLUMNS = frozenset(
+    {"报告日", "币种", "类型", "数据源", "是否审计", "公告日期", "更新日期"}
+)
+
+#: 🔴 **不参与任何映射、但必须留在固件里的列**（`F-6`，独立复核 2026-08-28 查出）。
+#:
+#: 它们是**负控制的证据本身**。`--record` 原先只保留「已映射的列 + 元数据列」，
+#: 于是这四列全被裁掉，而：
+#:
+#: - `应付票据及应付账款` —— `test_应付票据及应付账款不匹配应付账款` 直接从固件读它，
+#:   裁掉之后那条测试不是变红，是 **`KeyError` 直接 ERROR**。
+#:   而它是本模块**唯一**咬得住「逐字相等 → 子串包含」这个变异的用例（见 `F-4`）。
+#: - `应收票据及应收账款` —— `balance_sheet.yaml` 注释拿它当「这一处子串匹配会被
+#:   数值发现」的反例，与应付侧那处「不会被发现」正好成对。
+#: - `营业总收入` —— `income_statement.yaml` 注释拿它当近义列陷阱的实例。
+#: - `期初现金及现金等价物余额` —— `cash_flow.yaml` 头部拿它当**浮点尾巴肉眼可见**
+#:   的实证（`152378738982.83002`），是 `C-6` 不是理论风险的唯一现场证据。
+#:
+#: ⇒ **一次「正规路径」的重录会静默删掉本模块四条论据里的四条。**
+#: 这是「留证在接线时被丢掉」（`ARCHITECTURE §8.5`）的又一个形状，
+#: 只不过丢它的是我们自己写的重录工具。
+EVIDENCE_COLUMNS = frozenset(
+    {
+        "应付票据及应付账款",
+        "应收票据及应收账款",
+        "营业总收入",
+        "期初现金及现金等价物余额",
+    }
+)
+
+
+def keep_columns(table: AkshareMappingTable) -> set[str]:
+    """`--record` 重录时保留哪些列。
+
+    **不是「已映射的列」**：还要加上元数据列与 `EVIDENCE_COLUMNS`。
+    裁剪本身是 `T-01.5-20` 要求的（原始三张表 103×147 / 103×83 / 99×71，
+    整个 dump 进仓库既没必要也会让固件失去可读性），但裁剪的边界
+    **不能只按「我们用得上的」画** —— 负控制用的正是我们**用不上**的那些列。
+    """
+    return {e.column_name for e in table.entries} | METADATA_COLUMNS | set(EVIDENCE_COLUMNS)
+
+
 def _live_fetcher(stock: str, year: int) -> dict:
     """真正联网的那一段。**只在 `--record` 时被调用。**
 
@@ -491,8 +558,7 @@ def _live_fetcher(stock: str, year: int) -> dict:
         if matched.empty:
             raise LookupError(f"{symbol} 里没有报告日 {report_date} 的行")
         row = matched.iloc[0]
-        keep = {e.column_name for e in tables[key].entries}
-        keep |= {"报告日", "币种", "类型", "数据源", "是否审计", "公告日期", "更新日期"}
+        keep = keep_columns(tables[key])
         payload[key] = {
             "api": "stock_financial_report_sina",
             "stock": f"{prefix}{stock}",
@@ -646,7 +712,12 @@ def cross_validate(
     """
     if not reference.present:
         return _incomparable(record, reference, IncomparableReason.REFERENCE_COLUMN_ABSENT)
-    if reference.scope and reference.scope != "合并期末":
+    # **fail-closed**：`scope` 为空串（`类型` 列缺失或为空）时照样判不可比。
+    # 原实现是 `if reference.scope and ...`，前半个 `and` 让空 scope 直接跳过整条判定，
+    # 字段被当作合并口径参与对照 —— 而币种与报告期两条同类闸门在同样输入下都是
+    # fail-closed。三条同类判定里两条一个行为、一条另一个行为，
+    # 且恰好是加载器报错文案写着「不声明合并口径就等于默认接受母公司数据」的那一条。
+    if reference.scope != reference.scope_required:
         return _incomparable(record, reference, IncomparableReason.SCOPE_NOT_CONSOLIDATED)
     if period is not None and reference.period != period:
         return _incomparable(record, reference, IncomparableReason.PERIOD_MISMATCH)

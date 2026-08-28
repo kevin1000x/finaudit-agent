@@ -95,6 +95,7 @@ def _reference(**overrides) -> ReferenceValue:
         currency="人民币",
         period="20231231",
         scope="合并期末",
+        scope_required="合并期末",
     )
     kwargs.update(overrides)
     return ReferenceValue(**kwargs)
@@ -118,11 +119,23 @@ def test_流动负债合计不匹配总负债():
 
     子串匹配下「流动负债合计」含「负债合计」⇒ 会被错配到 `bs.total_liabilities`。
     逐字相等下不会。**这不是假设性风险，是别人已经犯过的错。**
+
+    ⚠️ **2026-08-28 补强（`F-4`，独立复核查出）**：本条原来**没有辨析力**。
+    把 `field_for_column` 的 `==` 改成 `in`（子串包含）之后它**仍然绿** ——
+    因为 `流动负债合计` 在 entries 里排在 `负债合计` 前面（索引 11 vs 12），
+    子串匹配器扫到的第一条恰好还是对的。把这两行 YAML 对调位置，
+    这条测试就会变成假阴性而没有任何东西发现。
+
+    ⇒ 补的是**反方向**那一条：拿 `负债合计` 去查。子串匹配下
+    `"负债合计" in "流动负债合计"` 为真，扫到索引 11 就会返回流动负债字段 ⇒ 必红。
+    **这一条与 entries 的先后顺序无关。**
     """
     table = load_akshare_mapping("balance_sheet")
     assert table.field_for_column("流动负债合计") == "bs.total_current_liabilities_period_end"
     assert table.field_for_column("流动负债合计") != "bs.total_liabilities"
     assert table.column_for_field("bs.total_liabilities") == "负债合计"
+    # ↓ 这一条才是真正咬住「逐字相等 → 子串包含」的那把锁
+    assert table.field_for_column("负债合计") == "bs.total_liabilities"
 
 
 def test_应付票据及应付账款不匹配应付账款():
@@ -474,6 +487,58 @@ def test_非合并口径的参照行判不可比():
     assert result.incomparable_reason is IncomparableReason.SCOPE_NOT_CONSOLIDATED
 
 
+@pytest.mark.parametrize("empty_scope", ["", "None"])
+def test_类型列缺失或为空时判不可比而不是默认放行(empty_scope):
+    """🔴 `F-1`（独立复核 2026-08-28 查出）：这里原来是 fail-**open**。
+
+    原实现 `if reference.scope and reference.scope != "合并期末"` ——
+    前半个 `and` 让空 scope **直接跳过整条判定**，字段被当作合并口径参与对照，
+    输出里照样是 `AGREES`。
+
+    而**币种与报告期两条同类闸门在同样输入下都是 fail-closed**。
+    三条同类判定里两条一个行为、一条另一个行为，且不一致的恰好是
+    加载器报错文案写着「不声明合并口径就等于默认接受母公司数据参与对照」的那一条。
+    """
+    result = cross_validate(_record(), _reference(scope=empty_scope))
+    assert result.verdict is CrossCheckVerdict.INCOMPARABLE
+    assert result.incomparable_reason is IncomparableReason.SCOPE_NOT_CONSOLIDATED
+    assert result.verdict is not CrossCheckVerdict.AGREES
+
+
+def test_合并口径取自映射文件而不是硬编码字面量():
+    """🔴 `F-2`（独立复核查出）：`scope_required` 原来是**被加载、被校验、
+    但从不被消费**的配置键 —— 判定里硬编码 `"合并期末"`，
+    三份 YAML 里把它改成任何别的值都零效果。
+
+    而 `test_映射表不声明合并口径即拒绝加载` 让它看起来是被锁住的：
+    那条锁的是**这个键必须存在**，不是**这个键起作用**。两者差得很远。
+
+    本条锁的是后者：换一个 `scope_required`，判定必须跟着换。
+    """
+    # 映射文件说要「母公司期末」时，一份「合并期末」的参照行就该判不可比
+    result = cross_validate(
+        _record(), _reference(scope="合并期末", scope_required="母公司期末")
+    )
+    assert result.verdict is CrossCheckVerdict.INCOMPARABLE
+    assert result.incomparable_reason is IncomparableReason.SCOPE_NOT_CONSOLIDATED
+
+    # 反过来也要成立，否则上面那条可能只是「凡是不等于合并期末就红」
+    ok = cross_validate(
+        _record(), _reference(scope="母公司期末", scope_required="母公司期末")
+    )
+    assert ok.verdict is CrossCheckVerdict.AGREES
+
+    # 且真实映射文件里那个值确实被带进了 ReferenceValue
+    payload = load_reference_payload(FIXTURE)
+    tables = load_all_akshare_mappings()
+    references = references_from_payload(payload, tables)
+    assert references["bs.total_assets"].scope_required == "合并期末"
+    assert (
+        references["bs.total_assets"].scope_required
+        == tables["balance_sheet"].scope_required
+    )
+
+
 def test_报告期对不上时判不可比():
     result = cross_validate(_record(), _reference(period="20221231"), period="20231231")
     assert result.verdict is CrossCheckVerdict.INCOMPARABLE
@@ -721,6 +786,53 @@ def test_固件里九个已核对科目全部判一致():
     for result in outcome.results:
         assert result.verdict is CrossCheckVerdict.AGREES
         assert result.difference == Decimal("0.00")
+
+
+def test_重录固件不会删掉负控制赖以成立的那几列():
+    """🔴 `F-6`（独立复核 2026-08-28 查出）：`--record` 原先会毁掉固件。
+
+    原 `keep` 只保留「已映射的列 + 元数据列」，于是：
+
+    ```
+    balance_sheet     147 列 -> 22 列（丢 125）
+    income_statement   83 列 -> 14 列（丢 69）
+    cash_flow          71 列 ->  9 列（丢 62）
+    ```
+
+    被丢掉的里面有四列**正是负控制的证据本身**。最狠的是
+    `应付票据及应付账款` —— `test_应付票据及应付账款不匹配应付账款` 直接从固件读它，
+    裁掉之后那条测试**不是变红，是 `KeyError` 直接 ERROR**，
+    而它是本模块唯一咬得住「逐字相等 → 子串包含」这个变异的用例（`F-4`）。
+
+    ⇒ **一次「正规路径」的重录，会静默删掉四条论据里的四条。**
+    这是「留证在接线时被丢掉」的又一个形状，只不过丢它的是我们自己写的重录工具。
+    """
+    from extractor.crosscheck import EVIDENCE_COLUMNS, keep_columns
+
+    payload = load_reference_payload(FIXTURE)
+    tables = load_all_akshare_mappings()
+
+    for statement, table in tables.items():
+        keep = keep_columns(table)
+        row = payload[statement]["row"]
+        survivors = {k for k in row if k in keep}
+        # 已映射的列一个都不能丢
+        for entry in table.entries:
+            assert entry.column_name in keep, f"{statement}: 丢了已映射列 {entry.column_name}"
+        # 判定要用的三列一个都不能丢
+        for meta in ("报告日", "币种", "类型"):
+            assert meta in keep, f"{statement}: 丢了判定用的元数据列 {meta}"
+        assert survivors, statement
+
+    # 四列证据必须全部活下来 —— 逐列点名，不是数个数
+    all_keep = set().union(*(keep_columns(t) for t in tables.values()))
+    for column in EVIDENCE_COLUMNS:
+        assert column in all_keep, f"重录会删掉负控制的证据列 {column}"
+
+    # 且这四列在**当前固件里确实存在** —— 否则上面那条锁的是一个空承诺
+    present = {k for block in payload.values() for k in block["row"]}
+    for column in EVIDENCE_COLUMNS:
+        assert column in present, f"{column} 不在固件里，EVIDENCE_COLUMNS 记了一个不存在的列"
 
 
 def test_固件覆盖率是子集不是全集_并把缺口点名():

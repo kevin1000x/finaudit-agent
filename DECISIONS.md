@@ -1032,8 +1032,14 @@ wave 2 用三家公司实测（`docs/agent/phase-01.5/PROBE-COMBINATION.md`）�
   1. ✅ `src/extractor/crosscheck.py:DISAGREEMENT_TOLERANCE` 是一个具名常量，
      不是散落的字面量。`test_容差是具名常量且等于一分钱` 锁住取值
   2. ✅ `CrossCheckVerdict` 三支（`AGREES` / `DISAGREES` / `INCOMPARABLE`）+
-     `IncomparableReason` 七支。负向用例 `test_不可比与不一致是两个不同的取值且不合并`
-     断言两者在 `to_dict()` 里是不同的字符串。
+     `IncomparableReason` 七支。负向用例 `test_不可比与不一致是两个不同的取值且不合并`。
+     ⚠️ **2026-08-28 修正本条措辞**（独立复核查出）：原文写「断言两者在 `to_dict()` 里
+     是不同的字符串」，而**真正锁住它的不是那一条**。
+     `assert ... != "DISAGREES"` 与 `assert ... is not CrossCheckVerdict.DISAGREES`
+     在前面已断言 `is INCOMPARABLE` / `== "INCOMPARABLE"` 之后**恒为真**
+     （Enum 成员互异），任何输入都红不了。**起作用的是前面那两条正向断言。**
+     行为没错，但**判据把功劳记给了不起作用的那一半** ——
+     一条记错功劳的判据，会让下一个人删掉真正起作用的那行还以为没动到锁。
      **实测里最要紧的那一支不是单位，是 `REFERENCE_NAN`**：茅台四个「格子空 = 0」的
      字段在 AKShare 侧全是 `NaN`，当 0 会比出四条**从未被建立过的跨源一致**
   3. ✅ `_reference_decimal()` 是全仓唯一转换点，走 `Decimal(repr(v))`。

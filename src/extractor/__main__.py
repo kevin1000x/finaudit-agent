@@ -101,7 +101,8 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help=(
             "联网取一份真实响应并写成固件。"
-            "**这是全仓唯一会 import akshare 并发网络请求的入口**"
+            "⚠️ 产出的是**裁剪过的**固件，不是原始返回；"
+            "仓库现有那份是未裁剪的原始返回，重录会换掉它"
         ),
     )
     x.add_argument("--json", action="store_true", dest="as_json")
