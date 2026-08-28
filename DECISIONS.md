@@ -1028,13 +1028,26 @@ wave 2 用三家公司实测（`docs/agent/phase-01.5/PROBE-COMBINATION.md`）�
   由 `crosscheck` 在每批结束时算出来并写进证据链。
 - 代价如实记：`reversibility: costly`。容差一旦定下并跑出对照结论，
   改它会让此前所有 `source_disagreement` 的判定**全部作废**，需要重跑并重新核对。
-- 判据：
-  1. `src/extractor/crosscheck.py` 里容差是**一个具名常量**（`DISAGREEMENT_TOLERANCE`），
-     不是散落的字面量；**待 wave 4 Task 3**
-  2. 单位不可比时返回的是「不可比」而非「不一致」，二者在证据链里是**不同的字段值**，
-     有一条负向用例锁住它们不被合并；**待 wave 4 Task 3**
-  3. AKShare 侧的数值转换点全仓只有一处，且走 `Decimal(repr(v))`；有 AST 或 grep 级检查；**待 wave 4 Task 3**
-  4. 每批算出触发占比并写进证据链，超过 1/3 时在输出里显式标注「疑为档位选错」；**待 wave 4 Task 3**
+- 判据（**四条全部达成，2026-08-28 wave 4 Task 3**）：
+  1. ✅ `src/extractor/crosscheck.py:DISAGREEMENT_TOLERANCE` 是一个具名常量，
+     不是散落的字面量。`test_容差是具名常量且等于一分钱` 锁住取值
+  2. ✅ `CrossCheckVerdict` 三支（`AGREES` / `DISAGREES` / `INCOMPARABLE`）+
+     `IncomparableReason` 七支。负向用例 `test_不可比与不一致是两个不同的取值且不合并`
+     断言两者在 `to_dict()` 里是不同的字符串。
+     **实测里最要紧的那一支不是单位，是 `REFERENCE_NAN`**：茅台四个「格子空 = 0」的
+     字段在 AKShare 侧全是 `NaN`，当 0 会比出四条**从未被建立过的跨源一致**
+  3. ✅ `_reference_decimal()` 是全仓唯一转换点，走 `Decimal(repr(v))`。
+     `test_全仓只有一个_akshare_数值转换点` 是 **AST 级**双向检查：
+     `src/` 下 `Decimal(repr(...))` 只许一处，且 `crosscheck.py` 里非字面量参数的
+     `Decimal(...)` 调用只许是那一处（后者拦的是不含 `repr` 的 `Decimal(raw)`）。
+     **造回归验过会红**：把 `raw_reference` 改成 `Decimal(reference.raw)` 后该用例失败
+  4. ✅ `BatchCrossCheck.disagreement_ratio` 用 `Fraction` 算（不是浮点，
+     否则「恰好 1/3」这条边界会变成一次靠舍入决定的判断），分子分母都进 `to_dict()`，
+     超阈值时 `note` 里逐字含「疑为档位选错」
+- **首次真实数据结论**（茅台 2023，24 个字段）：可比 20 / 不可比 4 / 不一致 **0**，
+  触发占比 `0/20`。⚠️ **差额仍然全部精确为 0.00 ⇒ 这批数据依旧不能用来标定阈值**，
+  而且 `DISAGREES` 这一支在真实数据上**零样本**（只有构造样本）。逐字段见
+  `docs/agent/phase-01.5/COMPUTED-VALUES.md` §5。
 
 ## 3. 未解决决策
 

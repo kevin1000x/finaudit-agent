@@ -1,0 +1,108 @@
+# AKShare 资产负债表列名 → field_id（D-016 / C-8）。**只作对照，不作权威**（D-013）。
+#
+# ⚠️ 这份文件与 `data/mappings/pdf/bs.yaml` **物理分开，不许合并**。
+# 理由不是洁癖，是它们连标点都不一样：
+# AKShare 印 `所有者权益(或股东权益)合计`（**半角**括号），
+# PDF 版面印 `所有者权益（或股东权益）合计`（**全角**）。
+# 逐字相等匹配下这是两个不同的串（`AKSHARE-A2.md` §3c）。
+#
+# 匹配是**逐字相等**，不是子串包含。`references/cninfo.md:204-213` 记着
+# cninfo 拿 AKShare 列名做子串匹配产出的三处静默错误映射，本文件三处全部有负向测试：
+#   ① 「流动负债合计」含「负债合计」⇒ 会被错配到 bs.total_liabilities
+#   ② 「净利润」与「归属于母公司所有者的净利润」是两个数（见 income_statement.yaml）
+#   ③ 「应付票据及应付账款」是合并列，本项目明文禁止合并到 bs.accounts_payable
+#
+# 🔴 ③ 在这份样本上**数值恰好相等**（茅台没有应付票据，两列都是 3,093,091,103.67）。
+# 也就是说错配它，数值对照**不会报任何异常**。挡住它的只有逐字相等这一条，
+# 「跑一遍看数对不对」在这里是无效的验证方式。
+#
+# 覆盖度：15 / 15 个 bs.* 字段。三份合计 24 / 30 ——
+# **子集不是漏**：notes.* 的复选框、kpi.* 的披露值在三张报表里结构上不存在，
+# 要求相等等于逼着编一条永远取不到的规则（F-2）。方向断言见
+# `crosscheck.assert_akshare_mapping_within_definitions()`。
+
+statement: balance_sheet
+mapping_version: 1
+
+# 币种别名。AKShare 的 `币种` 列印 `CNY`，PDF 版面印 `人民币` —— 同一个币种的两个写法。
+# **写在这里而不是内置进代码**：它是这个数据源的词汇表，随 mapping_version 一起冻结。
+# 代码里内置一张「大家都知道」的换算表，等于一条不被任何东西校验的隐性规则。
+currency:
+  reported: CNY
+  canonical: 人民币
+
+# `类型` 列声明合并还是母公司。不是 `合并期末` 的行一律判不可比 ——
+# 拿母公司数据对合并报表，是 A-9 那类「同一列内部自洽、但取的不是对的那一列」。
+scope_required: 合并期末
+
+entries:
+  # ---- 资产侧 ----
+  - field_id: bs.accounts_receivable
+    statement: balance_sheet
+    # 注意同表还有合并列 `应收票据及应收账款` = 74,306,850.41，与本列 60,373,410.41 **不等**。
+    # 这一处子串匹配会被数值发现；应付侧那一处不会。
+    column_name: 应收账款
+
+  - field_id: bs.inventory
+    statement: balance_sheet
+    column_name: 存货
+
+  - field_id: bs.total_current_assets
+    statement: balance_sheet
+    column_name: 流动资产合计
+
+  - field_id: bs.total_assets
+    statement: balance_sheet
+    column_name: 资产总计
+
+  # ---- 负债侧 ----
+  # 下面四个字段在茅台 2023 上是「行在、格子空 = 0」（A-2），
+  # 而 AKShare 侧给的是 `NaN`。**NaN 不是 0**，判不可比不判一致（C-7）。
+  - field_id: bs.short_term_borrowings
+    statement: balance_sheet
+    column_name: 短期借款
+
+  - field_id: bs.trading_financial_liabilities
+    statement: balance_sheet
+    column_name: 交易性金融负债
+
+  - field_id: bs.long_term_borrowings
+    statement: balance_sheet
+    column_name: 长期借款
+
+  - field_id: bs.bonds_payable
+    statement: balance_sheet
+    # 同表另有 `应付债券：优先股` / `应付债券：永续债` 两列 —— 逐字相等下不会误命中。
+    column_name: 应付债券
+
+  - field_id: bs.accounts_payable
+    statement: balance_sheet
+    column_name: 应付账款
+
+  - field_id: bs.non_current_liabilities_due_within_one_year
+    statement: balance_sheet
+    # 同表另有 `一年内到期的非流动资产`（资产侧）。一字之差，逐字相等下不会串。
+    column_name: 一年内到期的非流动负债
+
+  - field_id: bs.lease_liabilities
+    statement: balance_sheet
+    column_name: 租赁负债
+
+  - field_id: bs.total_current_liabilities_period_end
+    statement: balance_sheet
+    column_name: 流动负债合计
+
+  - field_id: bs.total_liabilities
+    statement: balance_sheet
+    column_name: 负债合计
+
+  # ---- 权益侧 ----
+  - field_id: bs.minority_interests
+    statement: balance_sheet
+    column_name: 少数股东权益
+
+  - field_id: bs.total_equity
+    statement: balance_sheet
+    # ⚠️ 同表另有一列**就叫** `所有者权益`，2023 年度取值是 NaN。
+    # 名字更短、更像「就是这个」，实际是空的。半角括号那一列才是合计。
+    column_name: 所有者权益(或股东权益)合计

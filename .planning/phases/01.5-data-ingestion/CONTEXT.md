@@ -281,19 +281,22 @@ D-015 与 D-019 都明写了「本条不构成对它们的提前拍板」。
 | C-3 | **`notes.business_combination_type` 是集合值**，空集 = 无，元素域三元素 | `metrics/` + `extractor.notes` | `D-028` |
 | C-4 | **模板不在场时抛 `ApplicabilityUnreadable`，不得默认 `False`** | `extractor.notes` | `D-020` 补充节 |
 | C-5 | **`flags_status` 的三支不得合并**：`evaluated` + 空集 ≠ `unevaluable` | `formula.compute_metric` | `COMPUTED-VALUES.md` §2 |
-| C-6 | **AKShare 侧 `float` 走 `Decimal(repr(v))`**，不得走 `Decimal(v)` | `crosscheck` | `AKSHARE-A2.md` §3(a) |
-| C-7 | **AKShare 的 `NaN` 语义要显式决定**，不许默认成 0 | `crosscheck` | `AKSHARE-A2.md` §3(b) |
-| C-8 | **AKShare 列名括号是半角**，与 PDF 的全角不是同一个串 ⇒ 映射走独立文件 | `data/mappings/akshare/*` | `AKSHARE-A2.md` §3(c) |
-| C-9 | **容差 `abs 0.01` + 单位不确定判「不可比」**；触发占比 > 1/3 视为档位选错 | `crosscheck` | `D-029` |
+| C-6 | ✅ **已落地**（Task 3）。`crosscheck._reference_decimal` 是全仓唯一转换点，AST 级检查锁住 | `crosscheck` | `AKSHARE-A2.md` §3(a) |
+| C-7 | ✅ **已落地**（Task 3）。决定是 `REFERENCE_NAN` **判不可比**，不当 0 —— 当 0 会与 PDF 的「格子空 = 0」比出四条伪造的一致 | `crosscheck` | `AKSHARE-A2.md` §3(b) |
+| C-8 | ✅ **已落地**（Task 3）。`data/mappings/akshare/*.yaml` 三份，与 PDF 侧物理分开，逐字相等匹配 | `data/mappings/akshare/*` | `AKSHARE-A2.md` §3(c) |
+| C-9 | ✅ **已落地**（Task 3）。`DISAGREEMENT_TOLERANCE` + `MISCALIBRATION_THRESHOLD`（`Fraction(1,3)`），占比进证据链 | `crosscheck` | `D-029` |
 | C-10 | **加字段后 `01.5-03-PLAN` 的 `grep -c 'field_id:'` = 30 要同步** | wave 5 的验收命令 | `01.5-03-SUMMARY.md` §7 第 5 条 |
 | C-11 | **`metrics/` 的边界例外现在是 `D-020` + `D-028` 两条**，不是「D-020 批准的两处」 | `01.5-05-PLAN` 的 must_have | `D-028` |
 | C-12 | **`ExtractionRecord` 新增两个必填字段**（`header_inherited` / 批次的 `definition_versions`），构造点漏填即 `TypeError` | 任何构造记录的新代码 | `01.5-03-SUMMARY.md` §2.3 |
+| C-13 | **对照源映射的覆盖断言是「子集」，不是 PDF 侧那种「相等」**；但「多一条孤儿」两侧同样报 | 任何新接对照源的人 | Task 3；`COMPUTED-VALUES.md` §5.4 |
+| C-14 | 🔴 **数值一致不能用来验证映射正确。** 「应付票据及应付账款」与「应付账款」在茅台 2023 上**取值完全相等** ⇒ cninfo 的那处真实错配在这份数据上会报 `AGREES / 差 0.00` | 任何做「外部标签 → `field_id`」映射的代码，**以及它的验收方式** | Task 3；`COMPUTED-VALUES.md` §5.3 |
+| C-15 | **占比类指标必须同时报分子与分母。** 「20 个里 0 个不一致」会被读成「24 个字段全部核对通过」，而其中 4 个根本没核 | 任何往证据链里写比例的代码 | Task 3；`COMPUTED-VALUES.md` §5.5 |
 
 ### 仍未落地的沉淀条目（登记册实测，**wave 5 的直接待办**）
 
 | 登记册 | 状态 | 缺的那一半 |
 |---|---|---|
-| `L-12` | 已并进计划 | 证据对齐失败时不得部分复用旧指针 —— **被 `U-01` 正当挡着**，Phase 2 |
+| `L-12` | **部分落地**（Task 3） | **对照参照集**那一半已落：`crosscheck.align_references()`，三种对不齐（字段集 / 列名 / `mapping_version`）一律整体用新值。**整条证据链的指针对齐仍被 `U-01` 正当挡着** —— 证据链字段集要等 Phase 2 的复核实验数据才定。两者不是同一件事 |
 | `L-80` | 已并进计划 | 「失败降级成形态合法返回值」的**判据本身**待写（`compute_metric` 已有一条实例） |
 | `L-6` | 部分落地 | 「谁发/谁听」矩阵的**生成命令**未写 |
 | `L-25` | 部分落地 | **mypy / pyright 进门禁**未做 |

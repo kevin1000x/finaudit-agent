@@ -18,6 +18,14 @@ from pathlib import Path
 
 from semantic_layer.resolve import Refusal
 
+from .crosscheck import (
+    CrossCheckVerdict,
+    cross_validate_batch,
+    fetch_reference,
+    load_all_akshare_mappings,
+    load_reference_payload,
+    references_from_payload,
+)
 from .download import UnknownStockCode, fetch_annual_report
 from .formula import compute_metrics
 from .mapping import load_pdf_mapping
@@ -73,6 +81,30 @@ def _build_parser() -> argparse.ArgumentParser:
     c.add_argument("--metrics-dir", default="metrics")
     c.add_argument("--pdf", default=None, help="用本地 PDF 复跑，不联网")
     c.add_argument("--json", action="store_true", dest="as_json")
+
+    x = sub.add_parser(
+        "crosscheck",
+        help="拿 AKShare 作对照源核 PDF 抽取值。**只产出判定，不改写任何值**（D-013）",
+    )
+    x.add_argument("--stock", required=True)
+    x.add_argument("--year", required=True, type=int)
+    x.add_argument("--pdf", default=None, help="用本地 PDF 复跑，不联网")
+    x.add_argument(
+        "--reference",
+        default=None,
+        metavar="PATH",
+        help="读一份录制好的 AKShare 响应做回放。**默认就该给这个** —— 不给才联网",
+    )
+    x.add_argument(
+        "--record",
+        default=None,
+        metavar="PATH",
+        help=(
+            "联网取一份真实响应并写成固件。"
+            "**这是全仓唯一会 import akshare 并发网络请求的入口**"
+        ),
+    )
+    x.add_argument("--json", action="store_true", dest="as_json")
 
     return parser
 
@@ -256,6 +288,60 @@ def _dump_view(args, batch) -> None:
     print(f"已写出固件：{args.dump_view}", file=sys.stderr)
 
 
+def _cmd_crosscheck(args) -> int:
+    """`extract` → 对照 → 判定 JSON。**PDF 侧的值一个字节都不改。**
+
+    退出码沿用本文件顶部的约定。⚠️ **对照源取不到时退 3 而不是 0**：
+    「这一批没有对照结论」与「这一批对照通过了」在证据上是两件事，
+    退 0 会让下游脚本把前者读成后者。
+    """
+    try:
+        batch = extract_batch(
+            args.stock,
+            args.year,
+            namespace="bs",
+            statement="合并资产负债表",
+            pdf_path=args.pdf,
+            plan=DEFAULT_EXTRACTION_PLAN,
+        )
+    except (UnknownStockCode, MappingZeroHit, ValueError) as exc:
+        print(f"调用错误：{exc}", file=sys.stderr)
+        return 2
+    if isinstance(batch, Refusal):
+        return _print_refusal(batch, args.as_json)
+
+    if args.record:
+        payload = fetch_reference(args.stock, args.year)
+        if isinstance(payload, Refusal):
+            return _print_refusal(payload, args.as_json)
+        Path(args.record).write_text(
+            json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8"
+        )
+        print(f"已写出固件：{args.record}", file=sys.stderr)
+    elif args.reference:
+        payload = load_reference_payload(args.reference)
+    else:
+        payload = fetch_reference(args.stock, args.year)
+        if isinstance(payload, Refusal):
+            return _print_refusal(payload, args.as_json)
+
+    tables = load_all_akshare_mappings()
+    references = references_from_payload(payload, tables)
+    outcome = cross_validate_batch(batch, references, period=f"{args.year}1231")
+
+    if args.as_json:
+        print(json.dumps(outcome.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        for result in outcome.results:
+            if result.verdict is CrossCheckVerdict.INCOMPARABLE:
+                detail = result.incomparable_reason.name
+            else:
+                detail = f"差 {result.difference}"
+            print(f"{result.field_id:<52} {result.verdict.name:<13} {detail}")
+        print(outcome.note)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "fetch":
@@ -264,6 +350,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_extract(args)
     if args.command == "compute":
         return _cmd_compute(args)
+    if args.command == "crosscheck":
+        return _cmd_crosscheck(args)
     raise AssertionError(f"未接线的子命令：{args.command!r}")
 
 

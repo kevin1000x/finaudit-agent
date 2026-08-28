@@ -1,0 +1,28 @@
+# AKShare 现金流量表列名 → field_id（D-016 / C-8）。**只作对照，不作权威**（D-013）。
+#
+# 覆盖 2 / 2，本表无结构性缺口。
+#
+# ⚠️ 本表有一处**浮点噪声肉眼可见**的实例，留在这里当证据：
+# `期初现金及现金等价物余额` = 152378738982.83002 —— 尾部的 `02` 是 IEEE 754 的尾巴，
+# 不是报表上印的数。它不在本表的映射范围内，但它证明 `C-6` 说的不是理论风险：
+# AKShare 侧的 float 必须走 `Decimal(repr(v))`，不得走 `Decimal(v)`。
+
+statement: cash_flow
+mapping_version: 1
+
+currency:
+  reported: CNY
+  canonical: 人民币
+
+scope_required: 合并期末
+
+entries:
+  - field_id: cfs.net_cash_flow_from_operating_activities
+    statement: cash_flow
+    column_name: 经营活动产生的现金流量净额
+
+  - field_id: cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets
+    statement: cash_flow
+    # 同表另有 `处置固定资产、无形资产和其他长期资产所收回的现金净额`（流入侧）。
+    # 前缀极长且高度相似，逐字相等是这里唯一安全的匹配方式。
+    column_name: 购建固定资产、无形资产和其他长期资产所支付的现金

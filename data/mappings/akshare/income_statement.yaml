@@ -1,0 +1,57 @@
+# AKShare 利润表列名 → field_id（D-016 / C-8）。**只作对照，不作权威**（D-013）。
+#
+# 覆盖 8 个 is.* 里的 7 个。**缺的那一个是结构性的，不是漏**：
+# `is.operating_revenue_prior_as_presented`（上期营业收入，按本期披露口径列示）
+# 要的是**同一张报表里的比较期列**，而这个接口一行就是一期 ——
+# 它给不出「本期报表上印的上期数」，只能给出「上一期自己的本期数」，
+# 而那两个数在发生追溯重述时**恰好不同**，正是 `restated` 要标的那件事。
+# 拿后者冒充前者，会把重述抹平成「一致」。⇒ 不映射。
+#
+# 匹配逐字相等。cninfo 的第二处真实错误映射就在本表：
+# `净利润` = 77,521,476,277.80（含少数股东损益）
+# `归属于母公司所有者的净利润` = 74,734,071,550.75
+# 两者差 27.87 亿。POC-01 的对照臂里两个模型都取错了这个分子。
+
+statement: income_statement
+mapping_version: 1
+
+currency:
+  reported: CNY
+  canonical: 人民币
+
+scope_required: 合并期末
+
+entries:
+  - field_id: is.operating_revenue_current
+    statement: income_statement
+    # ⚠️ 同表另有 `营业总收入` = 150,560,330,316.45（含利息收入等）。
+    # 名字更「总」，但本项目的 operating_revenue 口径是 `营业收入`。
+    column_name: 营业收入
+
+  - field_id: is.operating_cost
+    statement: income_statement
+    # 同表另有 `营业总成本` = 46,960,889,468.54。同上，不是一个口径。
+    column_name: 营业成本
+
+  - field_id: is.selling_expense
+    statement: income_statement
+    column_name: 销售费用
+
+  - field_id: is.administrative_expense
+    statement: income_statement
+    column_name: 管理费用
+
+  - field_id: is.financial_expense
+    statement: income_statement
+    # 本期是负数（-1,789,503,701.48）。负号是真实取值，不是缺失。
+    column_name: 财务费用
+
+  - field_id: is.net_profit
+    statement: income_statement
+    column_name: 净利润
+
+  - field_id: is.net_profit_attributable_to_parent
+    statement: income_statement
+    # AKShare 印「所有者」，PDF 版面常印「股东」。两处措辞不同，
+    # 所以这份文件与 PDF 侧那份不能共用一条规则（D-016）。
+    column_name: 归属于母公司所有者的净利润
