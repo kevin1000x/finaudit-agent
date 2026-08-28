@@ -4,11 +4,11 @@ milestone: v0.1
 milestone_name: 骨架与 cninfo 延伸
 current_phase: "01.5"
 current_phase_name: 数据接入层
-status: phase-1.5-wave-4-complete
-stopped_at: Phase 1 已收口；**Phase 1.5 wave 1 / 2 / 3 / 4 已收口**；8 个指标算出真实数值、24 个字段跨源对照（可比 20 / 不可比 4 / 不一致 0）、`D-029` 四条判据全部达成；**下一步 wave 5 —— `01.5-05`：三支 `kind` 的实现 + `metrics/` 三处编辑 + `C-1`（`match_row` 过 `strip_invisible`，`§8` 十五条里唯一还没接的一条）**；Phase 0 尚未开始
+status: phase-1.5-wave-4-complete-pending-review
+stopped_at: Phase 1 已收口；**Phase 1.5 wave 1 / 2 / 3 / 4 已收口**；8 个指标算出真实数值、24 个字段跨源对照（可比 20 / 不可比 4 / 不一致 0）、`D-029` 四条判据全部达成；**下一步 wave 5 —— `01.5-05`：三支 `kind` 的实现 + `metrics/` 三处编辑 + `C-1`（`match_row` 过 `strip_invisible`，`§8` 十五条里唯一还没接的一条）**；⚠️ **wave 5 被一道闸门挡着：Task 3 的独立复核尚未给出判定**（第一次复核 agent 在跑变异测试前因额度耗尽中断，已恢复重跑）。操作者的指令是「过了就推进」——**中断不等于通过**，拿到判定前不开 wave 5；Phase 0 尚未开始
 last_updated: "2026-08-28T00:00:00Z"
 last_activity: 2026-08-28
-last_activity_desc: **Phase 1.5 wave 4 收口 —— AKShare 接为对照源，`D-029` 落成代码**。24 个字段跨源对照：可比 20 / 不可比 4 / 不一致 0，触发占比 0/20。`cross_validate()` 是与 `resolve.check_comparable()` 平行的独立函数，**`git diff --stat src/semantic_layer/resolve.py` 为空**——置位逻辑落在抽取层，`active_flags` 未被改造去承担它。`D-029` 四条判据：具名常量 / `INCOMPARABLE` 与 `DISAGREES` 是不同取值且有负向用例 / `_reference_decimal` 全仓唯一转换点且有 AST 级双向检查 / 占比用 `Fraction` 算且分子分母都进证据链。**三条负控制按三步程序实跑过**（造回归→看红→回退）。🔴 **本轮最要紧的结果是那 4 个「不可比」不是 20 个「一致」**：茅台四个「格子空 = 0」的字段在 AKShare 侧全是 `NaN`，当 0 会比出四条**从未被建立过的跨源一致**。另查出一条：「应付票据及应付账款」与「应付账款」在本样本上**取值完全相等**，cninfo 那处真实错配在这份数据上会报 `AGREES / 差 0.00` ⇒ **数值一致不能用来验证映射正确**（`C-14`）。**666 passed**，六道门 + 供应链 + 两处冻结校验全 exit 0
+last_activity_desc: **Phase 1.5 wave 4 收口 —— AKShare 接为对照源，`D-029` 落成代码**。24 个字段跨源对照：可比 20 / 不可比 4 / 不一致 0，触发占比 0/20。`cross_validate()` 是与 `resolve.check_comparable()` 平行的独立函数，**`git diff --stat src/semantic_layer/resolve.py` 为空**——置位逻辑落在抽取层，`active_flags` 未被改造去承担它。`D-029` 四条判据：具名常量 / `INCOMPARABLE` 与 `DISAGREES` 是不同取值且有负向用例 / `_reference_decimal` 全仓唯一转换点且有 AST 级双向检查 / 占比用 `Fraction` 算且分子分母都进证据链。**三条负控制按三步程序实跑过**（造回归→看红→回退）。🔴 **本轮最要紧的结果是那 4 个「不可比」不是 20 个「一致」**：茅台四个「格子空 = 0」的字段在 AKShare 侧全是 `NaN`，当 0 会比出四条**从未被建立过的跨源一致**。另查出一条：「应付票据及应付账款」与「应付账款」在本样本上**取值完全相等**，cninfo 那处真实错配在这份数据上会报 `AGREES / 差 0.00` ⇒ **数值一致不能用来验证映射正确**（`C-14`）。**671 passed**，六道门 + 供应链 + 两处冻结校验全 exit 0
 progress:
   total_phases: 6
   completed_phases: 1
@@ -69,7 +69,7 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 | | |
 |---|---|
 | 指标定义 | **20 / 20** 合规，`advisory_only` 19.0%，未分类 0 |
-| 测试 | **666 passed**（wave 3 末 601 → wave 4 Task 1 后 625 → Task 3 后 666） |
+| 测试 | **671 passed**（wave 3 末 601 → wave 4 Task 1 后 625 → Task 3 后 666 → D-030 后 671） |
 | 门禁 | **6 道**：pytest / `semantic_layer scan` / `validate` / `check_xrefs` / `check_reading_ledger`（08-23）/ **`check_gates`**（08-24，门禁的门禁）+ CI `gates.yml`；**供应链 `verify_deps.py` 单独跑，不串进提交链**（它走网络） |
 | 生产代码 | `src/semantic_layer/` 9 模块；`src/extractor/` **12 模块**（08-28 新增 `crosscheck.py`） |
 | 映射表 | PDF 侧 5 份 **30 / 30**（相等断言）；AKShare 对照侧 3 份 **24 / 30**（**子集**断言，`C-13`） |
@@ -78,7 +78,7 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 | 系统臂 | C2 拒答 **4/4**，门成立；C1/C3/C4/C5 共 16 题 `NOT_RUN`（能力缺口） |
 | 对照臂 | 裸 LLM 两个模型臂（`deepseek-v4-pro` / `v4-flash`），报告在 `eval/runs/baseline/`（gitignored） |
 | OpenSpec | 3 个变更已归档，`specs/` 9 条 Requirement |
-| 决策 | D-001…**D-029** |
+| 决策 | D-001…**D-030** |
 | 沉淀登记册 | 82 条：已落地 60 / 已并进计划 2 / **部分落地 5**（`L-12` 08-28 由「已并进计划」改判）/ BLOCKED 8 / 已关闭 4 / 依据 3 / DECIDED 1 / **OPEN 0** |
 | 外部沉淀 | `references/` **26 份 26,734 行**（cninfo 1451 / harness 14,093 / hello-agents 11,144） |
 
