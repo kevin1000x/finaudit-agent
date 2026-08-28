@@ -4,16 +4,18 @@ milestone: v0.1
 milestone_name: 骨架与 cninfo 延伸
 current_phase: "01.5"
 current_phase_name: 数据接入层
-status: phase-1.5-wave-3-complete
-stopped_at: Phase 1 已收口；**Phase 1.5 wave 1 / 2 / 3 已收口**；SC-2 达成 29/29、SC-3 两个方向各有回归、A-9 由推导变成会红的测试、A-2 判据达成（有息负债率 0.0011869876）；**下一步 wave 4 —— `01.5-04`：≥5 指标真实数值 + AKShare 对照，容差 checkpoint 前先跑 Task 1.5（A2 探测）并读 `AKSHARE-A2.md`**；Phase 0 尚未开始
-last_updated: "2026-08-27T18:10:00Z"
-last_activity: 2026-08-27
-last_activity_desc: **N-39/N-38 裁决落地（D-028 集合值字段 + D-020 补充节）+ Phase 1.5 wave 3 收口**——五份 PDF 映射表齐（bs 15/is 8/cfs 2/notes 4/kpi 1 = 30），实跑真实年报 25 个字段全部取到值；列角色补第三条规则 `^(\d{4})年度$`，补之前利润表与现金流量表一个字段都取不出来；**A-9 从推导变成会红的测试**——期初列恒等式差额在真实数据上也是精确 0.00，新增 reconcile.check_column_binding，核心用例里 `reconcile.passed is True` 那句是 D-016 补充节判据的可执行形态；**写测试当场抓到一个真缺陷**：header_inherited 算出来了却在接线时被丢掉（ARCHITECTURE §8.5 的形状，头一次出现在我们自己的代码里）；A-2 判据达成，有息负债率 0.0011869876，metrics/ diff 为空；RecordKind 扩两支不做行匹配的类别，解掉 L-36 与两个非印刷字段的冲突；L-37 落全，30 个 id 只有一份运行时物化的权威来源；**601 passed**，六道门全绿；两条负控制按三步程序实跑（2 红 / 10 红 / 回退全绿）
+status: phase-1.5-wave-4-complete
+stopped_at: Phase 1 已收口；**Phase 1.5 wave 1 / 2 / 3 / 4 已收口**；8 个指标算出真实数值、24 个字段跨源对照（可比 20 / 不可比 4 / 不一致 0）、`D-029` 四条判据全部达成；**下一步 wave 5 —— `01.5-05`：三支 `kind` 的实现 + `metrics/` 三处编辑 + `C-1`（`match_row` 过 `strip_invisible`，`§8` 十五条里唯一还没接的一条）**；Phase 0 尚未开始
+last_updated: "2026-08-28T00:00:00Z"
+last_activity: 2026-08-28
+last_activity_desc: **Phase 1.5 wave 4 收口 —— AKShare 接为对照源，`D-029` 落成代码**。24 个字段跨源对照：可比 20 / 不可比 4 / 不一致 0，触发占比 0/20。`cross_validate()` 是与 `resolve.check_comparable()` 平行的独立函数，**`git diff --stat src/semantic_layer/resolve.py` 为空**——置位逻辑落在抽取层，`active_flags` 未被改造去承担它。`D-029` 四条判据：具名常量 / `INCOMPARABLE` 与 `DISAGREES` 是不同取值且有负向用例 / `_reference_decimal` 全仓唯一转换点且有 AST 级双向检查 / 占比用 `Fraction` 算且分子分母都进证据链。**三条负控制按三步程序实跑过**（造回归→看红→回退）。🔴 **本轮最要紧的结果是那 4 个「不可比」不是 20 个「一致」**：茅台四个「格子空 = 0」的字段在 AKShare 侧全是 `NaN`，当 0 会比出四条**从未被建立过的跨源一致**。另查出一条：「应付票据及应付账款」与「应付账款」在本样本上**取值完全相等**，cninfo 那处真实错配在这份数据上会报 `AGREES / 差 0.00` ⇒ **数值一致不能用来验证映射正确**（`C-14`）。**666 passed**，六道门 + 供应链 + 两处冻结校验全 exit 0
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 14
-  completed_plans: 11
+  completed_plans: 12
+  # ⚠️ `percent` 是手工估计，**不是从上面两组数派生的**（11/14 也不等于 29%）。
+  # 不改它，免得给一个看起来是算出来的、实际是拍的数。
   percent: 29
 ---
 
@@ -29,9 +31,16 @@ progress:
 
 ## 当前位置
 
-- 阶段：**Phase 1 已完成**（2026-08-16 收口）；**Phase 1.5 待规划**，尚无 PLAN
-- 计划：Phase 1 的 8 份 PLAN 全部执行完毕（5 个 wave）
-- 下一个动作：`/gsd-plan-phase 01.5`
+> ⚠️ **本节以下曾长期停留在 2026-08-24 的状态而无人发现**（写着「Phase 1.5 待规划，
+> 尚无 PLAN」「372 passed」「D-001…D-022」，而当时 wave 1–3 已收口）。
+> 前置元数据（frontmatter）逐轮更新了，正文没有。这正是 `N-35` 记的那件事：
+> **做了但没回标，而且没有任何机制会发现** —— 只不过这次发生在
+> **专门用来说明「我们在哪」的那份文件里**。2026-08-28 一次性校准。
+
+- 阶段：**Phase 1 已完成**（2026-08-16 收口）；**Phase 1.5 wave 1 / 2 / 3 / 4 已收口**
+- 计划：Phase 1 的 8 份 PLAN 全部执行完毕（5 个 wave）；
+  Phase 1.5 六份 PLAN 已出齐并过 plan-checker，`01.5-01` … `01.5-04` 已执行完
+- 下一个动作：**执行 `01.5-05`**（wave 5），入口 `/gsd-execute-phase 01.5`
 
 **Phase 1 收口证据**：`docs/agent/VERIFICATION.md` §Phase 1，
 14 行验收矩阵 + 三项阶段末判定 + 附录 A 九段逐字命令输出（含退出码，可原样重跑）。
@@ -60,13 +69,17 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 | | |
 |---|---|
 | 指标定义 | **20 / 20** 合规，`advisory_only` 19.0%，未分类 0 |
-| 测试 | **372 passed** |
-| 门禁 | **6 道**：pytest / `semantic_layer scan` / `validate` / `check_xrefs` / `check_reading_ledger`（08-23）/ **`check_gates`**（08-24，门禁的门禁）+ CI `gates.yml`（08-24 补齐第五、第六道——此前 CI 只跑四条） |
+| 测试 | **666 passed**（wave 3 末 601 → wave 4 Task 1 后 625 → Task 3 后 666） |
+| 门禁 | **6 道**：pytest / `semantic_layer scan` / `validate` / `check_xrefs` / `check_reading_ledger`（08-23）/ **`check_gates`**（08-24，门禁的门禁）+ CI `gates.yml`；**供应链 `verify_deps.py` 单独跑，不串进提交链**（它走网络） |
+| 生产代码 | `src/semantic_layer/` 9 模块；`src/extractor/` **12 模块**（08-28 新增 `crosscheck.py`） |
+| 映射表 | PDF 侧 5 份 **30 / 30**（相等断言）；AKShare 对照侧 3 份 **24 / 30**（**子集**断言，`C-13`） |
+| 依赖 | `pyyaml` / `pdfplumber` + `akshare`（`crosscheck` extra，不进主依赖） |
 | 评测集 | frozen-01 冻结 @ `2026-08-15T14:47:51Z`，21 文件哈希 |
 | 系统臂 | C2 拒答 **4/4**，门成立；C1/C3/C4/C5 共 16 题 `NOT_RUN`（能力缺口） |
 | 对照臂 | 裸 LLM 两个模型臂（`deepseek-v4-pro` / `v4-flash`），报告在 `eval/runs/baseline/`（gitignored） |
 | OpenSpec | 3 个变更已归档，`specs/` 9 条 Requirement |
-| 决策 | D-001…**D-022** |
+| 决策 | D-001…**D-029** |
+| 沉淀登记册 | 82 条：已落地 60 / 已并进计划 2 / **部分落地 5**（`L-12` 08-28 由「已并进计划」改判）/ BLOCKED 8 / 已关闭 4 / 依据 3 / DECIDED 1 / **OPEN 0** |
 | 外部沉淀 | `references/` **26 份 26,734 行**（cninfo 1451 / harness 14,093 / hello-agents 11,144） |
 
 ## 累积上下文
