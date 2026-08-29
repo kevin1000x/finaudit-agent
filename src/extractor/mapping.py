@@ -136,7 +136,31 @@ class FieldMapping:
     derived_from: str | None = None
 
     def matches(self, label_lines: tuple[str, ...]) -> bool:
-        return any(variant == tuple(label_lines) for variant in self.label_variants)
+        """行标签与某个变体**逐项逐字相等**即命中。
+
+        ⚠️ **比对前两侧都过 `strip_invisible`**（`C-1`，2026-08-28 接上）。
+
+        理由是实测出来的，不是防御性加工序：顺丰控股 002352 2021 年报 p250 的
+        章节标题，`extract_words` 取出来是 `'五\\x07、合并范围的变更'` ——
+        「五」与「、」之间夹着一个 **U+0007（BEL）**。它在任何打印输出里都看不见，
+        `print()` 看不见，肉眼对照 PDF 也看不见。
+
+        逐字相等匹配会**静默零命中**，而零命中的表现形式是
+        「这份年报里找不到这一行」—— 与「这家公司确实没披露」**完全不可区分**。
+        `locate` 侧早就过了这一步，`mapping` 侧一直没接 ——
+        **同一份年报的两条路径用了两套比对规则**，而没有任何东西会说出来。
+
+        剔除 `Cc` / `Cf` 不算把匹配放松：它们**不是可打印字形**，
+        去掉它们没有去掉任何一个人能看见的字。这与「去掉空格」「忽略标点」不同 ——
+        那些会让两个肉眼可区分的串变成同一个。**留证仍用原文。**
+        """
+        from .locate import strip_invisible
+
+        cleaned = tuple(strip_invisible(line) for line in label_lines)
+        return any(
+            tuple(strip_invisible(part) for part in variant) == cleaned
+            for variant in self.label_variants
+        )
 
 
 @dataclass(frozen=True)

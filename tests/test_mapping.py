@@ -498,3 +498,58 @@ def test_未实现的kind在分派点显式抛错而不是被跳过(view, source
     table = dataclasses.replace(notes, entries=tuple(checkbox))
     with pytest.raises(NotImplementedError, match="NOTE_CHECKBOX"):
         extract_records(view, table, source, statement=checkbox[0].statement)
+
+
+# --------------------------------------------------------------------------
+# C-1：逐字相等的比对，比对前两侧都过 strip_invisible（2026-08-28）
+# --------------------------------------------------------------------------
+
+
+def test_行标签夹着不可见控制字符时仍然命中():
+    """🔴 `C-1`。挡的不是理论风险，是顺丰 002352 2021 p250 的真实版面：
+
+    章节标题 `extract_words` 取出来是 `'五\x07、合并范围的变更'`，
+    「五」与「、」之间夹着 **U+0007（BEL）**。它在任何打印输出里都看不见。
+
+    逐字相等匹配会**静默零命中**，而零命中的表现形式是「这份年报里找不到这一行」
+    —— 与「这家公司确实没披露」**完全不可区分**。
+
+    ⚠️ `locate` 侧早就过了这一步，`mapping` 侧一直没接 ——
+    **同一份年报的两条路径用了两套比对规则**，而没有任何东西会说出来。
+    """
+    from extractor.mapping import FieldMapping
+    from extractor.record import RecordKind
+
+    mapping = FieldMapping(
+        field_id="bs.total_assets",
+        statement="合并资产负债表",
+        kind=RecordKind.STATEMENT_LINE,
+        column_header="期末余额",
+        label_variants=(("资产总计",),),
+    )
+    assert mapping.matches(("资产总计",)) is True
+    # 版面里夹了一个 BEL —— 人眼与 print() 都看不见
+    assert mapping.matches(("资产\x07总计",)) is True
+    assert mapping.matches(("\u200b资产总计",)) is True
+
+
+def test_剔除不可见字符不等于把匹配放松():
+    """负向：可见的差别一个都不许被抹掉。
+
+    `Cc` / `Cf` 不是可打印字形，去掉它们没有去掉任何一个人能看见的字。
+    这与「去掉空格」「忽略标点」不同 —— 那些会让两个肉眼可区分的串变成同一个。
+    """
+    from extractor.mapping import FieldMapping
+    from extractor.record import RecordKind
+
+    mapping = FieldMapping(
+        field_id="bs.total_assets",
+        statement="合并资产负债表",
+        kind=RecordKind.STATEMENT_LINE,
+        column_header="期末余额",
+        label_variants=(("资产总计",),),
+    )
+    assert mapping.matches(("资产 总计",)) is False, "空格是可见的，不许抹掉"
+    assert mapping.matches(("资产总计额",)) is False
+    assert mapping.matches(("流动资产总计",)) is False, "仍然是相等不是包含"
+    assert mapping.matches(("资产总计", "多一行")) is False, "仍然是逐项相等"

@@ -276,7 +276,7 @@ D-015 与 D-019 都明写了「本条不构成对它们的提前拍板」。
 
 | # | 约束 | 约束谁 | 出处 |
 |---|---|---|---|
-| C-1 | **一切逐字相等的比对，比对前必须过 `locate.strip_invisible()`** | `mapping.match_row`（**还没加**） | `PROBE-COMBINATION.md` §3(b)：顺丰 2021 章节标题夹着 U+0007 |
+| C-1 | **一切逐字相等的比对，比对前必须过 `locate.strip_invisible()`** | `mapping.match_row` ✅ **2026-08-28 接上** | `PROBE-COMBINATION.md` §3(b)：顺丰 2021 章节标题夹着 U+0007 |
 | C-2 | **序号容差、正文逐字**；不得退成形态匹配 | 任何做章节/子项定位的代码 | 同上 §3(c)：茅台 `九、`/万华 `八、`/顺丰 `五、`；子项 `1、`/`1.`/`(1)` |
 | C-3 | **`notes.business_combination_type` 是集合值**，空集 = 无，元素域三元素 | `metrics/` + `extractor.notes` | `D-028` |
 | C-4 | **模板不在场时抛 `ApplicabilityUnreadable`，不得默认 `False`** | `extractor.notes` | `D-020` 补充节 |
