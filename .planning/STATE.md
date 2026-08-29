@@ -4,8 +4,8 @@ milestone: v0.1
 milestone_name: 骨架与 cninfo 延伸
 current_phase: "01.5"
 current_phase_name: 数据接入层
-status: phase-1.5-wave-4-complete
-stopped_at: Phase 1 已收口；**Phase 1.5 wave 1 / 2 / 3 / 4 已收口**；8 个指标算出真实数值、24 个字段跨源对照（可比 20 / 不可比 4 / 不一致 0）、`D-029` 四条判据全部达成；**下一步 wave 5 —— `01.5-05`：三支 `kind` 的实现 + `metrics/` 三处编辑 + `C-1`（`match_row` 过 `strip_invisible`，`§8` 十五条里唯一还没接的一条）**；**独立复核已判 `PASS_WITH_FINDINGS`**（无 blocker，10 条 findings）——排前四的中级已修（`RV-6` 重录毁固件 / `RV-1`+`RV-2` 合并口径闸门 fail-open 且 `scope_required` 是死配置 / `RV-10` docstring 两句假声称 / `RV-4` AC 点名的负控制无辨析力），余下 `RV-5` `RV-7` `RV-3` `RV-8` `RV-9` 五条低级未修、已入册。🔴 修 `RV-4` 时撞出 `N-41`：**字节码缓存能让「造回归→看红→回退」整段失效**，已在 `rules/commands.md` 加死 `PYTHONDONTWRITEBYTECODE=1`；`N-41` 判据 3 是一次真实返工——**既有的等长变异结论一律记 `UNVERIFIED` 需重跑**；Phase 0 尚未开始
+status: phase-1.5-wave-5-partial
+stopped_at: Phase 1 已收口；**Phase 1.5 wave 1 / 2 / 3 / 4 已收口**；8 个指标算出真实数值、24 个字段跨源对照（可比 20 / 不可比 4 / 不一致 0）、`D-029` 四条判据全部达成；**下一步 wave 5 —— `01.5-05`：三支 `kind` 的实现 + `metrics/` 三处编辑 + `C-1`（`match_row` 过 `strip_invisible`，`§8` 十五条里唯一还没接的一条）**；**独立复核已判 `PASS_WITH_FINDINGS`**（无 blocker，10 条 findings）——排前四的中级已修（`RV-6` 重录毁固件 / `RV-1`+`RV-2` 合并口径闸门 fail-open 且 `scope_required` 是死配置 / `RV-10` docstring 两句假声称 / `RV-4` AC 点名的负控制无辨析力），余下 `RV-5` `RV-7` `RV-3` `RV-8` `RV-9` 五条低级未修、已入册。🔴 修 `RV-4` 时撞出 `N-41`：**字节码缓存能让「造回归→看红→回退」整段失效**，已在 `rules/commands.md` 加死 `PYTHONDONTWRITEBYTECODE=1`；`N-41` 判据 3 是一次真实返工——**既有的等长变异结论一律记 `UNVERIFIED` 需重跑**；**wave 5 的 `01.5-05-PLAN` 三个 Task 全部完成**（`NOTE_CHECKBOX` 实现 + `metrics/` 两处改动 + `D-020` 判据 3 真实回归），外加 `C-1` 与 `C-10` 落地、`D-028` 集合值落地 —— **`A-8` 那处真实假阴性已关掉**；🔴 **但 wave 5 未收口**：交接文档把「三支 `kind` 的实现」列为 wave 5 第 2 项，而 `01.5-05-PLAN` 里 `COLUMN_HEADER_PRESENCE` / `REPORT_METADATA` **零命中** ——**两份下位文档对 wave 5 的范围认定不一致**，与本轮 `RV-5` 记的是同一类问题。已实现 1/3 支；余下两支挡着 6 个指标的 `restated` 判定与 `flags_status` 该不该阻断；Phase 0 尚未开始
 last_updated: "2026-08-28T00:00:00Z"
 last_activity: 2026-08-28
 last_activity_desc: **Phase 1.5 wave 4 收口 —— AKShare 接为对照源，`D-029` 落成代码**。24 个字段跨源对照：可比 20 / 不可比 4 / 不一致 0，触发占比 0/20。`cross_validate()` 是与 `resolve.check_comparable()` 平行的独立函数，**`git diff --stat src/semantic_layer/resolve.py` 为空**——置位逻辑落在抽取层，`active_flags` 未被改造去承担它。`D-029` 四条判据：具名常量 / `INCOMPARABLE` 与 `DISAGREES` 是不同取值且有负向用例 / `_reference_decimal` 全仓唯一转换点且有 AST 级双向检查 / 占比用 `Fraction` 算且分子分母都进证据链。**三条负控制按三步程序实跑过**（造回归→看红→回退）。🔴 **本轮最要紧的结果是那 4 个「不可比」不是 20 个「一致」**：茅台四个「格子空 = 0」的字段在 AKShare 侧全是 `NaN`，当 0 会比出四条**从未被建立过的跨源一致**。另查出一条：「应付票据及应付账款」与「应付账款」在本样本上**取值完全相等**，cninfo 那处真实错配在这份数据上会报 `AGREES / 差 0.00` ⇒ **数值一致不能用来验证映射正确**（`C-14`）。**671 passed**，六道门 + 供应链 + 两处冻结校验全 exit 0
@@ -69,7 +69,7 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 | | |
 |---|---|
 | 指标定义 | **20 / 20** 合规，`advisory_only` 19.0%，未分类 0 |
-| 测试 | **675 passed**（… → Task 3 后 666 → D-030 后 671 → 复核修复后 675） |
+| 测试 | **695 passed**（… → D-030 后 671 → 复核修复后 675 → wave 5 后 695） |
 | 门禁 | **6 道**：pytest / `semantic_layer scan` / `validate` / `check_xrefs` / `check_reading_ledger`（08-23）/ **`check_gates`**（08-24，门禁的门禁）+ CI `gates.yml`；**供应链 `verify_deps.py` 单独跑，不串进提交链**（它走网络） |
 | 生产代码 | `src/semantic_layer/` 9 模块；`src/extractor/` **12 模块**（08-28 新增 `crosscheck.py`） |
 | 映射表 | PDF 侧 5 份 **30 / 30**（相等断言）；AKShare 对照侧 3 份 **24 / 30**（**子集**断言，`C-13`） |
