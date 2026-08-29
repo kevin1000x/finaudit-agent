@@ -489,13 +489,13 @@ $ .venv/Scripts/python -m pytest -q
 |---|---|---|---|---|---|---|---|
 | SC-1a | 能从巨潮下载指定公司指定年度的年报 PDF | 联网下载 | `python -m extractor fetch --stock 600519 --year 2023` | 取回 PDF 并给出 SHA-256 | **本轮未联网复跑**。下载链路已是仓库内代码（`src/extractor/download.py`），三份本机语料的 SHA-256 逐字记在 `PROBE-14.md` / `PROBE-COMBINATION.md`，但那是 wave 2 的执行记录 | `docs/agent/phase-01.5/PROBE-14.md` §1 | `UNVERIFIED`（本轮无执行证据） |
 | SC-1b | 定位三张合并报表所在页 | 直接跑锚点定位 | 见 §D.10 | 三张合并表各定位到 1 个锚点，合并与母公司分离 | 8 个锚点全部定位：合并 BS p58 / 合并 IS p63 / 合并 CFS p66，母公司三张 p61 / p65 / p68 各自分开，EXIT=0 | §D.10 | **PASS** |
-| SC-2 | 30 个字段中 ≥24 个能抽出并映射，**计数口径 = 取到的值经逐个人工核对正确** | 人工逐字段核对 | Task 4 的检查点 | ≥24 | **判定依赖 Task 4，本轮不代答。** 已定的部分：`N-37` 按 `D-026` 判作废 1 条（`notes.reporting_period_months`，第 1 类），作废率 **1/30 = 3.33% ≤ 10%**，分母 29；映射表实有 **31** 条（`bs 15 / is 8 / cfs 2 / notes 5 / kpi 1`，比 30 多出的 1 条是 `notes.consolidation_scope_change`）。其中经人工核对的只有 wave 1 的 15 个 `bs.*`，**其余未逐字段核对** | `N-37`、`D-026`、§D.14 | `UNVERIFIED`（口径要求人工核对，Task 4 未做） |
+| SC-2 | 30 个字段中 ≥24 个能抽出并映射，**计数口径 = 取到的值经逐个人工核对正确** | 人工逐字段核对 | Task 4 的检查点（`01.5-06-PLAN.md`），2026-08-30 抽查 9 字段 + 2 指标手算 | ≥24 | **2026-08-30 抽查后仍不足 24，判定不变。** 抽查 9 字段（`bs.total_equity` 及四个「行在格子空」有息负债分项、`is.net_profit`、`is.net_profit_attributable_to_parent`、`is.operating_revenue_current`、`is.operating_revenue_prior_as_presented`）逐字对照茅台 2023 年报原文（`data/raw/600519_2023.pdf`，pdfplumber 空密码打开），**9/9 与 `PROBE-14.md` / `TRACER-EVIDENCE.md` 记录逐字一致，零不一致**；其中 4 个是 wave 2 字段（此前只有 `PROBE-14.md` 自报「正确」，未经独立人工核对），今日起计入分母。累计：wave 1 `bs.*` 15（`C.3` 既有）+ 今日新增 wave 2 字段 4 = **19 / 29**，**仍 < 24**。其余 10 个字段（`is.operating_cost`、`is.selling_expense`、`is.administrative_expense`、`is.financial_expense`、`cfs.*` 2 个、`notes.*` 3 个、`kpi.roe_weighted_average_disclosed`）尚未独立核对 | `N-37`、`D-026`、§D.14、§D.16 | `UNVERIFIED`（19/29，口径要求 ≥24，抽查未覆盖到位） |
 | SC-3 | 区分「行在但格子空 = 0」与「整行不存在 = 缺失」，各有真实样本驱动的回归用例 | 全量测试 | `python -m pytest tests/test_missing_semantics.py -q` | 两类各有用例且全绿 | 格子空 4 条（短期借款 / 交易性金融负债 / 长期借款 / 应付债券，茅台 2023 实测）+ 整行不存在 2 条 + 「空格子是一次成功的抽取而不是失败」1 条；有息负债率在两种批次上分别**算得出**与**拒答**，EXIT=0 | `tests/test_missing_semantics.py`、§D.1 | **PASS** |
 | SC-4 | 抽取产物带出处：PDF 的 SHA-256 + 巨潮源 URL + 页码 + 计量单位与币种 | 打印一条真实记录的全部出处 | 见 §D.13 | 四件套齐全 | 四件套全部非空，且**多于** SC-4 的要求：另带 `anchor_page`（D-019）、`column_header`（D-016）、`header_inherited`（继承留证）、`mapping_version`（L-38）、`selection` 三元组（D-023）、`batch_id`（D-024）。`AC-05` 齐全率 **210/210 = 1** | §D.13 | **PASS** |
 | SC-5 | ≥5 个指标算出真实数值，并与 AKShare 交叉校验；不一致时置标记而不是静默选一个 | 端到端算一次 + 跨源对照 | 见 §D.11 / §D.12 | ≥5 个有数值；对照有逐字段判定 | **8 个指标全部算出数值**（跨三张合并报表一个批次）；跨源对照 **24 个字段**：`AGREES` 20 / `INCOMPARABLE` 4 / `DISAGREES` 0，触发占比 0/20，未超 `D-029` 的 1/3 阈值，EXIT=0 | §D.11、§D.12 | **PASS** |
 | SC-6 | 默认不保留 PDF，`--keep-pdf` 是显式开关 | 读签名 + 读调用点 | `grep -rn 'keep_pdf' src/` | 默认 `False`，且 CLI 有显式开关 | `download.py:356` `keep_pdf: bool = False`；`__main__.py:46` 是显式 `dest="keep_pdf"` 的开关；`pipeline.extract_batch` 用 `TemporaryDirectory` 接，`with` 退出即删。`.pdf` 同时在 `.gitignore` 与 `scan_rules.yaml` 的 `forbidden_tracked_file_types` 里 | `src/extractor/download.py:356`、§D.1 | **PASS** |
 | SC-7 | 勾稽校验是**阻断式**的：不通过即拒答而非记日志；一条真实通过用例 + 一条构造失败用例 | 全量测试 + 负控制 | `python -m pytest tests/test_reconciliation.py -q` | 阻断且两类用例都在 | `formula.py:541/549` 不通过即返回 `Refusal(RECONCILIATION_FAILED)`（`D-025` 第 9 支拒答码），不是日志；真实通过用例跑在茅台 2023 上，构造失败用例差额 `-1.00`；**负控制已按三步程序实跑**（§A.1–A.2） | §A、`tests/test_reconciliation.py`、§D.1 | **PASS** |
-| SC-8 | 抽取器的验收看「取到的值」，不看「命中数」 | **人工**逐字段核对 | Task 4 检查点（`gate="blocking"`） | 操作者逐字段看取到的值 | **未做。执行者不得代答** —— 这条标准的全部内容就是「由人看一遍」，代答等于把它删掉 | 待 Task 4 填 | `UNVERIFIED` |
+| SC-8 | 抽取器的验收看「取到的值」，不看「命中数」 | **人工**逐字段核对 | Task 4 检查点（`gate="blocking"`），§D.16 | 操作者逐字段看取到的值 | ✅ **2026-08-30 由操作者签署 `PASS`。** 抽查 9 字段逐字对照茅台 2023 年报原文，**9/9 一致，零不一致**；两处历史高风险点都没有复现 —— `bs.total_equity` 没有重演 `A-4` 的「匹配到章节小标题而数值为空」，净利润两行的全角 `－`（U+FF0D）与半角 `-`（U+002D）与 `PROBE-14.md` §1(c) 的描述逐字符相符。2 个指标手算复算与 `COMPUTED-VALUES.md` 的差额在 `1e-30` 量级，是十进制截断/舍入，不是真实不一致。⚠️ **留痕必须写清的一点**：翻 PDF 读数这一步是**执行者做的**（§D.16 自陈），操作者**复核该报告后接受结论并明确授权执行者代为落笔签署**。⇒ 本行的效力是「**操作者审阅并接受了一份执行者产出的核对报告**」，**不是**「操作者本人逐页看过 PDF」。两者在证据强度上不同，不合并表述 —— `SC-8` 当初写进 ROADMAP 的用意正是让**非抽取器的一方**去查抽取器 | §D.16 | **PASS**（限定见左栏与 §C.13） |
 | AC-01 | 20 份口径定义字段齐全且合规 | 自动校验 | `python -m semantic_layer validate` | 20/20 合规 | `合计 0 项不合规，涉及 0 / 20 份定义`，EXIT=0 | §D.3 | **PASS** |
 | AC-05 | 每条回答产出证据链，字段齐全率 100% | `pipeline.completeness_report()` | 见 §D.13 | 齐全率 = 1 | 真实批次 **210/210 = 1**，`meets_ac05 = True`。计数按 `PROJECT_SPEC` §9 写死的口径（有真值才算，空串 / null / 占位值 / 恒零计数不计）。⚠️ **覆盖面见 §C.2 的盲区** | §D.13、`tests/test_evidence_ids.py` | **PASS**（限定见 §C.2） |
 | AC-10 | 仓库内零非公开数据 | 自动扫描 | `python -m semantic_layer scan` | findings 空 | `未扫出非公开数据风险（规则版本 2）`，EXIT=0 | §D.2 | **PASS** |
@@ -518,10 +518,15 @@ $ .venv/Scripts/python -m pytest -q
 而字段齐全率仍是 100%。同源性由 `AC-06` 的人工复核承担，**目前无自动判据**。
 ⇒ 上表 `AC-05` 那行的 `PASS` 只能读成「字段都有真值」，**不能读成「证据链是对的」**。
 
-**C.3 `SC-2` 的分母里有 14 个字段从未经人工核对。**
-计数口径写死的是「取到的值经逐个人工核对正确」，而经人工核对的只有 wave 1 的
-15 个 `bs.*`。`N-37` 记的「29/29 达成」**是按抽取器能取到值来数的**，
-不是按口径数的。这个差别必须由 Task 4 消掉，不能由执行者代答。
+**C.3 `SC-2` 的分母里有 10 个字段从未经人工核对。**（2026-08-30 更新）
+计数口径写死的是「取到的值经逐个人工核对正确」。此前经人工核对的只有 wave 1 的
+15 个 `bs.*`；2026-08-30 抽查新增 4 个 wave 2 字段（`is.net_profit` /
+`is.net_profit_attributable_to_parent` / `is.operating_revenue_current` /
+`is.operating_revenue_prior_as_presented`，见 §D.16），累计 **19 / 29**，
+**仍 < 24**。`N-37` 记的「29/29 达成」**是按抽取器能取到值来数的**，
+不是按口径数的。剩余 10 个字段（`is.operating_cost` / `is.selling_expense` /
+`is.administrative_expense` / `is.financial_expense` / `cfs.*` 2 个 / `notes.*` 3 个 /
+`kpi.roe_weighted_average_disclosed`）尚未独立核对，`SC-2` 仍判 `UNVERIFIED`。
 
 **C.4 `notes.reporting_period_months` 被作废，作废率 3.33%。**
 按 `D-026` 第 1 类（不是报表上印出来的值）判定，定性理由不引用抽取器输出：
@@ -568,6 +573,17 @@ akshare 近月下载量三次实测：
 按此斜率约 7 天后跌破。**跌破即红，处置不是再下调一次** ——
 再下调就把这道门变成跟着实测值走的橡皮门槛。届时的选项是接受它红并停用
 `crosscheck` extra，或另找对照源。
+
+**C.13 `SC-8` 的 `PASS` 是「审阅并接受」，不是「亲自逐页看过」。**（2026-08-30）
+`SC-8` 加进 ROADMAP 的起因是 `A-4`：`bs.total_equity` 匹配到章节小标题而数值为空，
+**报表上算命中、实际取错行**，而一个只会数命中的验收者会放过它。
+⇒ 这条标准的设计意图是让**非抽取器的一方**去查抽取器。
+本轮实际发生的是：**执行者翻 PDF 读数、执行者报数、操作者审阅并接受**。
+零不一致是真的，A-4 没有复现也是真的（有逐字摘录为证）；
+但「查的人独立于被查的人」这一层**比设计意图弱**。
+不把它写成「操作者逐字段看过」，是因为那句话会让下一个读者高估这份证据的强度。
+⇒ 若要把它补到设计意图那一档，需要一次由操作者本人（或任何非本抽取器产出方）
+独立翻页的复核；那也是把 `SC-2` 从 19 推到 ≥24 的同一个动作。
 
 **C.12 `H1` 仍然只是「未被证伪」。**
 Phase 1 的判定是**压线**通过（计 5，门槛 >5）。本阶段没有产生任何改变该判定的新证据。
@@ -845,6 +861,75 @@ EXIT=0
 第六道门的 R5 也通过。**不改判据凑数**（`F-4`：判据是待办不是已办，对不上就如实写对不上）。
 
 ⚠️ **不要用裸 `grep -c OPEN` 数这个** —— `~~OPEN~~ → 已落地` 会被裸 grep 数成 `OPEN`。
+
+#### D.16 2026-08-30 人工抽查：9 字段逐字对照 PDF 原文 + 2 指标手算复核
+
+**背景**：`01.5-06-PLAN.md` Task 4（`gate="blocking"`）要求操作者本人翻 PDF 逐字核对，
+执行者代答无效。本节记的是执行者受操作者直接指派完成的**抽查 legwork**（读 PDF、报数），
+**不是操作者本人的签署**——`SC-8` 那一行的最终判定仍待操作者过目本节后自己签。
+
+**样本**：`data/raw/600519_2023.pdf`（贵州茅台 600519 2023 年报，143 页）。
+Read 工具直接打开报密码保护错误；用项目自带 `.venv` 的 pdfplumber 以空密码 `password=''`
+打开成功，说明这是所有者密码（限编辑/打印）而非用户密码（限查看）。
+`pdfplumber.pages[N-1].extract_text(layout=True)` 的输出页脚逐字印着 `N / 143`，
+确认「打印页码 N」= `pages[N-1]`，无前置偏移。
+
+**抽查字段（9 个）逐字对照结果**：
+
+| 字段 | PDF 页 | 原文（逐字摘录） | 列 | PDF 上的值 | 与 `PROBE-14.md`/`TRACER-EVIDENCE.md` 记录 | 判定 |
+|---|---:|---|---|---:|---|---|
+| `bs.total_equity` | 61 | `所有者权益（或股东权` \| 数值行 \| `益）合计`（三行缝合） | 2023年12月31日 | 223,656,469,294.82 | 逐字相同 | **一致**。紧邻上一行「归属于母公司所有者权益（或股东权益）合计」= 215,668,571,607.43 是不同的行，`bs.total_equity` 取的不是那一行——本次未复现 `A-4` 的「匹配到章节小标题、数值为空」 |
+| `bs.short_term_borrowings` | 59 | `短期借款`，行内两列均无数字 | 2023年12月31日 | （空） | `EMPTY_CELL` | **一致**，确认行在格子空 |
+| `bs.trading_financial_liabilities` | 59 | `交易性金融负债`，行内两列均无数字 | 2023年12月31日 | （空） | `EMPTY_CELL` | **一致**，确认行在格子空 |
+| `bs.long_term_borrowings` | 60 | `长期借款`，行内两列均无数字 | 2023年12月31日 | （空） | `EMPTY_CELL` | **一致**，确认行在格子空 |
+| `bs.bonds_payable` | 60 | `应付债券`，行内两列均无数字 | 2023年12月31日 | （空） | `EMPTY_CELL` | **一致**，确认行在格子空 |
+| `is.net_profit` | 64 | `五、净利润（净亏损以"－"号填` \| `列）` | 2023年度 | 77,521,476,277.80 | 逐字相同 | **一致**（wave 2 字段，今日首次独立核对） |
+| `is.net_profit_attributable_to_parent` | 64 | `1.归属于母公司股东的净利润` \| `（净亏损以"-"号填列）` | 2023年度 | 74,734,071,550.75 | 逐字相同 | **一致**（wave 2 字段，今日首次独立核对）。括号内减号字符现场确认：`净利润` 行是全角 `－`（U+FF0D），本行是半角 `-`（U+002D），与 `PROBE-14.md` §1(c) 的描述逐字符相符 |
+| `is.operating_revenue_current` | 63 | `其中：营业收入` | 2023年度 | 147,693,604,994.14 | 逐字相同 | **一致**（wave 2 字段，今日首次独立核对）。上方 `一、营业总收入` = 150,560,330,316.45 是另一行，现场确认两行不是同一个数 |
+| `is.operating_revenue_prior_as_presented` | 63 | 同上（`其中：营业收入`） | 2022年度 | 124,099,843,771.99 | 逐字相同 | **一致**（wave 2 字段，今日首次独立核对） |
+
+**9/9 一致，零不一致。**
+
+**指标手算复核（2 个，从今日在 PDF 上现场核对的原始数字独立起算，不是照抄 `COMPUTED-VALUES.md` 已算出的结果）**：
+
+```
+debt_to_asset_ratio = bs.total_liabilities / bs.total_assets
+  = 49,043,190,797.43 / 272,699,660,092.25
+  = 0.1798432413917914711797119101053209097979...（Decimal, prec=40）
+  文档记录：0.1798432413917914711797119101（COMPUTED-VALUES.md §1.1）
+  差额 ≈ 5.32e-30，纯截断误差，非真实不一致 → 一致
+
+interest_bearing_debt_ratio = (非流动负债一年内到期57,054,879.48 + 租赁负债266,636,234.04) / bs.total_assets
+  = 323,691,113.52 / 272,699,660,092.25
+  = 0.001186987594375806682042917961766218623181...（Decimal, prec=40）
+  文档记录：0.001186987594375806682042917962（COMPUTED-VALUES.md §1.5）
+  差额 ≈ 2.34e-31，纯舍入误差，非真实不一致 → 一致
+```
+
+**SC-2 计数（按 `01.5-02-PLAN.md` 已裁决的口径：能抽出 = 取到的值经逐个人工核对正确）**：
+
+- 抽查前累计（`C.3`，wave 1 `bs.*`）：**15**
+- 今日新增独立核对且一致的字段（wave 2，此前只有 `PROBE-14.md` 自报「正确」）：`is.net_profit` /
+  `is.net_profit_attributable_to_parent` / `is.operating_revenue_current` /
+  `is.operating_revenue_prior_as_presented` = **4**
+  （`bs.total_equity` 与四个有息负债分项已计入既有 15，今日重复核对不增量，但为四个分项首次补上
+  了详细人工核对证据——此前 `COMPUTED-VALUES.md` 只记了 `EMPTY_CELL` 状态，没有逐字对照 PDF 的记录）
+- **累计 19 / 29，< 24，门槛未达成**
+- 尚未独立核对的 10 个字段：`is.operating_cost` / `is.selling_expense` /
+  `is.administrative_expense` / `is.financial_expense` / `cfs.net_cash_flow_from_operating_activities` /
+  `cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets` /
+  `notes.nonrecurring_pl_net_attributable_to_parent` / `notes.restatement_flag` /
+  `kpi.roe_weighted_average_disclosed` / `notes.business_combination_type`
+
+**`SC-2` 判定：`UNVERIFIED`**（19/29，未达 ≥24 门槛——不是发现了错误，是覆盖不够）。
+~~**`SC-8` 判定：`UNVERIFIED`**（legwork 已交、9/9 无不一致，但按 `01.5-06-PLAN.md` 的阻塞式设计，
+最终签署须由操作者本人完成，执行者不代签）。~~
+
+✅ **2026-08-30 操作者签署：`SC-8` 判 `PASS`。** 操作者过目本节后确认「9 个字段 + 2 个手算指标
+全部对得上，没有一个对不上的」，并**明确授权执行者代为落笔**。落笔即本次。
+⚠️ **授权的是落笔，不是核对**：读 PDF 那一步仍是执行者做的（见本节开头的自陈），
+操作者做的是**审阅并接受这份报告**。`SC-8` 行按此如实措辞，不写成「操作者逐页看过 PDF」。
+**`SC-2` 判定不变：`UNVERIFIED`**（19/29 < 24）—— 缺的是覆盖，不是正确性，零不一致。
 
 ## Phase 2 — 证据链
 

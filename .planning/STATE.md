@@ -4,11 +4,11 @@ milestone: v0.1
 milestone_name: 骨架与 cninfo 延伸
 current_phase: "01.5"
 current_phase_name: 数据接入层
-status: phase-1.5-wave-5-awaiting-human-verify
-stopped_at: Phase 1 已收口；**Phase 1.5 wave 1 / 2 / 3 / 4 已收口**；**wave 5 的自动化部分全部做完** —— `01.5-07` ✅、`01.5-06` 的 Task 1 ✅ / Task 2 ✅ / Task 3 ✅。🔴 **只剩 Task 4：`SC-8` 人工验收（`checkpoint:human-verify`，`gate="blocking"`），要操作者逐字段看取到的值 —— 执行者代答无效，这条标准的全部内容就是「由人看一遍」**。Task 2 产出 `record.evidence_identifiers()` 与 `pipeline.completeness_report()`，关键设计是**齐全率判的是序列化 payload 不是对象** —— 在对象上这条检查恒真（构造器已把每个字段 fail-closed），数出来必然是 100%，而那正是 `AC-05` 的反面实证在讲的事；顺带抓到一处真缺陷：`to_dict()` 此前丢掉 `header_inherited`，而那个字段正是为了「算出来的留证不许被丢掉」才加的 —— 同一形状落在下一层，已修并有机械回归。Task 3 落了 `VERIFICATION.md` 的 §B 验收矩阵（`SC-1`…`SC-8` + 5 行 AC/J 判据）、§C 十二条证据缺口、§D 十四段带退出码的逐字输出。**`SC-1a` / `SC-2` / `SC-8` 三行记 `UNVERIFIED`**（分别是本轮没联网复跑、计数口径要人工核对、待 Task 4），其余 6 行 `PASS`。12 条 `L-nn` 回标齐了（`references/` 逐字 grep = 12），但**「已落地增量 ≥ 12」这条判据只达成 +1** —— 10 条在 wave 1–3 就已回标、`L-2` 早是已落地，真正迁移的只有 `L-47`；差异如实写进 `LANDING-BACKLOG` §1，不改判据凑数。`L-47` 是一条**过期了几天的记录**（写着「枚举仍为 7 支」而实际已 9 支），被收口核对捞出来 —— 又一个 `N-35`。新增 `N-44`：`D-030` 余量三次实测连成下行直线（3,738,489 → 3,662,055 → **3,583,229**，日均 −78,000，约 7 天后跌破 3,000,000），**跌破时的处置不是再下调一次**。🔴 **三支 `kind` 仍未接进 `pipeline` 批次产出** —— 接之前要先回答「`column_header` / `unit` / `currency` 对一个复选框字段意味着什么」，编一个值填进去就是 `F-2`；在接上之前 **6 个指标的 `unevaluable` 现状不变**（`N-43` 判据 3）。Phase 0 尚未开始
+status: phase-1.5-sc2-coverage-short
+stopped_at: **`01.5-06` 四个 Task 全部完成，`SC-8` 已于 2026-08-30 由操作者签署 `PASS`（抽查 9 字段逐字对照年报原文 9/9 一致、2 指标手算差额在 1e-30 量级；`A-4` 的假命中没有复现）。**🔴 **但 Phase 1.5 尚未收口，卡在 `SC-2`：人工核对累计 19 / 29，未达 ≥24。**缺的是**覆盖不是正确性** —— 抽查零不一致。尚未独立核对的 10 个：`is.operating_cost` / `is.selling_expense` / `is.administrative_expense` / `is.financial_expense` / 2 个 `cfs.*` / 3 个 `notes.*` / `kpi.roe_weighted_average_disclosed`。**再核任意 5 个且都对，`SC-2` 即达成。**⚠️ **`SC-8` 那个 `PASS` 的效力要读准**（`VERIFICATION.md` §C.13）：翻 PDF 读数是**执行者**做的，操作者做的是**审阅并接受报告**并授权落笔 —— 不是「操作者本人逐页看过」。`SC-8` 的设计意图是让**非抽取器的一方**去查抽取器，这一层比意图弱，已如实记为限定。🔴 **三支 `kind` 仍未接进 `pipeline` 批次产出** —— 接之前要先回答「`column_header` / `unit` / `currency` 对一个复选框字段意味着什么」，编一个值填进去就是 `F-2`；在接上之前 **6 个指标的 `unevaluable` 现状不变**（`N-43` 判据 3）。其余：`N-44`（`D-030` 余量按天下行，约 7 天后跌破，处置不是再下调）、`N-41` 判据 3 的返工未做、复核余下 4 条 findings 未修、Phase 0 未开始
 last_updated: "2026-08-30T00:00:00Z"
 last_activity: 2026-08-30
-last_activity_desc: **`01.5-06` Task 2 + Task 3 完成 —— Phase 1.5 收口文档就位，只剩人工验收**。`J-6` 的字面存在性与 `AC-05` 的齐全率各有一条会红的测试（`tests/test_evidence_ids.py` 14 条）；三条负控制按「造回归 → 看红 → 回退」实跑，全程 `PYTHONDONTWRITEBYTECODE=1`，三次都红在 `AssertionError` 上（不是收集失败也不是 traceback），回退后全绿。其中**恒零计数那条是构造边界没有的**：`__post_init__` 只要求 `PARTIAL` 时 `truncation_stats` 非空，`{"dropped_rows": 0}` 照样构造得出来 —— 报了「我截断了」却报不出截了什么，现在在序列化边界上拦住了。按计划**没有新增第八道门**，理由写进模块 docstring。**723 passed**（709 → +14），七条门禁 `&&` 串联全 exit 0，供应链门禁单独跑 exit 0，两处冻结校验 21 行 / 5 行全 OK。`A-6` / `A-9` / `A-10` 扩充判据逐条对照后全部达成并写上证据位置（`A-10` 的三个外部仓 commit 是逐个 grep 核实的，不是转述 handoff）
+last_activity_desc: **`01.5-06` Task 4 收口 —— `SC-8` 签 `PASS`，`SC-2` 记 `UNVERIFIED`**。抽查 9 个字段逐字对照茅台 2023 年报原文，**9/9 一致，零不一致**；两处历史高风险点都没复现 —— `bs.total_equity` 没有重演 `A-4` 的「匹配到章节小标题而数值为空」，净利润两行的全角 `－`（U+FF0D）与半角 `-`（U+002D）与 `PROBE-14.md` §1(c) 逐字符相符。2 个指标手算复算差额 `1e-30` 量级，是十进制截断/舍入不是真实不一致。**`SC-2` 累计 19/29 < 24，缺覆盖不缺正确性**，再核任意 5 个即达成。`SC-8` 的 `PASS` 已如实限定为「操作者审阅并接受执行者产出的核对报告」，**不写成「操作者逐页看过 PDF」** —— 那句话会让下一个读者高估这份证据的强度（§C.13）
 progress:
   total_phases: 6
   completed_phases: 1
@@ -42,9 +42,13 @@ progress:
 - 计划：Phase 1 的 8 份 PLAN 全部执行完毕（5 个 wave）；
   Phase 1.5 **七份** PLAN（六份原有 + `01.5-07` 于 08-28 按 `N-43` 裁决新增），
   `01.5-01` … `01.5-05` 与 `01.5-07` 已执行完；`01.5-06` 的 Task 1 / 2 / 3 已完成
-- 下一个动作：🔴 **`01.5-06` Task 4 —— `SC-8` 人工验收**（`gate="blocking"`）。
-  **这一步不能由执行者代做**：`SC-8` 的全部内容就是「由人逐字段看取到的值」，
-  代答等于把这条验收标准删掉。做完它才谈得上 Phase 1.5 收口。
+- 下一个动作：🔴 **把 `SC-2` 从 19 推到 ≥24** —— 独立核对剩余 10 个字段里的任意 5 个。
+  这不是「再跑一遍代码」：口径写死的是「取到的值经**逐个人工核对**正确」。
+  **同一个动作还能顺带把 `SC-8` 的证据强度补到设计意图那一档**（§C.13）——
+  只要核对的人独立于抽取器产出方。
+- `01.5-06` 四个 Task 已全部完成（`SC-8` 2026-08-30 签 `PASS`），
+  但**本阶段未收口**：Success Criteria 里 `SC-2` 仍是 `UNVERIFIED`。
+  **PLAN 做完 ≠ 阶段成立。**
 - ⚠️ **`01.5-0X` ≠ `wave X`**：wave 4 = `01.5-04` + `01.5-05`，wave 5 = `01.5-06` + `01.5-07`。
   有 `tests/test_plan_waves.py` 锁着，别再从文件名推断（`N-43`）。
 
