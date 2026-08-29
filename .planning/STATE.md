@@ -4,16 +4,16 @@ milestone: v0.1
 milestone_name: 骨架与 cninfo 延伸
 current_phase: "01.5"
 current_phase_name: 数据接入层
-status: phase-1.5-wave-5-in-progress
-stopped_at: Phase 1 已收口；**Phase 1.5 wave 1 / 2 / 3 / 4 已收口**；8 个指标算出真实数值、24 个字段跨源对照（可比 20 / 不可比 4 / 不一致 0）、`D-029` 四条判据全部达成；~~下一步 wave 5 —— `01.5-05`：三支 `kind` 的实现…~~ **这句有两处错，见下方 `N-43`**（`01.5-05` 不是 wave 5；三支 kind 的排期是编的）；**独立复核已判 `PASS_WITH_FINDINGS`**（无 blocker，10 条 findings）——排前四的中级已修（`RV-6` 重录毁固件 / `RV-1`+`RV-2` 合并口径闸门 fail-open 且 `scope_required` 是死配置 / `RV-10` docstring 两句假声称 / `RV-4` AC 点名的负控制无辨析力），余下 `RV-5` `RV-7` `RV-3` `RV-8` `RV-9` 五条低级未修、已入册。🔴 修 `RV-4` 时撞出 `N-41`：**字节码缓存能让「造回归→看红→回退」整段失效**，已在 `rules/commands.md` 加死 `PYTHONDONTWRITEBYTECODE=1`；`N-41` 判据 3 是一次真实返工——**既有的等长变异结论一律记 `UNVERIFIED` 需重跑**；🔴 **「wave 5」这个说法本身是错的（`N-43`，已查清）**：`01.5-05` 属 **wave 4**（它自己的 frontmatter 与 `ROADMAP.md:184` 都这么写），**wave 5 是 `01.5-06`（收口）**。`01.5-0X` 与 `wave X` 在 01…04 上恰好相等，第五份开始不等 —— 一个靠巧合成立的约定，在它不成立的那一刻没有任何东西会说出来。已加 `tests/test_plan_waves.py` 拿两个独立声明比对，并锁住「编号 ≠ wave」本身；**`01.5-05` 三个 Task 全部完成 ⇒ wave 4 收口**（`NOTE_CHECKBOX` 实现 + `metrics/` 两处改动 + `D-020` 判据 3 真实回归），外加 `C-1` / `C-10` / `D-028` 集合值落地 —— **`A-8` 那处真实假阴性已关掉**；**下一步：wave 5 = `01.5-06`（收口）**；✅ **`N-43` 判据 1 已裁决并落地**：操作者定「新写一份并进 wave 5」⇒ `01.5-07-PLAN.md`（`wave: 5`）+ 两支 `kind` 已实现（`1e06a4b`）——`restated` **第一次能从真实年报判出来**（茅台 2023 = True，证据带列头原文与页码；全篇「调整后」命中 3 页 5 行，区间把 p78 / p107 挡在外面）；🔴 **但还没接进 `pipeline` 的批次产出** —— 接之前要先回答「`ExtractionRecord` 的 `column_header` / `unit` / `currency` 对一个复选框字段意味着什么」，编一个值填进去就是 `F-2`。**在接上之前，6 个指标的 `flags_status` 现状不变**（`N-43` 判据 3）；wave 5 剩 `01.5-06` 的 Task 2 / Task 3，之后 Task 4 是 `blocking` 人工验收；Phase 0 尚未开始
-last_updated: "2026-08-28T00:00:00Z"
-last_activity: 2026-08-28
-last_activity_desc: **Phase 1.5 wave 4 收口 —— AKShare 接为对照源，`D-029` 落成代码**。24 个字段跨源对照：可比 20 / 不可比 4 / 不一致 0，触发占比 0/20。`cross_validate()` 是与 `resolve.check_comparable()` 平行的独立函数，**`git diff --stat src/semantic_layer/resolve.py` 为空**——置位逻辑落在抽取层，`active_flags` 未被改造去承担它。`D-029` 四条判据：具名常量 / `INCOMPARABLE` 与 `DISAGREES` 是不同取值且有负向用例 / `_reference_decimal` 全仓唯一转换点且有 AST 级双向检查 / 占比用 `Fraction` 算且分子分母都进证据链。**三条负控制按三步程序实跑过**（造回归→看红→回退）。🔴 **本轮最要紧的结果是那 4 个「不可比」不是 20 个「一致」**：茅台四个「格子空 = 0」的字段在 AKShare 侧全是 `NaN`，当 0 会比出四条**从未被建立过的跨源一致**。另查出一条：「应付票据及应付账款」与「应付账款」在本样本上**取值完全相等**，cninfo 那处真实错配在这份数据上会报 `AGREES / 差 0.00` ⇒ **数值一致不能用来验证映射正确**（`C-14`）。**671 passed**，六道门 + 供应链 + 两处冻结校验全 exit 0
+status: phase-1.5-wave-5-awaiting-human-verify
+stopped_at: Phase 1 已收口；**Phase 1.5 wave 1 / 2 / 3 / 4 已收口**；**wave 5 的自动化部分全部做完** —— `01.5-07` ✅、`01.5-06` 的 Task 1 ✅ / Task 2 ✅ / Task 3 ✅。🔴 **只剩 Task 4：`SC-8` 人工验收（`checkpoint:human-verify`，`gate="blocking"`），要操作者逐字段看取到的值 —— 执行者代答无效，这条标准的全部内容就是「由人看一遍」**。Task 2 产出 `record.evidence_identifiers()` 与 `pipeline.completeness_report()`，关键设计是**齐全率判的是序列化 payload 不是对象** —— 在对象上这条检查恒真（构造器已把每个字段 fail-closed），数出来必然是 100%，而那正是 `AC-05` 的反面实证在讲的事；顺带抓到一处真缺陷：`to_dict()` 此前丢掉 `header_inherited`，而那个字段正是为了「算出来的留证不许被丢掉」才加的 —— 同一形状落在下一层，已修并有机械回归。Task 3 落了 `VERIFICATION.md` 的 §B 验收矩阵（`SC-1`…`SC-8` + 5 行 AC/J 判据）、§C 十二条证据缺口、§D 十四段带退出码的逐字输出。**`SC-1a` / `SC-2` / `SC-8` 三行记 `UNVERIFIED`**（分别是本轮没联网复跑、计数口径要人工核对、待 Task 4），其余 6 行 `PASS`。12 条 `L-nn` 回标齐了（`references/` 逐字 grep = 12），但**「已落地增量 ≥ 12」这条判据只达成 +1** —— 10 条在 wave 1–3 就已回标、`L-2` 早是已落地，真正迁移的只有 `L-47`；差异如实写进 `LANDING-BACKLOG` §1，不改判据凑数。`L-47` 是一条**过期了几天的记录**（写着「枚举仍为 7 支」而实际已 9 支），被收口核对捞出来 —— 又一个 `N-35`。新增 `N-44`：`D-030` 余量三次实测连成下行直线（3,738,489 → 3,662,055 → **3,583,229**，日均 −78,000，约 7 天后跌破 3,000,000），**跌破时的处置不是再下调一次**。🔴 **三支 `kind` 仍未接进 `pipeline` 批次产出** —— 接之前要先回答「`column_header` / `unit` / `currency` 对一个复选框字段意味着什么」，编一个值填进去就是 `F-2`；在接上之前 **6 个指标的 `unevaluable` 现状不变**（`N-43` 判据 3）。Phase 0 尚未开始
+last_updated: "2026-08-30T00:00:00Z"
+last_activity: 2026-08-30
+last_activity_desc: **`01.5-06` Task 2 + Task 3 完成 —— Phase 1.5 收口文档就位，只剩人工验收**。`J-6` 的字面存在性与 `AC-05` 的齐全率各有一条会红的测试（`tests/test_evidence_ids.py` 14 条）；三条负控制按「造回归 → 看红 → 回退」实跑，全程 `PYTHONDONTWRITEBYTECODE=1`，三次都红在 `AssertionError` 上（不是收集失败也不是 traceback），回退后全绿。其中**恒零计数那条是构造边界没有的**：`__post_init__` 只要求 `PARTIAL` 时 `truncation_stats` 非空，`{"dropped_rows": 0}` 照样构造得出来 —— 报了「我截断了」却报不出截了什么，现在在序列化边界上拦住了。按计划**没有新增第八道门**，理由写进模块 docstring。**723 passed**（709 → +14），七条门禁 `&&` 串联全 exit 0，供应链门禁单独跑 exit 0，两处冻结校验 21 行 / 5 行全 OK。`A-6` / `A-9` / `A-10` 扩充判据逐条对照后全部达成并写上证据位置（`A-10` 的三个外部仓 commit 是逐个 grep 核实的，不是转述 handoff）
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 14
-  completed_plans: 12
+  total_plans: 15   # 6 → 7：01.5-07 于 2026-08-28 新增（N-43 裁决）
+  completed_plans: 14   # Phase 1 的 8 份 + 01.5-01…05 + 01.5-07；01.5-06 卡在 Task 4 人工验收
   # ⚠️ `percent` 是手工估计，**不是从上面两组数派生的**（11/14 也不等于 29%）。
   # 不改它，免得给一个看起来是算出来的、实际是拍的数。
   percent: 29
@@ -37,10 +37,16 @@ progress:
 > **做了但没回标，而且没有任何机制会发现** —— 只不过这次发生在
 > **专门用来说明「我们在哪」的那份文件里**。2026-08-28 一次性校准。
 
-- 阶段：**Phase 1 已完成**（2026-08-16 收口）；**Phase 1.5 wave 1 / 2 / 3 / 4 已收口**
+- 阶段：**Phase 1 已完成**（2026-08-16 收口）；**Phase 1.5 wave 1 / 2 / 3 / 4 已收口**，
+  **wave 5 的自动化部分已全部做完**（2026-08-29／30）
 - 计划：Phase 1 的 8 份 PLAN 全部执行完毕（5 个 wave）；
-  Phase 1.5 六份 PLAN 已出齐并过 plan-checker，`01.5-01` … `01.5-04` 已执行完
-- 下一个动作：**执行 `01.5-05`**（wave 5），入口 `/gsd-execute-phase 01.5`
+  Phase 1.5 **七份** PLAN（六份原有 + `01.5-07` 于 08-28 按 `N-43` 裁决新增），
+  `01.5-01` … `01.5-05` 与 `01.5-07` 已执行完；`01.5-06` 的 Task 1 / 2 / 3 已完成
+- 下一个动作：🔴 **`01.5-06` Task 4 —— `SC-8` 人工验收**（`gate="blocking"`）。
+  **这一步不能由执行者代做**：`SC-8` 的全部内容就是「由人逐字段看取到的值」，
+  代答等于把这条验收标准删掉。做完它才谈得上 Phase 1.5 收口。
+- ⚠️ **`01.5-0X` ≠ `wave X`**：wave 4 = `01.5-04` + `01.5-05`，wave 5 = `01.5-06` + `01.5-07`。
+  有 `tests/test_plan_waves.py` 锁着，别再从文件名推断（`N-43`）。
 
 **Phase 1 收口证据**：`docs/agent/VERIFICATION.md` §Phase 1，
 14 行验收矩阵 + 三项阶段末判定 + 附录 A 九段逐字命令输出（含退出码，可原样重跑）。

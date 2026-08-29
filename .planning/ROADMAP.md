@@ -170,23 +170,26 @@ D-014 的反转条件未触发，**不需要试 pypdfium2**。
 > 因此不违反「可行性未知时不要先把抽取器写完」这条约束。
 
 Plans:
-- [ ] 01.5-01-PLAN.md — **tracer 切片**：巨潮下载三步链路（`--keep-pdf`）+ 章节锚点定位与行重组 +
+- [x] 01.5-01-PLAN.md — **tracer 切片**：巨潮下载三步链路（`--keep-pdf`）+ 章节锚点定位与行重组 +
       映射表加载器 + 抽取记录（`page`/`anchor_page`/SHA-256/URL/单位币种）+ 批次级勾稽闸门 +
       自建封闭算术解析器 → `debt_to_asset_ratio` 的第一个真实数值；含 `RefusalCode.UNAVAILABLE`
       与 D-015 的 AST 单向依赖门禁（wave 1）
-- [ ] 01.5-02-PLAN.md — 探测 14 个零实测字段（`is` 8 / `cfs` 2 / `notes` 3 / `kpi` 1），
+- [x] 01.5-02-PLAN.md — 探测 14 个零实测字段（`is` 8 / `cfs` 2 / `notes` 3 / `kpi` 1），
       逐个记「取到的值」而非命中（SC-8）；补一家有真实企业合并的公司年做正样本；
       末尾一个 SC-2 门槛裁决检查点（wave 2）
-- [ ] 01.5-03-PLAN.md — 五份 PDF 映射表补全（并集恰好等于 30 个 `source_fields`）、
+- [x] 01.5-03-PLAN.md — 五份 PDF 映射表补全（并集恰好等于 30 个 `source_fields`）、
       `column_header` 列绑定、「行在格子空 = 0」与「整行不存在 = 缺失」的真实回归（wave 3）
-- [ ] 01.5-04-PLAN.md — ≥5 个指标算出真实数值 + AKShare 对照通路 + `source_disagreement`
+- [x] 01.5-04-PLAN.md — ≥5 个指标算出真实数值 + AKShare 对照通路 + `source_disagreement`
       的置位函数；含跨源不一致容差的裁决检查点（wave 4）
-- [ ] 01.5-05-PLAN.md — D-020 的定义侧改动：`notes.consolidation_scope_change` 抽取实现 +
+- [x] 01.5-05-PLAN.md — D-020 的定义侧改动：`notes.consolidation_scope_change` 抽取实现 +
       `scope_change` trigger 改挂 + `_flags.yaml` 描述收窄 + 假阴性回归（wave 4）
 - [ ] 01.5-06-PLAN.md — 收口：两道闸门的负控制（J-5，含「红的原因要正确」）、
       J-6/J-7/AC-05 口径的机械检查、12 条 `L-nn` 回标、`VERIFICATION.md` Phase 1.5、
       SC-8 的人工验收检查点（wave 5）
-- [ ] 01.5-07-PLAN.md — `COLUMN_HEADER_PRESENCE` 与 `REPORT_METADATA` 两支 `kind` 的实现
+      —— **Task 1 / 2 / 3 已完成（2026-08-28 / 29）**，`VERIFICATION.md` 的 §A–§D 已就位；
+      **本份不勾选**，因为 Task 4（`SC-8` 人工验收，`gate="blocking"`）要操作者逐字段看取到的值，
+      **执行者代答无效**。⇒ 勾选它的条件是那一步做完，不是「其余都做完了」
+- [x] 01.5-07-PLAN.md — `COLUMN_HEADER_PRESENCE` 与 `REPORT_METADATA` 两支 `kind` 的实现
       （`restated` 的取值 + 报告元数据的派生）；解掉「数值算得出来、可比性标记判不了」那个缺口。
       **2026-08-28 新增**：这两支此前不属于任何一份 PLAN（`N-43` —— 那句「三支由 01.5-05 实现」
       是一句比 PLAN 晚两天写的代码注释编出来的），操作者裁决新写一份并进本 wave（wave 5）

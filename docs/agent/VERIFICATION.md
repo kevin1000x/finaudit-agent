@@ -479,6 +479,373 @@ $ .venv/Scripts/python -m pytest -q
 | `D-016` 补充判据：勾稽替代不了列绑定 | 同上，且同时跑勾稽 | 列绑定 3 红 / 勾稽 **10 全绿** | **PASS** |
 | `J-5`：红的原因要正确 | 逐字读失败输出 | 是断言失败，非导入/语法错误 | **PASS** |
 
+### §B 验收矩阵 SC-1…SC-8（`01.5-06` Task 3，命令 **2026-08-29 实跑**，本节 08-30 落文）
+
+> 下表是索引；**每条的逐字输出与退出码见 §D 附录**，可原样重跑。
+> **没有真实执行证据的一律记 `UNVERIFIED`，不记 `PASS`。**
+> 本节不含任何「从代码阅读推断」的结论 —— 凡是只读了代码没跑过的，状态栏写 `UNVERIFIED`。
+
+| # | 验收标准 | 验证方法 | 实际命令 | 期望结果 | 实际结果 | 证据 | 状态 |
+|---|---|---|---|---|---|---|---|
+| SC-1a | 能从巨潮下载指定公司指定年度的年报 PDF | 联网下载 | `python -m extractor fetch --stock 600519 --year 2023` | 取回 PDF 并给出 SHA-256 | **本轮未联网复跑**。下载链路已是仓库内代码（`src/extractor/download.py`），三份本机语料的 SHA-256 逐字记在 `PROBE-14.md` / `PROBE-COMBINATION.md`，但那是 wave 2 的执行记录 | `docs/agent/phase-01.5/PROBE-14.md` §1 | `UNVERIFIED`（本轮无执行证据） |
+| SC-1b | 定位三张合并报表所在页 | 直接跑锚点定位 | 见 §D.10 | 三张合并表各定位到 1 个锚点，合并与母公司分离 | 8 个锚点全部定位：合并 BS p58 / 合并 IS p63 / 合并 CFS p66，母公司三张 p61 / p65 / p68 各自分开，EXIT=0 | §D.10 | **PASS** |
+| SC-2 | 30 个字段中 ≥24 个能抽出并映射，**计数口径 = 取到的值经逐个人工核对正确** | 人工逐字段核对 | Task 4 的检查点 | ≥24 | **判定依赖 Task 4，本轮不代答。** 已定的部分：`N-37` 按 `D-026` 判作废 1 条（`notes.reporting_period_months`，第 1 类），作废率 **1/30 = 3.33% ≤ 10%**，分母 29；映射表实有 **31** 条（`bs 15 / is 8 / cfs 2 / notes 5 / kpi 1`，比 30 多出的 1 条是 `notes.consolidation_scope_change`）。其中经人工核对的只有 wave 1 的 15 个 `bs.*`，**其余未逐字段核对** | `N-37`、`D-026`、§D.14 | `UNVERIFIED`（口径要求人工核对，Task 4 未做） |
+| SC-3 | 区分「行在但格子空 = 0」与「整行不存在 = 缺失」，各有真实样本驱动的回归用例 | 全量测试 | `python -m pytest tests/test_missing_semantics.py -q` | 两类各有用例且全绿 | 格子空 4 条（短期借款 / 交易性金融负债 / 长期借款 / 应付债券，茅台 2023 实测）+ 整行不存在 2 条 + 「空格子是一次成功的抽取而不是失败」1 条；有息负债率在两种批次上分别**算得出**与**拒答**，EXIT=0 | `tests/test_missing_semantics.py`、§D.1 | **PASS** |
+| SC-4 | 抽取产物带出处：PDF 的 SHA-256 + 巨潮源 URL + 页码 + 计量单位与币种 | 打印一条真实记录的全部出处 | 见 §D.13 | 四件套齐全 | 四件套全部非空，且**多于** SC-4 的要求：另带 `anchor_page`（D-019）、`column_header`（D-016）、`header_inherited`（继承留证）、`mapping_version`（L-38）、`selection` 三元组（D-023）、`batch_id`（D-024）。`AC-05` 齐全率 **210/210 = 1** | §D.13 | **PASS** |
+| SC-5 | ≥5 个指标算出真实数值，并与 AKShare 交叉校验；不一致时置标记而不是静默选一个 | 端到端算一次 + 跨源对照 | 见 §D.11 / §D.12 | ≥5 个有数值；对照有逐字段判定 | **8 个指标全部算出数值**（跨三张合并报表一个批次）；跨源对照 **24 个字段**：`AGREES` 20 / `INCOMPARABLE` 4 / `DISAGREES` 0，触发占比 0/20，未超 `D-029` 的 1/3 阈值，EXIT=0 | §D.11、§D.12 | **PASS** |
+| SC-6 | 默认不保留 PDF，`--keep-pdf` 是显式开关 | 读签名 + 读调用点 | `grep -rn 'keep_pdf' src/` | 默认 `False`，且 CLI 有显式开关 | `download.py:356` `keep_pdf: bool = False`；`__main__.py:46` 是显式 `dest="keep_pdf"` 的开关；`pipeline.extract_batch` 用 `TemporaryDirectory` 接，`with` 退出即删。`.pdf` 同时在 `.gitignore` 与 `scan_rules.yaml` 的 `forbidden_tracked_file_types` 里 | `src/extractor/download.py:356`、§D.1 | **PASS** |
+| SC-7 | 勾稽校验是**阻断式**的：不通过即拒答而非记日志；一条真实通过用例 + 一条构造失败用例 | 全量测试 + 负控制 | `python -m pytest tests/test_reconciliation.py -q` | 阻断且两类用例都在 | `formula.py:541/549` 不通过即返回 `Refusal(RECONCILIATION_FAILED)`（`D-025` 第 9 支拒答码），不是日志；真实通过用例跑在茅台 2023 上，构造失败用例差额 `-1.00`；**负控制已按三步程序实跑**（§A.1–A.2） | §A、`tests/test_reconciliation.py`、§D.1 | **PASS** |
+| SC-8 | 抽取器的验收看「取到的值」，不看「命中数」 | **人工**逐字段核对 | Task 4 检查点（`gate="blocking"`） | 操作者逐字段看取到的值 | **未做。执行者不得代答** —— 这条标准的全部内容就是「由人看一遍」，代答等于把它删掉 | 待 Task 4 填 | `UNVERIFIED` |
+| AC-01 | 20 份口径定义字段齐全且合规 | 自动校验 | `python -m semantic_layer validate` | 20/20 合规 | `合计 0 项不合规，涉及 0 / 20 份定义`，EXIT=0 | §D.3 | **PASS** |
+| AC-05 | 每条回答产出证据链，字段齐全率 100% | `pipeline.completeness_report()` | 见 §D.13 | 齐全率 = 1 | 真实批次 **210/210 = 1**，`meets_ac05 = True`。计数按 `PROJECT_SPEC` §9 写死的口径（有真值才算，空串 / null / 占位值 / 恒零计数不计）。⚠️ **覆盖面见 §C.2 的盲区** | §D.13、`tests/test_evidence_ids.py` | **PASS**（限定见 §C.2） |
+| AC-10 | 仓库内零非公开数据 | 自动扫描 | `python -m semantic_layer scan` | findings 空 | `未扫出非公开数据风险（规则版本 2）`，EXIT=0 | §D.2 | **PASS** |
+| `J-6` | 证据标识的字面存在性可机械检查 | 新增测试 | `python -m pytest tests/test_evidence_ids.py -q` | 正向 + 负向都在 | 14 条全绿；负向用例把 `field_id` 换成映射表里没有的串后被抓住且失败信息点名那个串。三条负控制按三步程序实跑（见 `b0aebf9` 提交信息） | `tests/test_evidence_ids.py`、§D.1 | **PASS** |
+| `J-7` / `L-2` | 取数口径三元组齐全，缺任一项判失败 | 同上 | 同上 | 三项非空 | 真实批次三项全非空；逐项各造一次空值，每次都拉低齐全率并在 `gaps` 里点名 | `tests/test_evidence_ids.py` | **PASS** |
+| `D-018` / `D-016` | 两道闸门各有一条负控制，且红的原因正确 | 造回归 → 看红 → 回退 | 见 §A | 都会红且原因正确 | 见 §A 四段实跑输出 | §A | **PASS** |
+
+### §C 本阶段明确的证据缺口（不留白、不粉饰）
+
+**C.1 样本覆盖是单公司单年为主。**
+三张报表的**全部数值**取自贵州茅台 2023（`600519_2023.pdf`，143 页）。
+万华化学 2019（`600309_2019.pdf`，213 页）与顺丰控股 2021（`002352_2021.pdf`，282 页）
+**只测过「合并范围的变更」那一节**，没有跑过三张报表的取数。
+⇒ 「映射表在换一家公司的排版上仍然成立」这件事**没有证据**。
+
+**C.2 `AC-05` 抓不到「证据不相关」。**
+这是写在 `PROJECT_SPEC.md` §9 里的**已知盲区**，不是本轮新发现的：
+`AC-05` 只覆盖「证据**缺失**」。实证是 hello-agents 的 `arun_stream` 每步调两次 LLM，
+屏幕上读到的推理与实际执行的 `tool_calls` 在 `temperature > 0` 时**无因果关系**，
+而字段齐全率仍是 100%。同源性由 `AC-06` 的人工复核承担，**目前无自动判据**。
+⇒ 上表 `AC-05` 那行的 `PASS` 只能读成「字段都有真值」，**不能读成「证据链是对的」**。
+
+**C.3 `SC-2` 的分母里有 14 个字段从未经人工核对。**
+计数口径写死的是「取到的值经逐个人工核对正确」，而经人工核对的只有 wave 1 的
+15 个 `bs.*`。`N-37` 记的「29/29 达成」**是按抽取器能取到值来数的**，
+不是按口径数的。这个差别必须由 Task 4 消掉，不能由执行者代答。
+
+**C.4 `notes.reporting_period_months` 被作废，作废率 3.33%。**
+按 `D-026` 第 1 类（不是报表上印出来的值）判定，定性理由不引用抽取器输出：
+报告期月数由报告类型决定，报表上不印这一行。
+实测否定证据：整份 143 页逐行搜四个串全部零命中。**第 2 类（真实失手）0 条。**
+⚠️ 作废通道是一次**类比迁移**（`EVAL_CASES` §2.2 本管评测题目），10% 上限一并继承 ——
+不得写成「§2.2 本来就覆盖」。
+
+**C.5 `DISAGREES` 与 `ROW_ABSENT` 在真实数据上仍是零样本。**
+跨源对照 24 个字段全部 `AGREES` 或 `INCOMPARABLE`，`DISAGREES` 一条没有；
+`ROW_ABSENT` 只在构造样本上出现过。
+⇒ 这两条路径**只被构造用例走过**，没有真实数据背书。
+另有一条更强的限定（`C-14`）：本样本上「应付票据及应付账款」与「应付账款」取值完全相等，
+⇒ **数值一致不能用来验证映射正确**。
+
+**C.6 `restated` 判得出来，但没有传导到 `flags_status`。**
+三支 `kind`（`NOTE_CHECKBOX` / `COLUMN_HEADER_PRESENCE` / `REPORT_METADATA`）
+都已在 `extractor.notes` 里实现，**都没有接进 `pipeline` 的批次产出**。
+⇒ **6 个指标的 `unevaluable` 现状不变。**
+接之前要先回答一个真问题：`ExtractionRecord` 的 `column_header` / `unit` / `currency`
+对一个复选框字段意味着什么 —— **编一个值填进去就是 `F-2`**。见台账 `N-43` 判据 3。
+
+**C.7 `restated` 的规则是单样本、跨排版未验证。**
+「有『调整后 / 调整前』列 ⟺ 发生追溯重述」与茅台 2023 p5 的文字互证，
+但**反例形态一次都没观察到，也没有去找**。限定写在源码里，有测试锁着。
+
+**C.8 `N-41` 判据 3 是一次真实返工。**
+既有的等长变异结论**一律记 `UNVERIFIED` 需重跑**（字节码缓存能让整段验证程序失效）。
+`01.5-06` 本轮自己做的三次变异已在 `PYTHONDONTWRITEBYTECODE=1` 下重验，
+**此前各轮的等长变异结论没有重跑**。
+
+**C.9 `N-42` 未做的一半。**
+`check_xrefs.py` 的视野缺口已修，但**其余六道门各自的扫描范围有没有同样缺口，本轮没查**，
+记 `UNVERIFIED`。
+
+**C.10 独立复核余下 5 条 findings 未修。**
+`RV-7` / `RV-3` / `RV-8` / `RV-9` 四条低级未修（`RV-5` 已随函数删除），
+逐条判据在 `docs/agent/phase-01.5/REVIEW-TASK3.md`。无 blocker。
+
+**C.11 `D-030` 的余量在收窄，且趋势向下。**
+akshare 近月下载量三次实测：
+2026-08-27 **3,738,489** → 08-28 **3,662,055** → **08-29 3,583,229**（§D.8）。
+门槛 3,000,000，余量由 24.6% → 22.1% → **19.4%**，日均约 −78,000。
+按此斜率约 7 天后跌破。**跌破即红，处置不是再下调一次** ——
+再下调就把这道门变成跟着实测值走的橡皮门槛。届时的选项是接受它红并停用
+`crosscheck` extra，或另找对照源。
+
+**C.12 `H1` 仍然只是「未被证伪」。**
+Phase 1 的判定是**压线**通过（计 5，门槛 >5）。本阶段没有产生任何改变该判定的新证据。
+
+### §D 附录 —— 逐字命令输出（2026-08-29，全部当场跑出）
+
+> 环境变量全程 `PYTHONIOENCODING=utf-8`（不设时 Windows 子进程按 cp936 写 stdout，
+> 中文断言匹配不到，**它会红但红的原因不是它要查的那件事**）与
+> `PYTHONDONTWRITEBYTECODE=1`（`N-41`）。
+> 七条按 `F-8` 用 `&&` 串联，**禁止 `;`，禁止在门禁命令后接管道**。
+
+#### D.1 全量测试
+
+```
+$ .venv/Scripts/python -m pytest -q
+........................................................................ [ 99%]
+...                                                                      [100%]
+723 passed in 21.86s
+EXIT=0
+```
+
+#### D.2 非公开数据扫描（`AC-10`）
+
+```
+$ .venv/Scripts/python -m semantic_layer scan
+未扫出非公开数据风险（规则版本 2）。
+EXIT=0
+```
+
+#### D.3 口径定义校验（`AC-01`）
+
+```
+$ .venv/Scripts/python -m semantic_layer validate
+OK    total_asset_turnover.yaml
+
+合计 0 项不合规，涉及 0 / 20 份定义
+EXIT=0
+```
+
+#### D.4 交叉引用门禁
+
+```
+$ .venv/Scripts/python scripts/check_xrefs.py
+已登记的定义点：
+  D-decision    30 个   ← DECISIONS.md
+  U              4 个   ← DECISIONS.md
+  ledger        56 个   ← docs/agent/OPEN-ITEMS.md
+  F              8 个   ← rules/failure-modes.md
+  RV            10 个   ← docs/agent/phase-01.5/REVIEW-TASK3.md
+  AC            10 个   ← PROJECT_SPEC.md
+  NFR            5 个   ← PROJECT_SPEC.md
+  OQ             4 个   ← docs/agent/phase-01/open-questions.md
+
+扫描 74 个 markdown 文件，检查 1183 处引用。
+已登记的跨命名空间碰撞 0 对（显式豁免，新增会拦）：
+
+交叉引用门禁：通过
+EXIT=0
+```
+
+#### D.5 阅读台账门禁
+
+```
+$ .venv/Scripts/python scripts/check_reading_ledger.py
+扫描 27 份 references 产物，检查 77 条「已读」台账行。
+已登记豁免 0 条（显式，新增会拦）。
+
+阅读台账门禁：通过
+  注意：本门禁抓不到目录级聚合行（见脚本 docstring「明确抓不到什么」）。
+EXIT=0
+```
+
+#### D.6 门禁的门禁
+
+```
+$ .venv/Scripts/python scripts/check_gates.py
+扫描 31 个测试模块，6 道已登记门禁。
+已登记豁免 0 条，间接断言 helper 0 条（均应为 0）。
+`NO-ASSERT-BY-DESIGN:` 声明 1 条 —— **它长起来就等于 R1 在退化**。
+显式声明为「非门禁」的脚本 2 个：backlog_status.py, probe_fields.py
+
+门禁的门禁：通过
+  注意：本门禁证明不了负控制会抓住真实回归——那需要 `rules/commands.md`
+        里那条人执行的程序（造回归 → 看红 → 回退）。见 docstring「抓不到什么」。
+EXIT=0
+```
+
+⚠️ **「6 道已登记门禁」与「七道门」不矛盾，两个数在数不同的东西**：
+`GATES` 注册表登记的是**门禁脚本**（6 个），而提交前跑的那条 `&&` 链有 **7 条命令** ——
+第七条 `tests/test_plan_waves.py` 是一个 **pytest 模块**，按 `01.5-06-PLAN`
+「明确不新增门禁」一节的判断**刻意没有登记进 `GATES`**。
+不要把这两个数中的任何一个当成对方写错了。
+
+#### D.7 计划 / 路线图一致性（第七条）
+
+```
+$ .venv/Scripts/python -m pytest tests/test_plan_waves.py -q
+....                                                                     [100%]
+4 passed in 0.03s
+EXIT=0
+```
+
+#### D.8 供应链门禁（**单独跑，不串进提交链** —— 它走网络，链式跑时会因抖动整条失败）
+
+```
+$ .venv/Scripts/python scripts/verify_deps.py
+pyproject.toml 声明的依赖：['pyyaml', 'pdfplumber', 'pytest', 'akshare']
+...
+== akshare 1.18.94
+   [ OK ] 上游仓库  github.com/akfamily/akshare
+   [ OK ] wheel      akshare-1.18.94-py3-none-any.whl
+   [ OK ] 近月下载   3,583,229
+          ⚠️ 门槛已下调至 3,000,000 —— 【D-030】...
+== 已装分发的许可证扫描（含传递依赖）
+   [ OK ] 扫描 43 个已装分发，无 AGPL 系命中
+   [ OK ] 零许可证声明的第三方分发：0 个
+
+供应链门禁：通过（⚠️ 有 2 项检查未跑：pdfplumber:下载量, pytest:下载量）
+EXIT=0
+```
+
+⚠️ **两项「下载量取不到（HTTPError）」是 `[SKIP]` 不是 `[OK]`** ——
+脚本明写「不据此放行也不据此拦截」。门禁整体通过，但那两项**没有结论**。
+
+#### D.9 两处冻结校验（声明任何结论前必跑）
+
+```
+$ cd eval/frozen-01 && sha256sum -c SHA256SUMS
+（21 行，全部 OK，无非 OK 行）
+cases/Q-C5-002.yaml: OK
+fixtures/synthetic-01.yaml: OK
+EXIT=0
+
+$ cd docs/agent/poc-01 && sha256sum -c SHA256SUMS
+（5 行，全部 OK）
+definitions/revenue_growth_yoy.yaml: OK
+field_inventory.md: OK
+questions.md: OK
+EXIT=0
+```
+
+#### D.10 报表锚点定位（`SC-1b`）
+
+```
+$ .venv/Scripts/python -c "... locate.find_statement_anchors(pdf) ..."
+p58   consolidated=True  合并资产负债表
+p61   consolidated=False 母公司资产负债表
+p63   consolidated=True  合并利润表
+p65   consolidated=False 母公司利润表
+p66   consolidated=True  合并现金流量表
+p68   consolidated=False 母公司现金流量表
+p70   consolidated=True  合并所有者权益变动表
+p72   consolidated=False 母公司所有者权益变动表
+EXIT=0
+```
+
+8 个锚点全部定位，**合并与母公司干净分离** —— `A-6` 第 3 条失效模式
+（宽页窗口静默混入母公司数）在这份样本上关掉了。
+
+#### D.11 八个指标一次算完（`SC-5`）
+
+```
+$ .venv/Scripts/python -m extractor compute \
+    --metric debt_to_asset_ratio --metric current_ratio --metric quick_ratio \
+    --metric net_working_capital --metric interest_bearing_debt_ratio \
+    --metric gross_profit_margin --metric period_expense_ratio --metric free_cash_flow \
+    --stock 600519 --year 2023 --pdf data/raw/600519_2023.pdf --json
+debt_to_asset_ratio            0.1798432413917914711797
+current_ratio                  4.6238924431792990312920
+quick_ratio                    3.6703511168170040261588
+net_working_capital                     176474906320.08
+interest_bearing_debt_ratio    0.0011869875943758066820
+gross_profit_margin            0.9196493724135797573790
+period_expense_ratio           0.0852338808924697216377
+free_cash_flow                           63973491832.30
+EXIT=0
+```
+
+跨**三张**合并报表一个批次（`D-024`：批次身份键是 `(stock_code, fiscal_year)`）。
+数值用 `Decimal` 不用二进制浮点。
+
+#### D.12 跨源对照（`SC-5` 的 AKShare 一半，离线走固件）
+
+```
+$ .venv/Scripts/python -m extractor crosscheck --stock 600519 --year 2023 \
+    --pdf data/raw/600519_2023.pdf \
+    --reference tests/fixtures/akshare_600519_2023.json --json
+字段数 24  {'AGREES': 20, 'INCOMPARABLE': 4}
+comparable = 20
+disagreements = 0
+disagreement_ratio = 0
+note = 触发占比 0（0/20），未超过 D-029 的反转阈值 1/3。
+EXIT=0
+```
+
+⚠️ **那 4 个「不可比」不是 4 个「一致」**：茅台四个「格子空 = 0」的字段在 AKShare 侧
+全是 `NaN`，当 0 会比出四条**从未被建立过的跨源一致**。
+⚠️ **不给 `--reference` 就会联网。** 取不到对照源时退 3 不是 0 ——
+「这一批没有对照结论」与「这一批对照通过了」在证据上是两件事。
+
+#### D.13 出处四件套与 `AC-05` 齐全率（`SC-4`）
+
+```
+$ .venv/Scripts/python -c "... completeness_report(batch) ..."
+  field_id           = bs.accounts_receivable
+  pdf_sha256         = 2125ff97a452ea79b0d784e2432f7d224b6aecc330b644b593477d69e22f4ed1
+  source_url         = https://static.cninfo.com.cn/finalpage/2024-04-03/1219506510.PDF
+  page               = 59
+  anchor_page        = 58
+  unit               = 元
+  currency           = 人民币
+  column_header      = 2023年12月31日
+  header_inherited   = True
+  mapping_version    = 1
+  selection          = {'sampling': '整表逐行', 'order_key': 'page,y', 'truncation': '未截断'}
+  batch_id           = 61e881c77f3d4771
+  AC-05 齐全率      = 210/210 = 1  meets_ac05 = True
+EXIT=0
+```
+
+`page=59` 与 `anchor_page=58` **不相等**，这正是 `D-019` 拆成两个整数的理由：
+标题印在上一页时，单一整数表达不了。
+`header_inherited=True` 说明这一行的列归属是**从首页表头继承来的** ——
+这个留证 2026-08-29 之前**不在序列化输出里**（见 `b0aebf9`）。
+
+#### D.14 映射表条目数（`SC-2` 的分母）
+
+```
+$ .venv/Scripts/python -c "... load_pdf_mapping(ns) ..."
+bs     15  mapping_version=1
+is      8  mapping_version=1
+cfs     2  mapping_version=1
+notes   5  mapping_version=1
+kpi     1  mapping_version=1
+TOTAL 31
+EXIT=0
+```
+
+⚠️ **31 不是 30。** `SC-2` 的分母 30 来自 20 份定义的 `source_fields` 去重；
+多出来的第 31 条是 `notes.consolidation_scope_change` —— 它由 `D-020`（`A-8` 的裁决）
+从 `notes.business_combination_type` 里**拆出来的独立字段**，
+不在原来那 30 个里。同一份年报上两个字段取值不同，本身就是它们必须分开的证明。
+
+
+#### D.15 登记册状态：本任务**开始前**与**完成后**两次实测
+
+```
+$ .venv/Scripts/python scripts/backlog_status.py     # Task 3 开始前
+条目总数 82
+  已关闭    4
+  部分落地   5
+  已落地    60
+  已并进计划  1
+  BLOCKED 8
+  DECIDED 1
+  依据     3
+EXIT=0
+
+$ .venv/Scripts/python scripts/backlog_status.py     # Task 3 完成后
+条目总数 82
+  已关闭    4
+  部分落地   5
+  已落地    61
+  已并进计划  1
+  BLOCKED 8
+  依据     3
+EXIT=0
+```
+
+⚠️ **`已落地` 增量是 `+1`，而 Task 3 的验收判据写的是「≥ 12」。**
+差异的完整解释在 `LANDING-BACKLOG` §1：那条判据假设 12 条到收口时都还挂着 `OPEN`，
+而其中 **10 条在 wave 1–3 实现时就已改成 `已落地` 并回标**，`L-2` 早在 08-24 就是 `已落地`，
+**真正发生状态迁移的只有 `L-47`**（`DECIDED` → `已落地`，它的「枚举仍为 7 支」是一条过期几天的记录）。
+**12 条「回标齐了」这件事本身是达成的** —— `references/` 逐字 grep 去重后正好 12 个编号，
+第六道门的 R5 也通过。**不改判据凑数**（`F-4`：判据是待办不是已办，对不上就如实写对不上）。
+
+⚠️ **不要用裸 `grep -c OPEN` 数这个** —— `~~OPEN~~ → 已落地` 会被裸 grep 数成 `OPEN`。
+
 ## Phase 2 — 证据链
 
 | 验收标准 | 验证方法 | 实际命令 | 期望结果 | 实际结果 | 证据 | 状态 |
