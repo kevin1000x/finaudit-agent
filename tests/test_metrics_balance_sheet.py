@@ -245,10 +245,11 @@ def test_minority_share_refuses_zero_total_equity():
 
 
 def test_minority_share_scope_change_flag_fires():
+    """trigger 已由 `D-020` 改挂 `notes.consolidation_scope_change`。"""
     row = {
         "bs.minority_interests": 100,
         "bs.total_equity": 1000,
-        "notes.business_combination_type": "非同一控制下",
+        "notes.consolidation_scope_change": True,
     }
     assert "scope_change" in active_flags(_defn("minority_interest_share"), row)
 
@@ -257,9 +258,56 @@ def test_minority_share_no_scope_change_when_none():
     row = {
         "bs.minority_interests": 100,
         "bs.total_equity": 1000,
-        "notes.business_combination_type": "无",
+        "notes.consolidation_scope_change": False,
     }
     assert "scope_change" not in active_flags(_defn("minority_interest_share"), row)
+
+
+def test_minority_share_scope_change_fires_without_business_combination():
+    """🔴 **`A-8` 那处真实假阴性的回归**（`D-020` 判据 3）。
+
+    茅台 2023 的实际情形：企业合并三项**全部不适用**（本期无企业合并），
+    而「5、其他原因的合并范围变动」**适用**（控股子公司清算注销）。
+
+    ⚠️ **本条替换掉的旧测试，当初断言的正是那个缺陷**：
+    旧的 `test_minority_share_no_scope_change_when_none` 断言
+    `business_combination_type == "无"` 时 `scope_change` **不置位** ——
+    而按 `_flags.yaml` 对该 flag 的描述（「合并范围发生变动」），
+    茅台那种情形本就该置位。
+
+    **也就是说这个 bug 有一条绿测试在为它背书。**
+    这是本项目记的「自证机制证明的不是它声称证明的事」的又一个实例，
+    而且是最直接的一种：测试把缺陷写成了规格。
+    """
+    row = {
+        "bs.minority_interests": 100,
+        "bs.total_equity": 1000,
+        # 本期无企业合并 —— 旧 trigger 在这里为假
+        "notes.business_combination_type": frozenset(),
+        # 但合并范围确实变了
+        "notes.consolidation_scope_change": True,
+    }
+    flags = active_flags(_defn("minority_interest_share"), row)
+    assert "scope_change" in flags
+
+
+def test_minority_share_trigger_no_longer_reads_business_combination_type():
+    """trigger 只看新字段。**旧字段单独变化不再影响它。**
+
+    锁住这一点是因为「保留旧字段」与「trigger 仍挂旧字段」是两回事：
+    `D-020` 明写前者保留原义，而后者必须改。
+    """
+    base = {"bs.minority_interests": 100, "bs.total_equity": 1000}
+    defn = _defn("minority_interest_share")
+
+    fired = active_flags(
+        defn,
+        {**base, "notes.business_combination_type": frozenset({"非同一控制下"}),
+         "notes.consolidation_scope_change": False},
+    )
+    assert "scope_change" not in fired, (
+        "trigger 仍在读 business_combination_type —— D-020 要求它改挂新字段"
+    )
 
 
 def test_minority_share_denominator_is_total_equity():

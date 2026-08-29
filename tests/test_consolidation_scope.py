@@ -440,3 +440,45 @@ def test_顺丰2021的章节标题里夹着不可见控制字符():
     # 锚点确实定位到了 —— 控制字符没能让它零命中
     assert fx["anchor_page"] == 250
     assert fx["section_title"] == SECTION_TITLE
+
+
+# --------------------------------------------------------------------------
+# 七、端到端：真实年报的读数 → flag 置位（D-020 判据 3）
+# --------------------------------------------------------------------------
+
+
+def test_茅台读数喂进语义层后_scope_change_真的置位():
+    """🔴 **从年报版面一路走到 flag 的完整链路**，这是 `D-020` 判据 3 的最终形态。
+
+    前面几条各自锁住链路的一段（读数 / 派生 / trigger），
+    但**每一段都对不等于链路是通的** —— `ARCHITECTURE §8.5` 记的
+    「算出来的留证在接线时被丢掉」正是每段都对而接线断了。
+
+    这一条把三段接起来跑：
+    茅台 2023 p120–121 的六项读数 → `derive_consolidation_scope_change` → `active_flags`。
+    """
+    from semantic_layer.definition import load_definition
+    from semantic_layer.resolve import active_flags
+
+    reading = _reading()
+    defn = load_definition(Path("metrics/minority_interest_share.yaml"))
+
+    row = {
+        "bs.minority_interests": 7987897687.39,
+        "bs.total_equity": 223656469294.82,
+        "notes.consolidation_scope_change": derive_consolidation_scope_change(reading),
+    }
+    flags = active_flags(defn, row)
+    # `active_flags` 可能返回 Refusal（条件求不了值）。**先把它排除掉再谈内容** ——
+    # `"scope_change" in refusal` 在某些容器类型上不会报错，只会静默为假。
+    from semantic_layer.resolve import Refusal
+
+    assert not isinstance(flags, Refusal), f"求值被拒：{flags}"
+    assert "scope_change" in flags, (
+        "茅台 2023 合并范围因子公司清算注销而变动，scope_change 必须置位"
+    )
+
+    # 而旧口径下它取不到值 —— 这正是 A-8：本期无企业合并
+    from extractor.notes import derive_business_combination_type
+
+    assert derive_business_combination_type(reading) == frozenset()

@@ -24,11 +24,40 @@ source_fields:
     sign_convention: 收益记正_损失记负
     missing_representation: null
 
+  # 取值是**集合**，不是单值三选一（D-028）。
+  #
+  # 原来写的是 enum_values: [同一控制下, 非同一控制下, 无]，单值三选一。
+  # 万华化学 600309 2019 年报「八、合并范围的变更」里，第 1 项（非同一控制下）
+  # 与第 2 项（同一控制下）**同时为「√适用」** —— 三个候选值里**没有一个是对的**。
+  # D-028 的原话：**集合性在世界里，不在重载里。**
+  #
+  # 元素取值域（三元素，穷举）：同一控制下 / 非同一控制下 / 反向购买
+  # **空集 = 本期无企业合并**（不是缺失，也不再用字面量「无」表示）
+  # ⚠️ 「反向购买」在册但**零正样本**：茅台与万华本期都是「不适用」。
+  #
+  # 本字段**保留原义，只表企业合并类型**（对应披露模板六项里的 1、2、3）。
+  # 「合并范围有没有变」由下面新增的 notes.consolidation_scope_change 承载 ——
+  # 两件事混进一个字段，正是 A-8 那处真实假阴性的成因。
   - id: notes.business_combination_type
     statement: 财务报表附注
-    line_item: 本期企业合并类型（同一控制下 / 非同一控制下 / 无）
+    line_item: 本期企业合并类型 —— 「合并范围的变更」六项中的第 1、2、3 项，可同时成立
     missing_representation: null
-    enum_values: [同一控制下, 非同一控制下, 无]
+    value_shape: set
+    enum_values: [同一控制下, 非同一控制下, 反向购买]
+
+  # D-020 新增。**这是 CONTEXT §5「不动 metrics/ 的 20 份定义」唯一被放宽的地方之一。**
+  #
+  # 它存在的理由是一处**真实年报上的假阴性**（A-8）：
+  # _flags.yaml 说 scope_change 是「合并范围发生变动」，而 trigger 原来挂在
+  # business_combination_type 上；茅台 2023 企业合并三项全「不适用」而
+  # 「5、其他原因的合并范围变动」**是「适用」**（定制营销公司清算注销）
+  # ⇒ 旧 trigger 为假，flag 不置位，**而合并范围确实变了**。
+  #
+  # 布尔字段、不参与加减，按 PROJECT_SPEC §5.1 不需要 sign_convention。
+  - id: notes.consolidation_scope_change
+    statement: 财务报表附注
+    line_item: 「合并范围的变更」六个子项中任一为「√适用」
+    missing_representation: null
 
 formula: >
   bs.minority_interests / bs.total_equity
@@ -54,9 +83,16 @@ standard_basis:
 
 flags:
   - name: scope_change
-    # 枚举值须加引号作字符串字面量：不加引号时「无」被词法器当作裸标识符，
-    # 而裸标识符不是合法字段引用（字段引用必须含至少一个点）。
-    trigger: notes.business_combination_type != "无"
+    # D-020：trigger 由 notes.business_combination_type != "无" 改挂新字段。
+    #
+    # 改的理由不是措辞，是一处**在真实年报上会漏报**的缺陷（A-8）：
+    # 旧 trigger 问的是「本期有没有发生企业合并」，而这个 flag 声称表达的是
+    # 「合并范围有没有变动」。**两者不是同一件事** —— 茅台 2023 就是
+    # 「无企业合并，但因清算注销而合并范围变动」这个反例。
+    #
+    # 新字段是布尔值，与字面量 true 比较；`true` 是 DSL 的字面量之一，
+    # 不是裸标识符，所以这里不需要像旧写法那样加引号。
+    trigger: notes.consolidation_scope_change == true
 
 undefined_conditions:
   - expr: is_missing(bs.total_equity)
@@ -77,9 +113,15 @@ common_pitfalls:
       分母取所有者权益合计，不取归母权益。用归母权益作分母得到的是另一个比率。
     enforced_by: derivation.note
 
+  # ⚠️ 本条随 D-020 一并调整：trigger 改挂 notes.consolidation_scope_change 之后，
+  # 它承载的东西从「发生企业合并」变成了「合并范围发生变动」——**后者是更宽的集合**。
+  # 正文若不跟着改，陷阱说的与 flag 实际会在什么时候触发就对不上了（F-5 的形状）。
   - text: >
-      **合并范围变动会使该占比跳变。** 收购少数股权、处置子公司部分股权、
-      非同一控制下企业合并均会直接改变少数股东权益，与经营表现无关。
+      **合并范围变动会使该占比跳变。** 企业合并（同一控制下 / 非同一控制下 / 反向购买）、
+      处置子公司、以及其他原因导致的合并范围变动（如新设或清算子公司），
+      均会直接改变少数股东权益，与经营表现无关。
+      **不限于发生企业合并的情形** —— 茅台 2023 本期无企业合并，
+      但因控股子公司清算注销而合并范围变动，该 flag 应当置位。
     enforced_by: flags.scope_change
 
   - text: >

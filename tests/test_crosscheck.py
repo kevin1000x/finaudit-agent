@@ -803,8 +803,12 @@ def test_固件覆盖率是子集不是全集_并把缺口点名():
         "is.operating_revenue_prior_as_presented",
         "kpi.roe_weighted_average_disclosed",
         "notes.business_combination_type",
+        # ↓ 2026-08-28 wave 5 按 D-020 新增（30 → 31）。同样是附注复选项，
+        #   AKShare 的三张报表里结构上不存在 —— 与上一条同因，不是漏了。
+        "notes.consolidation_scope_change",
         "notes.nonrecurring_pl_net_attributable_to_parent",
         "notes.reporting_period_months",
         "notes.restatement_flag",
     }
     assert len(mapped) == 24
+    assert len(declared_field_ids()) == 31

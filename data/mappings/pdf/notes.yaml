@@ -67,6 +67,26 @@ entries:
       - label_fragments: ["同一控制下企业合并"]
       - label_fragments: ["反向购买"]
 
+  # D-020 新增。与上一条**同章同模板、不同子项集合**：
+  # 上一条只取六项里的 1、2、3（企业合并类型），本条取**全部六项**（任一适用即 True）。
+  #
+  # 两条 label_variants 的差集就是 A-8 那处假阴性的全部内容：
+  # 茅台 2023 第 4、5、6 项里第 5 项适用，而 1、2、3 全不适用 ——
+  # 只看上一条会得出「本期合并范围没变」，而它变了。
+  #
+  # ⚠️ 第 6 项就叫「其他」，与第 5 项「其他原因的合并范围变动」是模板里
+  # **两个并列的子项**，不是包含关系。逐字相等匹配下不会串（子串匹配会）。
+  - field_id: notes.consolidation_scope_change
+    statement: 合并范围的变更
+    kind: NOTE_CHECKBOX
+    label_variants:
+      - label_fragments: ["非同一控制下企业合并"]
+      - label_fragments: ["同一控制下企业合并"]
+      - label_fragments: ["反向购买"]
+      - label_fragments: ["处置子公司"]
+      - label_fragments: ["其他原因的合并范围变动"]
+      - label_fragments: ["其他"]
+
   # 判「调整后 / 调整前」这两个列头在不在，**不取任何行的值**。
   #
   # 实测（PROBE-14.md §3）：没有一行印着「本期是否经追溯重述或会计政策变更调整」。

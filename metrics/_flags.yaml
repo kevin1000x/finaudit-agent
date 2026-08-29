@@ -34,8 +34,19 @@ flags:
     affects_comparability: true
     introduced_by: spec R9
 
+  # 2026-08-28（D-020）：description 收窄。
+  #
+  # 原文把括号里的「追溯调整比较期」与主句并列，**把两件事写成了一句**：
+  # 「合并范围变动」是这个 flag 表达的东西，「追溯调整比较期」只是其中**一种**情形的后果。
+  # 而**处置子公司不产生追溯调整** —— 按原文读，一次因清算注销导致的合并范围变动
+  # 会被认为不该置位，而它恰恰该置位（A-8 的茅台 2023 就是这个情形）。
+  #
+  # ⇒ 主句只表述「合并范围发生变动」这一件事，追溯调整改写成显式的从属关系。
+  # vocabulary_version 未 +1：本次只改 description，**取值域一个字都没动**。
   - name: scope_change
-    description: 合并范围发生变动（同一控制下合并追溯调整比较期）
+    description: >
+      合并范围发生变动（企业合并、处置子公司、或其他原因如新设/清算子公司）；
+      其中同一控制下企业合并还会追溯调整比较期，其余情形不产生追溯调整
     scope: definition
     affects_comparability: true
     introduced_by: POC-01 C7
