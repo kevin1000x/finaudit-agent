@@ -128,8 +128,30 @@ EXCLUDED = (
 
 
 def tracked_markdown() -> list[Path]:
+    """**已跟踪 + 未跟踪但未被忽略**的 markdown。
+
+    🔴 **`--others --exclude-standard` 这两个参数不是可选的**（2026-08-28 实测）。
+
+    原来只有 `git ls-files *.md`，也就是**只看已跟踪的文件**。后果是一个真实的假绿：
+    `docs/agent/phase-01.5/REVIEW-TASK3.md` 这份新文档带着三处悬空引用，
+    提交前跑门禁 —— **通过**（那时它还没被 `git add`，门禁根本看不见它）；
+    提交之后再跑 —— 报出三条 FAIL。
+
+    也就是说：**新增文件里的悬空引用，永远要到下一次运行才被抓住**，
+    而那一次运行往往已经在下一个提交里了。
+    这与 `F-8`（跑了门禁但没让它挡住后面的动作）是同一类，但更隐蔽：
+    门禁**确实跑了、确实绿了**，只是它的视野里没有那个文件。
+    ⇒ 「先跑门禁再 `git add`」这个看起来更谨慎的顺序，恰恰是让它失效的那个顺序。
+
+    加 `--others --exclude-standard` 之后，未跟踪但不在 `.gitignore` 里的
+    markdown 也进扫描范围；被忽略的（scratch、产物）仍然不进。
+    """
     out = subprocess.run(
-        ["git", "ls-files", "*.md"], cwd=REPO, capture_output=True, text=True, check=True
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "*.md"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.split()
     keep = []
     for rel in out:

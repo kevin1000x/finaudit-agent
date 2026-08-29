@@ -88,7 +88,6 @@ __all__ = [
     "CrossCheckVerdict",
     "IncomparableReason",
     "ReferenceValue",
-    "align_references",
     "assert_akshare_mapping_within_definitions",
     "cross_validate",
     "cross_validate_batch",
@@ -854,44 +853,24 @@ def cross_validate_batch(
 
 
 # --------------------------------------------------------------------------
-# L-12：对齐失败一律用新值
+# L-12 —— **本模块刻意不实现它**（`RV-5`，2026-08-28 操作者裁决删除）
 # --------------------------------------------------------------------------
-
-
-def align_references(
-    previous: Mapping[str, ReferenceValue],
-    current: Mapping[str, ReferenceValue],
-) -> tuple[Mapping[str, ReferenceValue], str]:
-    """上一次对照的参照指针能不能复用。**对不齐就整体用新的，不部分复用。**
-
-    半新半旧的指针集合是一种**看起来有证据、实际指错地方**的状态：
-    每条指针本身都合法，只有「它们来自同一次对齐」这个前提悄悄不成立了。
-
-    对不齐的三种情形，逐条对应 `L-12` 的原文：
-    - **未匹配 / 长度变化** ⇒ 字段集不同
-    - **映射冲突** ⇒ 同一个 `field_id` 这次指向了另一个列名
-    - 附加一条本项目自己的：`mapping_version` 变了 ⇒ 口径版本换了，旧指针不再是同一套规则
-
-    ⚠️ **本函数的适用范围只到对照参照集。** `L-12` 的完整形态（整条证据链的
-    指针对齐）被 `U-01` 正当挡着 —— 证据链字段集要等 Phase 2 的复核实验数据才定，
-    不得在此提前拍板。两者不是同一件事，`CONTEXT §8` 末表记的是后者。
-
-    返回 `(可用的映射, 不能复用的理由)`。可复用时理由是空串。
-    """
-    if set(previous) != set(current):
-        return current, (
-            f"字段集变了：上次 {len(previous)} 个，这次 {len(current)} 个，"
-            f"差集 {sorted(set(previous) ^ set(current))}"
-        )
-    for field_id, new in current.items():
-        old = previous[field_id]
-        if old.column_name != new.column_name:
-            return current, (
-                f"{field_id} 的列名变了：{old.column_name!r} → {new.column_name!r}"
-            )
-        if old.mapping_version != new.mapping_version:
-            return current, (
-                f"{field_id} 的 mapping_version 变了："
-                f"{old.mapping_version} → {new.mapping_version}"
-            )
-    return previous, ""
+#
+# 这里原本有一个 `align_references()`：给定上一次与本次的参照集，判断旧值能不能复用，
+# 对不齐就整体用新的。它有四条测试、看起来是 `L-12` 的落地。
+#
+# 🔴 **独立复核实测它的语义是错的**：判据只看**字段集 / 列名 / `mapping_version`**
+# 三样。于是字段集、列名、版本号全没变而 `period` 与 `raw` 变了的时候，
+# 它返回 `aligned is previous`、`reason` 为空串 ——
+# **换一期报告去对照，它会说「对齐了」并把上一期的数字交给调用方。**
+# 那正是 `L-12` 原话「看起来有证据、实际指错地方」它自己要防的东西。
+#
+# **为什么处置是删掉而不是修**：它当时没有任何非测试调用点。
+# 一个没人调用、语义又不对、却带着四条绿测试的函数，比没有它更危险 ——
+# 那四条绿测试会让下一个接线的人以为对齐这件事已经解决了。
+# **删掉之后 `L-12` 回到「未落地」这个如实状态**，与
+# `CONTEXT §8` 末表原本就写的「`L-12` 被 `U-01` 正当挡着，Phase 2」重新一致。
+# （这条不一致是本轮才暴露的：`01.5-04-PLAN` 的 Task 3 要求实现它，
+#  而 `CONTEXT §8` 说它被挡着 —— 两份文档打架，我当时选了照 PLAN 做。）
+#
+# ⇒ 真要做时，判据必须先回答「证据链的字段集是什么」，而那是 `U-01`，Phase 2 的事。

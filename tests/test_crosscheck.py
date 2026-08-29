@@ -24,7 +24,6 @@ from extractor.crosscheck import (
     CrossCheckVerdict,
     IncomparableReason,
     ReferenceValue,
-    align_references,
     assert_akshare_mapping_within_definitions,
     cross_validate,
     cross_validate_batch,
@@ -702,48 +701,6 @@ def test_对照失败不改动已经算出的指标值():
     assert isinstance(outcome, Refusal)
     assert [r.value for r in batch.records] == before
     assert batch.records[0].value == Decimal("272699660092.25")
-
-
-# --------------------------------------------------------------------------
-# 六、L-12：对齐失败一律用新值，不部分复用
-# --------------------------------------------------------------------------
-
-
-def test_字段集变了就整体用新值():
-    previous = {"bs.total_assets": _reference()}
-    current = {
-        "bs.total_assets": _reference(raw=1.0),
-        "bs.inventory": _reference(
-            field_id="bs.inventory", column_name="存货", raw=2.0
-        ),
-    }
-    aligned, reason = align_references(previous, current)
-    assert aligned is current
-    assert "字段集" in reason
-
-
-def test_同一字段换了列名就整体用新值():
-    previous = {"bs.total_assets": _reference()}
-    current = {"bs.total_assets": _reference(column_name="资产合计")}
-    aligned, reason = align_references(previous, current)
-    assert aligned is current
-    assert "列名" in reason
-
-
-def test_映射版本变了就整体用新值():
-    previous = {"bs.total_assets": _reference()}
-    current = {"bs.total_assets": _reference(mapping_version=2)}
-    aligned, reason = align_references(previous, current)
-    assert aligned is current
-    assert "mapping_version" in reason
-
-
-def test_完全对齐时才允许复用旧指针():
-    previous = {"bs.total_assets": _reference()}
-    current = {"bs.total_assets": _reference(raw=1.0)}
-    aligned, reason = align_references(previous, current)
-    assert aligned is previous
-    assert reason == ""
 
 
 # --------------------------------------------------------------------------
