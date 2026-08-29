@@ -41,7 +41,9 @@ from __future__ import annotations
 
 import tempfile
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
+from typing import Mapping, Sequence
 
 from semantic_layer.resolve import Refusal, RefusalCode
 
@@ -73,6 +75,11 @@ __all__ = [
     "extract_records",
     "extract_batch",
     "DEFAULT_EXTRACTION_PLAN",
+    "PLACEHOLDER_TEXTS",
+    "REQUIRED_EVIDENCE_KEYS",
+    "CompletenessReport",
+    "evidence_completeness",
+    "completeness_report",
 ]
 
 DEFAULT_STATEMENT = "合并资产负债表"
@@ -479,3 +486,281 @@ def extract_batch(
             ),
         )
     # 临时目录随 with 一起删除 —— PDF 不落地（台账 N-3）。
+
+
+# --------------------------------------------------------------------------
+# AC-05：证据链的字段齐全率（口径 2026-08-22 写死，见 `PROJECT_SPEC.md` §9）
+# --------------------------------------------------------------------------
+
+#: 「有键但没真值」的文本取值。命中即**不计入齐全**。
+#:
+#: 反面实证是 hello-agents 的会话记录：八键齐全率 100%，其中 `llm_provider`
+#: **恒为 `"unknown"`**（`references/hello-agents-framework-core.md` §7）。
+#: 键在、类型对、非空 —— 三条全过，而它一个字的信息也没有。
+#: ⇒ 「齐全」的判据不能是「键存在」，也不能只是「非空串」。
+PLACEHOLDER_TEXTS: frozenset[str] = frozenset(
+    {
+        "unknown",
+        "n/a",
+        "na",
+        "null",
+        "none",
+        "nil",
+        "tbd",
+        "-",
+        "--",
+        "—",
+        "–",
+        "未知",
+        "待定",
+        "暂无",
+        "不详",
+        "无",
+    }
+)
+
+#: 计入齐全率的键。**这是一份显式清单，不是「`to_dict` 的全部键」。**
+#:
+#: 为什么不取全部键 —— 四类被**刻意排除**，每类的理由不同：
+#:
+#: 1. **`value` / `cell_state`** 是「被报告的事实」，不是关于它的证据。
+#:    它们有合法的 `None` 态（`ROW_ABSENT` 不带值、`ATTEMPTED_UNKNOWN` 两者都 None），
+#:    由 `record._check_state_coherence` 绑死。把它们计进来，一条正确的
+#:    「这张表没有这一行」记录会被判成证据不齐 —— 那会让 `AC-05`
+#:    这条**保证类**标准（<100% 即失败）变成一个正确的抽取器永远达不到的标准。
+#:
+#: 2. **`kind` / `status` / `retrieval` / `basis_confirmation`** 在
+#:    `ExtractionRecord.__post_init__` 里已被强制为枚举成员，报告时判「是不是枚举」
+#:    **构造上恒真**。计进来只会给分母加上一个永远不会失败的项 ——
+#:    那正是 `AC-05` 自己要防的「用一堆必然通过的字段把齐全率刷到 100%」。
+#:    `source_freshness` 是这组里**唯一**留下的：它有一个真正表示「没有值」
+#:    的成员（`UNKNOWN` = 无法判定取回时点），判它非 `UNKNOWN` 是有辨析力的。
+#:
+#: 3. **`header_inherited`** 是布尔留证，`False` 本身就是真值 ——
+#:    「有真值」在它上面没有辨析力。它由 `tests/test_evidence_ids.py` 的
+#:    序列化覆盖检查看着（那条检查抓的是**键有没有被丢掉**，不是值满不满）。
+#:
+#: 4. **`truncation_stats`** 是条件必需，不是恒必需：`SUCCESS` 时它**必须**为空。
+#:    按「非空才算齐全」计，一条正确的成功记录会被判不齐。它走
+#:    `_truncation_problems()` 那条单独的合法性判定。
+REQUIRED_EVIDENCE_KEYS: tuple[str, ...] = (
+    "field_id",
+    "page",
+    "anchor_page",
+    "pdf_sha256",
+    "source_url",
+    "unit",
+    "currency",
+    "column_header",
+    "mapping_version",
+    "selection.sampling",
+    "selection.order_key",
+    "selection.truncation",
+    "batch_id",
+    "source_freshness",
+)
+
+_TEXT_KEYS = frozenset(
+    {
+        "field_id",
+        "pdf_sha256",
+        "source_url",
+        "unit",
+        "currency",
+        "column_header",
+        "batch_id",
+        "selection.sampling",
+        "selection.order_key",
+        "selection.truncation",
+    }
+)
+
+_POSITIVE_INT_KEYS = frozenset({"page", "anchor_page", "mapping_version"})
+
+_MISSING = object()
+
+
+def _dig(payload: Mapping, key: str):
+    """按 `a.b` 取值。取不到返回 `_MISSING` —— 与「取到了一个 `None`」区分开。
+
+    两者的处置文案不同（「键不在」vs「键在但取值是 null」），合并成一个「取不到」
+    就会在诊断里丢掉那一半信息 —— `notes.RestatementReading` 记的是同一件事。
+    """
+    node: object = payload
+    for part in key.split("."):
+        if not isinstance(node, Mapping) or part not in node:
+            return _MISSING
+        node = node[part]
+    return node
+
+
+def _judge(payload: Mapping, key: str) -> str | None:
+    """这一个键在这条证据链里算不算「有真值」。齐全返回 `None`，否则返回原因。"""
+    value = _dig(payload, key)
+    if value is _MISSING:
+        return "键不存在"
+    if value is None:
+        return "键在但取值是 null"
+
+    if key in _TEXT_KEYS:
+        if not isinstance(value, str):
+            return f"应为字符串，实际是 {type(value).__name__}"
+        if not value.strip():
+            return "空字符串"
+        if value.strip().casefold() in PLACEHOLDER_TEXTS:
+            return f"占位值 {value!r} —— 键在、非空，但一个字的信息也没有"
+        return None
+
+    if key in _POSITIVE_INT_KEYS:
+        if isinstance(value, bool) or not isinstance(value, int):
+            return f"应为整数，实际是 {value!r}"
+        if value < 1:
+            return f"应 >= 1，实际是 {value}"
+        return None
+
+    if key == "source_freshness":
+        if not isinstance(value, str):
+            return f"应为字符串，实际是 {type(value).__name__}"
+        if value == SourceFreshness.UNKNOWN.name:
+            # 一条记录如实说「判不出取回时点」是**诚实的**，`record.py` 说得对。
+            # 但 AC-05 数的是「这个字段有没有真值」，而它此时正是**没有**。
+            # 两件事不冲突：构造边界要求它显式传入（不许默认取一个），
+            # 齐全率则如实把它记成一处缺口。方向是保守的 —— 只会把率往下拉。
+            return "UNKNOWN —— 如实声明判不出，但它不是一个值"
+        return None
+
+    raise AssertionError(f"{key!r} 在 REQUIRED_EVIDENCE_KEYS 里，却没有对应的判据")
+
+
+def _truncation_problems(payload: Mapping) -> list[str]:
+    """`L-45` 在**序列化边界**上的复查，以及 `AC-05` 的「恒零计数」那一条。
+
+    `ExtractionRecord.__post_init__` 已经在**构造边界**拦了前两条
+    （`tests/test_record.py::test_partial_必须带非空_truncation_stats_而_success_必须为空`），
+    这里不是重复：证据链是**读回来的 JSON**，它没有经过那个构造器。
+    复核者手上的就是这份 JSON，判据得在这一层也成立。
+
+    第三条是构造边界**没有**的：`__post_init__` 只要求 `PARTIAL` 时 `truncation_stats`
+    非空，`{"dropped_rows": 0}` 照样构造得出来 —— 那是 `AC-05` 点名的「恒零计数」，
+    报了「我截断了」却报不出截了什么。
+    """
+    problems: list[str] = []
+    status = _dig(payload, "status")
+    stats = _dig(payload, "truncation_stats")
+    if status is _MISSING or stats is _MISSING:
+        problems.append("status 或 truncation_stats 键不存在，L-45 无从判起")
+        return problems
+    if not isinstance(stats, Mapping):
+        problems.append(f"truncation_stats 应为映射，实际是 {type(stats).__name__}")
+        return problems
+
+    if status == ExtractionStatus.SUCCESS.name and stats:
+        problems.append(
+            f"status=SUCCESS 却带着非空的 truncation_stats {dict(stats)!r} —— "
+            "被截断的抽取一律报 PARTIAL（L-45）"
+        )
+    if status == ExtractionStatus.PARTIAL.name:
+        if not stats:
+            problems.append("status=PARTIAL 但 truncation_stats 为空 —— 报不出截了多少（L-45）")
+        elif not any(
+            isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in stats.values()
+        ):
+            problems.append(
+                f"status=PARTIAL 而 truncation_stats {dict(stats)!r} 里没有一个正数 —— "
+                "AC-05 点名的恒零计数：报了截断，却报不出截了什么"
+            )
+    return problems
+
+
+@dataclass(frozen=True)
+class CompletenessReport:
+    """`AC-05` 的一次测量。**分子分母都进证据链**，不只给一个比率。
+
+    只给比率的话，`0.98` 与 `49/50` 在复核者眼里是同一个数，
+    而后者能直接问「少的那一条是哪条」。沿用 `D-029` 判据 4 的同一先例。
+    """
+
+    keys_checked: tuple[str, ...]
+    filled: int
+    total: int
+    #: `(field_id, key, 原因)`。**逐条列出来**，不只报个数 ——
+    #: 「25 条进去 24 条出来」在 JSON 里看不出少了谁，那是复核 `RV-3` 记的形状。
+    gaps: tuple[tuple[str, str, str], ...]
+    #: `(field_id, 原因)`。与 `gaps` 分开：**缺字段**和**字段之间自相矛盾**
+    #: 是两类问题，合并成一个数就没法分别处置了。
+    illegal: tuple[tuple[str, str], ...]
+
+    @property
+    def rate(self) -> Fraction:
+        """齐全率。**空批次返回 0，不返回 1。**
+
+        「一条记录都没有」不是「证据齐全」。返回 1 的话，一个什么都没抽到的批次
+        会满足 `AC-05` —— 那正是这条标准写死计数口径要防的那种满足方式。
+        """
+        if self.total == 0:
+            return Fraction(0)
+        return Fraction(self.filled, self.total)
+
+    def meets_ac05(self) -> bool:
+        """`AC-05` 是**保证类**标准：齐全率 < 100% 即失败（`PROJECT_SPEC.md` §9.1）。"""
+        return self.rate == 1 and not self.illegal
+
+    def to_dict(self) -> dict:
+        return {
+            "keys_checked": list(self.keys_checked),
+            "filled": self.filled,
+            "total": self.total,
+            "rate": f"{self.rate.numerator}/{self.rate.denominator}",
+            "gaps": [
+                {"field_id": fid, "key": key, "reason": reason} for fid, key, reason in self.gaps
+            ],
+            "illegal": [{"field_id": fid, "reason": reason} for fid, reason in self.illegal],
+            "meets_ac05": self.meets_ac05(),
+        }
+
+
+def evidence_completeness(payloads: Sequence[Mapping]) -> CompletenessReport:
+    """在**序列化后的证据链**上按 `AC-05` 写死的口径数一遍。
+
+    ## 为什么判的是 payload 而不是 `ExtractionRecord` 对象
+
+    因为在对象上这条检查**恒真**。`ExtractionRecord.__post_init__` 已经把
+    每个文本字段 fail-closed 成非空（`L-34`），页码 fail-closed 成 `>= 1`，
+    枚举 fail-closed 成成员 —— 一个能被构造出来的记录，对象层面必然「齐全」。
+    在那上面数齐全率，得到的是一个**结构上只能是 100%** 的数字，
+    而这正是 `AC-05` 的反面实证在讲的事。
+
+    证据链是**给人读的 JSON**：它可以来自旧版本产物、来自手改的文件、
+    来自一个还没有那些不变量的写入方。判据得在人真正拿到的那一层成立。
+    """
+    gaps: list[tuple[str, str, str]] = []
+    illegal: list[tuple[str, str]] = []
+    filled = 0
+    total = 0
+    for index, payload in enumerate(payloads):
+        raw_id = _dig(payload, "field_id")
+        if isinstance(raw_id, str) and raw_id.strip():
+            where = raw_id
+        else:
+            where = f"<第 {index + 1} 条无 field_id>"
+        for key in REQUIRED_EVIDENCE_KEYS:
+            total += 1
+            reason = _judge(payload, key)
+            if reason is None:
+                filled += 1
+            else:
+                gaps.append((where, key, reason))
+        for problem in _truncation_problems(payload):
+            illegal.append((where, problem))
+    return CompletenessReport(
+        keys_checked=REQUIRED_EVIDENCE_KEYS,
+        filled=filled,
+        total=total,
+        gaps=tuple(gaps),
+        illegal=tuple(illegal),
+    )
+
+
+def completeness_report(batch: ExtractionBatch) -> CompletenessReport:
+    """一个批次的 `AC-05` 测量。序列化一次再数 —— 与复核者读到的是同一份东西。"""
+    return evidence_completeness([record.to_dict() for record in batch.records])

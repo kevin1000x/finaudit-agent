@@ -63,6 +63,8 @@ __all__ = [
     "ExtractionRecord",
     "ExtractionBatch",
     "make_batch_id",
+    "EVIDENCE_IDENTIFIER_FIELDS",
+    "evidence_identifiers",
 ]
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -398,6 +400,13 @@ class ExtractionRecord:
             "unit": self.unit,
             "currency": self.currency,
             "column_header": self.column_header,
+            # 2026-08-29 补：这个键此前**不在序列化输出里**。字段本身是 2026-08-27
+            # 为了「算出来的留证不许在接线时被丢掉」才加的，然后它在 `to_dict` 这一层
+            # 又被丢了一次 —— `python -m extractor extract --json` 的 `records[]`
+            # 走的正是本函数，所以复核者拿到的证据链里看不见「这一行的列是继承来的」。
+            # 同一个形状、下一层。由 `tests/test_evidence_ids.py` 的
+            # `test_序列化输出覆盖记录的每个字段` 机械锁住，不再靠记得。
+            "header_inherited": self.header_inherited,
             "mapping_version": self.mapping_version,
             "selection": self.selection.to_dict(),
             "truncation_stats": dict(self.truncation_stats),
@@ -494,6 +503,57 @@ class ExtractionBatch:
             if record.field_id == field_id:
                 return record
         return None
+
+
+# --------------------------------------------------------------------------
+# J-6：证据标识的字面存在性
+# --------------------------------------------------------------------------
+
+#: 一条记录里**可以被回答直接引用**的标识（`EVAL_CASES.md` §3.3 的 `J-6`）。
+#:
+#: 选进来的判据只有一条：**它是不是一个回答会拿去指认「我用的是这个」的串**。
+#: `field_id` 指认哪个字段、两个页码指认印在哪一页、`batch_id` 指认哪一批、
+#: `column_header` 指认取的是哪一列、`pdf_sha256` 指认哪一份文件。
+#:
+#: **`value` 不在其列**：数字是被证明的东西，不是证明。J-6 原文「不得因为最终数字
+#: 正确而放过」讲的正是这个方向 —— 拿结论去背书证据，顺序是反的。
+#:
+#: **`unit` / `currency` / `mapping_version` 也不在其列**：它们是口径开关，
+#: 由 `field_id + mapping_version` 复原，本身不承担「指认某一处出处」的职能。
+#: 把它们塞进来会让这个集合从「标识」滑成「所有字段」，那样 J-6 就退化成
+#: 「to_dict 的键都在」——一条永远为真的检查。
+EVIDENCE_IDENTIFIER_FIELDS: tuple[str, ...] = (
+    "field_id",
+    "page",
+    "anchor_page",
+    "batch_id",
+    "column_header",
+    "pdf_sha256",
+)
+
+
+def evidence_identifiers(record: ExtractionRecord) -> frozenset[str]:
+    """这条记录的全部证据标识，一律取**字符串形式**，供逐字比对（`J-6`）。
+
+    页码返回 `"60"` 而不是 `60`：J-6 查的是「这个标识有没有逐字出现在
+    上下文或抽取记录里」，而回答里写的是字符串。两边不统一成字符串，
+    比对就得在调用点各写各的转换 —— 那正是 `L-55` 讲的「要求每次都做的事
+    不能放在调用点」。
+
+    **本函数不做任何校验。** 它只把标识摆出来，判定「摆出来的这些能不能对上」
+    是 `tests/test_evidence_ids.py` 的事。理由是 `J-6` 明写它是
+    **唯一一条不需要 LLM 判分就能跑的证据链检查**，判定逻辑要留在能被复跑的地方，
+    不要藏进一个返回集合的函数里。
+
+    ⚠️ **返回的是集合，会去重。** 若 `page == anchor_page`（标题与数值同页，
+    茅台 p60 的多数行就是），集合只有一个 `"60"`。这不影响 J-6 的方向 ——
+    它查的是「回答里的标识能不能在记录里找到」，不是「记录里有几个不同的标识」。
+    """
+    out: set[str] = set()
+    for name in EVIDENCE_IDENTIFIER_FIELDS:
+        value = getattr(record, name)
+        out.add(value if isinstance(value, str) else str(value))
+    return frozenset(out)
 
 
 def _collection_typed_fields() -> list[str]:
