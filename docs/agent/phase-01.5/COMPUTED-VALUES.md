@@ -219,8 +219,13 @@
 
 ## §4 对 wave 5 的硬输入
 
-1. **三支 `kind` 的实现**（`NOTE_CHECKBOX` / `COLUMN_HEADER_PRESENCE` / `REPORT_METADATA`）
-   —— 不实现，6 个指标的可比性标记永远判不了。
+1. ~~**三支 `kind` 的实现**（`NOTE_CHECKBOX` / `COLUMN_HEADER_PRESENCE` / `REPORT_METADATA`）~~
+   → **2026-08-28 更正（`N-43`）**：`NOTE_CHECKBOX` 已由 `extractor.notes` 实现（`01.5-05`）；
+   **另外两支不属于任何一份 PLAN** —— 六份 PLAN 里 `COLUMN_HEADER_PRESENCE` /
+   `REPORT_METADATA` **零命中**。本条原来的「三支由 wave 5 实现」是从
+   `pipeline.py` 一句**自己编出来的排期注释**转抄来的，那句注释比 PLAN 晚两天写。
+   ⇒ 余下两支是**未排期的欠账**，不是「下一个 wave 的活」。
+   不实现，6 个指标的可比性标记永远判不了。
 2. **`flags_status` 该不该阻断计算**，等那三支实现之后拿真实取值定。
    ⚠️ 那时的判据应当是「`restated` 真的取到值之后，`unevaluable` 还剩几个」，
    而不是「要不要更严格」。

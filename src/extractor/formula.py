@@ -475,7 +475,8 @@ class ComputeResult:
     #:
     #: 🔴 **这个字段是 2026-08-27 接上真实字段后补的，它记的是一个真实缺口**：
     #: 8 个指标里 6 个的 `restated` 触发条件引用 `notes.restatement_flag`，
-    #: 而那个字段的 `kind` 是 `COLUMN_HEADER_PRESENCE`，wave 5 才实现
+    #: 而那个字段的 `kind` 是 `COLUMN_HEADER_PRESENCE` —— **至今未实现，且不属于任何计划**
+    #: （2026-08-28 更正：原文写「wave 5 才实现」，那个排期是编出来的，见台账 `N-43`）
     #: ⇒ **数值算得出来，它的可比性标记判不了**。
     #:
     #: 补这个字段之前，`ComputeResult` 里没有任何东西透露这件事 ——

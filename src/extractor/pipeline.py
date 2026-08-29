@@ -80,7 +80,15 @@ DEFAULT_STATEMENT = "合并资产负债表"
 #: **本模块只处理从「某一行取某一列」的两个类别。**
 #:
 #: 另外三支（`NOTE_CHECKBOX` / `COLUMN_HEADER_PRESENCE` / `REPORT_METADATA`）
-#: 结构上不取行值，由 `01.5-05` 在各自的模块里实现。
+#: 结构上不取行值，在各自的模块里实现。**目前只实现了 `NOTE_CHECKBOX`**
+#: （`extractor.notes`，`01.5-05` / wave 4）。
+#:
+#: ⚠️ **本行 2026-08-28 更正**（`N-43`）：原文写「由 `01.5-05` 实现」，指的是三支。
+#: 那是**这条注释自己编出来的排期** —— 它写于 `db8ab4d`（08-27），
+#: 而 `01.5-05-PLAN.md` 早在 `72612ec`（08-25）就已存在，且**通篇没提另外两支**
+#: （`COLUMN_HEADER_PRESENCE` / `REPORT_METADATA` 在六份 PLAN 里全部零命中）。
+#: 这句注释后来被 `COMPUTED-VALUES` 与交接文档照抄，成了「wave 5 要做三支 kind」这个说法的源头。
+#: **余下两支目前不属于任何一份计划**，见台账 `N-43`。
 #: 这里只建**分派点**并对未实现的类别显式抛错 ——
 #: 按 `L-35` 类别判定只能靠显式 `kind`，按 `L-55` 各类别的处理逻辑不该堆在包装层里。
 #:
@@ -342,7 +350,9 @@ def extract_records(
             f"{sorted(k.name for k in _KIND_HANDLED_HERE)}；"
             f"以下条目的 kind 尚未实现：{[(e.field_id, e.kind.name) for e in unsupported]}。"
             "**分派点在这里，实现不在这里**（L-55：各类别的处理逻辑不该堆在包装层）。"
-            "NOTE_CHECKBOX / COLUMN_HEADER_PRESENCE / REPORT_METADATA 三支由 01.5-05 实现。"
+            "NOTE_CHECKBOX 已由 extractor.notes 实现（01.5-05）；"
+            "COLUMN_HEADER_PRESENCE / REPORT_METADATA 尚未实现，"
+            "且**不属于任何一份已写好的 PLAN**（台账 N-43）。"
         )
     # `batch` 给了就往里并 —— 跨报表算指标时（如毛利率要 `is` 两个字段、
     # 而勾稽闸门建在 `bs` 三个字段上）必须是**同一个批次**：
