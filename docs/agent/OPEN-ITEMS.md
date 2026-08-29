@@ -332,11 +332,18 @@ T-1 归并时发现**四条已经落地的东西，`references/` 里的标注仍
      两个方向都造回归验过。
   2. ✅ 五处假声称已更正（`pipeline.py` ×2 / `formula.py` / `COMPUTED-VALUES` /
      `01.5-03-SUMMARY` 追记）
-- **判据（待操作者裁决）**：
-  1. [ ] 余下两支 `kind` 排进哪里：新写一份 `01.5-07-PLAN`，还是并进 `01.5-06`，
-     还是推到 Phase 2？**执行者不代拍** —— 它改变 Phase 1.5 的范围
-  2. [ ] 若决定不做，`SC-5` 与 `flags_status` 的现状要在 `VERIFICATION.md` 里
-     写成**已知缺口**而不是待办
+- **判据**：
+  1. ✅ **已裁决（操作者 2026-08-28）：新写一份 PLAN 并进 wave 5，不推到 Phase 2。**
+     ⇒ `01.5-07-PLAN.md`（`wave: 5`）+ ROADMAP 条目；
+     **刚建的 `tests/test_plan_waves.py` 当场校验了它**（frontmatter 与 ROADMAP 标注一致）。
+     两支已实现（`1e06a4b`）：`read_restatement_flag` / `derive_reporting_period_months`。
+  2. ~~若决定不做，写成已知缺口~~ —— **前提消失**（决定做了）。
+     留档不删：「问题因前提消失而消解」与「问题被回答」是两回事，混同会让决策记录失真。
+  3. [ ] **仍未做完的那一半**：三支 `kind` 都有实现了，但**没接进 `pipeline` 的批次产出**。
+     接之前要先回答：`ExtractionRecord` 的 `column_header` / `unit` / `currency`
+     对一个复选框字段意味着什么。**编一个值填进去就是 `F-2`。**
+     ⚠️ 在接上之前，「`restated` 能判了」这件事**还没有传导到 `flags_status`** ——
+     6 个指标的 `unevaluable` 现状不变。
 
 ### ~~N-42 — 交叉引用门禁看不见未跟踪的新文件~~ → **已修 2026-08-28**
 
