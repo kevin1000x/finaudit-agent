@@ -381,6 +381,104 @@ ls: cannot access 'docs/agent/phase-01/flag-requests-*': No such file or directo
 EXIT=2
 ```
 
+## Phase 1.5 — 数据接入层
+
+### §A 两道闸门的负控制（`01.5-06` Task 1，`J-5` / `L-5`，2026-08-28 实跑）
+
+> **`A guard only guards if the regression actually fails it.`**
+> 本节四段输出全部是**当场跑出来的**，不是转述。
+> 变异一律带 `PYTHONDONTWRITEBYTECODE=1`（`N-41`：等长变异会被字节码缓存骗过）。
+
+⚠️ **一处与计划不符，如实记**：`01.5-06-PLAN` Task 1 的 `<files>` 写的是要动
+`tests/test_reconciliation.py` 与 `tests/test_column_binding.py`，
+而**两条负控制用例在 wave 1 与 wave 3 就已经写好了**。
+本任务因此**没有产生任何代码改动**（`git status --porcelain` 全程为空），
+只剩下「跑一遍程序并留下记录」这一半。计划高估了工作量，不是少做了事。
+
+⚠️ 另一处：计划写的变异对象是 `locate.resolve_column`，**该函数不存在**；
+实际的列角色判定在 `locate._role_of`（由 `bind_columns` 调用）。按实际符号做的变异。
+
+#### A.1 勾稽闸门 —— 造回归
+
+把 `reconcile.reconcile_batch` 的判定改成恒真（**只改判定那一行**，
+且写入前先 `ast.parse` 自证语法仍合法 —— `rules/commands.md` 记的 2026-08-24
+第一次实跑就是被语法错误骗过去的）：
+
+```
+-             passed=abs(difference) <= tolerance,
++             passed=True,  # NEGATIVE-CONTROL MUTATION
+
+$ .venv/Scripts/python -m pytest tests/test_reconciliation.py -q
+FAILED tests/test_reconciliation.py::test_负债合计人为加一元后闸门拦住
+FAILED tests/test_reconciliation.py::test_差额恰好一分仍算通过而一分零一厘不算
+FAILED tests/test_reconciliation.py::test_闸门未通过时计算层拒答且不产出数值
+3 failed, 7 passed in 0.43s
+```
+
+**红的原因逐字核过**（`J-5` 要求的不只是「会红」，还要「红的原因正确」）：
+
+```
+>       assert result.passed is False
+E       AssertionError: assert True is False
+E        +  where True = ReconcileResult(passed=True, ...,
+E                        difference=Decimal('-1.00'), tolerance=Decimal('0.01'), ...).passed
+```
+
+⇒ 差额 **`-1.00`** 被放行了。**是断言失败，不是 `ImportError` / 语法错误 / 解析失败。**
+
+#### A.2 勾稽闸门 —— 回退
+
+```
+$ .venv/Scripts/python -m pytest tests/test_reconciliation.py -q
+10 passed in 0.27s
+```
+
+#### A.3 列绑定 —— 造回归（**本节最要紧的一段**）
+
+把 `locate._role_of` 改成不看表头文字、按位置约定给角色 ——
+即回到 `D-016` 补充节**明令禁止**的那种做法：
+
+```
++     return "期末余额", "positional"  # NEGATIVE-CONTROL MUTATION：按位置，不看表头
+
+$ .venv/Scripts/python -m pytest tests/test_column_binding.py -q
+FAILED tests/test_column_binding.py::test_全取期初列时勾稽照样通过而列绑定不通过
+FAILED tests/test_column_binding.py::test_不通过时留证含版面原文与两个口径名
+FAILED tests/test_column_binding.py::test_营业收入本期与上期匹配同一行却取到不同的值
+3 failed, 5 passed in 0.71s
+
+$ .venv/Scripts/python -m pytest tests/test_reconciliation.py -q     ← 同一个变异下
+10 passed in 0.28s
+```
+
+🔴 **后面那 `10 passed` 才是这条负控制的全部意义。**
+它逐字证明了 `D-016` 补充判据要求的那件事：
+**单独跑勾稽闸门不足以让列绑定用例通过** ——
+列全取错了，而恒等式照样成立（同一列内部自洽），勾稽闸门**一条都没红**。
+这正是 `A-9` 记的那个盲区，现在它有了可执行的证明而不只是一段推理。
+
+#### A.4 列绑定 —— 回退
+
+```
+$ .venv/Scripts/python -m pytest tests/test_column_binding.py tests/test_reconciliation.py -q
+18 passed in 0.75s
+
+$ git status --porcelain src/extractor/
+（无输出 —— 两处变异已全部回退）
+
+$ .venv/Scripts/python scripts/check_gates.py
+EXIT=0
+
+$ .venv/Scripts/python -m pytest -q
+699 passed in 21.59s
+```
+
+| 验收标准 | 验证方法 | 实际结果 | 状态 |
+|---|---|---|---|
+| `D-018` 判据 1：勾稽闸门真的会拦 | 造回归 → 看红 → 核因 → 回退 | 差额 `-1.00` 被放行时三条用例红 | **PASS** |
+| `D-016` 补充判据：勾稽替代不了列绑定 | 同上，且同时跑勾稽 | 列绑定 3 红 / 勾稽 **10 全绿** | **PASS** |
+| `J-5`：红的原因要正确 | 逐字读失败输出 | 是断言失败，非导入/语法错误 | **PASS** |
+
 ## Phase 2 — 证据链
 
 | 验收标准 | 验证方法 | 实际命令 | 期望结果 | 实际结果 | 证据 | 状态 |
