@@ -55,6 +55,7 @@ from .locate import (
     find_section_anchors,
     next_anchor_after,
     read_applicability,
+    strip_invisible,
 )
 from .record import RecordKind
 
@@ -305,3 +306,213 @@ def derive_business_combination_type(
 
 #: 本模块产出的记录类别。写成常量而不是每处字面量：同名口径常量只允许一个定义点（`L-39`）。
 RECORD_KIND = RecordKind.NOTE_CHECKBOX
+
+
+# --------------------------------------------------------------------------
+# COLUMN_HEADER_PRESENCE —— 判某个列头在不在，不取任何行的值（01.5-07）
+# --------------------------------------------------------------------------
+
+#: 章节正文，不含序号。茅台 2023 排「七、」，跨公司会变（`C-2`）。
+RESTATEMENT_SECTION_TITLE = "近三年主要会计数据和财务指标"
+
+#: 区间右端点。实测下一章是「八、境内外会计准则下会计数据差异」（p6 y=77.7）。
+RESTATEMENT_NEXT_SECTION_TITLE = "境内外会计准则下会计数据差异"
+
+#: 判定要找的两个列头。**逐字**，取自 `data/mappings/pdf/notes.yaml` 的口径。
+RESTATEMENT_HEADERS = ("调整后", "调整前")
+
+
+@dataclass(frozen=True)
+class RestatementReading:
+    """「调整后 / 调整前」列头是否在场的一次判定。
+
+    `restated is None` ⟺ `undecidable is True`。**两者必须同进同出** ——
+    留下一个「判不了但给了个布尔」的中间态，下游没有任何办法察觉。
+    """
+
+    restated: bool | None
+    anchor_page: int | None
+    matched_lines: tuple[str, ...]
+    matched_pages: tuple[int, ...]
+    undecidable: bool
+    undecidable_reason: str = ""
+
+    def __post_init__(self) -> None:
+        if self.undecidable != (self.restated is None):
+            raise ValueError(
+                f"undecidable={self.undecidable} 与 restated={self.restated!r} 不一致。"
+                "判不了就必须没有布尔值，有布尔值就必须是判出来的。"
+            )
+        if self.undecidable and not self.undecidable_reason:
+            raise ValueError("undecidable 为真时必须给出理由（L-9）")
+        if self.restated is False and self.matched_lines:
+            raise ValueError("判 False 却带着命中行，两者矛盾")
+
+    def to_dict(self) -> dict:
+        return {
+            "field": "notes.restatement_flag",
+            "restated": self.restated,
+            "anchor_page": self.anchor_page,
+            "matched_lines": list(self.matched_lines),
+            "matched_pages": list(self.matched_pages),
+            "undecidable": self.undecidable,
+            "undecidable_reason": self.undecidable_reason,
+        }
+
+
+def restatement_from_lines(
+    rows: "list[tuple[int, str]]",
+    anchor_page: int | None,
+    span_pages: "tuple[int, int] | None" = None,
+) -> RestatementReading:
+    """纯函数内核：吃 `(page, text)`，判两个列头在不在。
+
+    ## 为什么 `False` 只在锚点定位成功时才允许返回
+
+    🔴 **这一支的风险与复选项不同。** 复选项有 `√` / `□` 两个互斥标记，
+    读不到标记就是读不到，二者在数据上可分。
+    而列头只有「在」与「不在」—— **「不在」和「没读到」长得一样**。
+
+    所以锚点没定到时返回的是 `undecidable`，不是 `False`。
+    返回 `False` 等于宣称「这家公司本期没有追溯重述」，
+    而我们其实只是没找到那一章。
+
+    ## 为什么必须限定区间
+
+    实测：整份茅台 2023 里「调整后」命中 **3 页 5 行**（p5 / p78 / p107），
+    只有 p5 那 3 行在本章节内。**干扰项与目标字面完全相同** ——
+    这比 p77 的会计政策段落更难查，因为连人工复核都分不出来。
+
+    ⚠️ **单样本，跨排版未验证。** 「有 调整后/调整前 列 ⟺ 发生追溯重述」
+    这条规则在茅台 2023 上成立，且与 p5 y=487.2 逐字写着的
+    「本公司对比较期间相关财务数据进行追溯调整」互证；
+    但**反例形态**（未重述却拆两列，或重述了却没拆）**一次都没观察到，也没有去找**。
+    按 `F-1`，此处不写成「已验证」。
+    """
+    if anchor_page is None:
+        return RestatementReading(
+            restated=None,
+            anchor_page=None,
+            matched_lines=(),
+            matched_pages=(),
+            undecidable=True,
+            undecidable_reason=(
+                f"定位不到章节 {RESTATEMENT_SECTION_TITLE!r} 的锚点。"
+                "**不据此判 False** —— 列头「不在」与「没读到」在数据上长得一样，"
+                "而全篇「调整后」另有两页命中（p78 / p107），退回全篇搜索必然误判。"
+            ),
+        )
+
+    lo, hi = span_pages if span_pages else (anchor_page, None)
+    matched: list[str] = []
+    pages: list[int] = []
+    for page, text in rows:
+        if page < lo or (hi is not None and page > hi):
+            continue
+        cleaned = strip_invisible(text)
+        if any(header in cleaned for header in RESTATEMENT_HEADERS):
+            matched.append(text)
+            pages.append(page)
+
+    return RestatementReading(
+        restated=bool(matched),
+        anchor_page=anchor_page,
+        matched_lines=tuple(matched),
+        matched_pages=tuple(dict.fromkeys(pages)),
+        undecidable=False,
+    )
+
+
+def read_restatement_flag(pdf, y_tolerance: float | None = None) -> RestatementReading:
+    """`notes.restatement_flag` —— 从 PDF 读。区间语义与 `read_scope_change` 相同。"""
+    from .locate import DEFAULT_Y_TOLERANCE
+
+    tolerance = DEFAULT_Y_TOLERANCE if y_tolerance is None else y_tolerance
+    anchors = find_section_anchors(
+        pdf, (RESTATEMENT_SECTION_TITLE, RESTATEMENT_NEXT_SECTION_TITLE), tolerance
+    )
+    section = [a for a in anchors if a.title == RESTATEMENT_SECTION_TITLE]
+    if len(section) != 1:
+        return restatement_from_lines([], anchor_page=None)
+
+    anchor = section[0]
+    nxt = next_anchor_after(anchors, anchor)
+    texts, _ = _lines_in_span(pdf, anchor, nxt, tolerance)
+    last_page = len(pdf.pages) if nxt is None else nxt.page
+    rows = _rows_in_span(pdf, anchor, nxt, tolerance)
+    return restatement_from_lines(
+        rows, anchor_page=anchor.page, span_pages=(anchor.page, last_page)
+    )
+
+
+def _rows_in_span(pdf, anchor, nxt, y_tolerance) -> "list[tuple[int, str]]":
+    """`[anchor, next_anchor)` 区间内的 `(page, text)`。"""
+    from .locate import _cluster_lines
+
+    out: list[tuple[int, str]] = []
+    last_page = len(pdf.pages) if nxt is None else nxt.page
+    for page_number in range(anchor.page, last_page + 1):
+        for line in _cluster_lines(pdf.pages[page_number - 1], page_number, y_tolerance):
+            position = (page_number, line.y)
+            if position <= (anchor.page, anchor.y):
+                continue
+            if nxt is not None and position >= (nxt.page, nxt.y):
+                continue
+            out.append((page_number, line.text))
+    return out
+
+
+# --------------------------------------------------------------------------
+# REPORT_METADATA —— 由报告类型派生，**不从版面取值**（01.5-07）
+# --------------------------------------------------------------------------
+
+
+class ReportType(Enum):
+    """本项目实际处理的报告类型。**只登记真的会走到的那些。**
+
+    多登记几种（半年报 / 季报）看起来更完备，实际是在为一条**没有任何代码路径
+    会到达**的规则维护取值域 —— 那条规则不被任何东西校验，会一直活着
+    直到有人当它是对的。要加，先让抽取链路真的支持那种报告。
+    """
+
+    ANNUAL = "annual"
+
+
+#: 报告类型 → 报告期月份数。**穷举，没有 fallback。**
+_PERIOD_MONTHS = {ReportType.ANNUAL: 12}
+
+
+def derive_reporting_period_months(report_type) -> int:
+    """`notes.reporting_period_months` —— **由报告类型派生，纸上不印这一行。**
+
+    `PROBE-14 §3` 实测：整份 143 页逐行搜四个候选串**全部零命中**。它不在版面上。
+
+    ⇒ 实现是一张穷举表加一条「不认识就抛」。**不许 fallback 到 12。**
+    一个「大概是年报所以 12」的默认，与 `units.py` 那条「单位大概是元」
+    是同一个形状：**错了也没有任何东西会报错。**
+    """
+    if not isinstance(report_type, ReportType):
+        raise ValueError(
+            f"报告类型 {report_type!r} 不在穷举表 {[t.value for t in ReportType]} 内。"
+            "**不回退到 12** —— 一个猜出来的报告期会让所有时段类指标静默错档。"
+        )
+    return _PERIOD_MONTHS[report_type]
+
+
+def reporting_period_months_provenance(report_type) -> dict:
+    """这个值的出处。**留证里必须看得出它不是从版面上取来的。**
+
+    混同「抽取到的」与「派生的」，复核者会去年报上找这一行 —— 而它不存在。
+    """
+    return {
+        "field": "notes.reporting_period_months",
+        "value": derive_reporting_period_months(report_type),
+        "derived": True,
+        "extracted_from_layout": False,
+        "report_type": report_type.value,
+        "note": (
+            "由报告类型派生：年度报告 ⇒ 12。**这一行不在纸上** —— "
+            "PROBE-14 §3 逐行搜四个候选串全部零命中。按 D-026 第 1 类，"
+            "SC-2 计数时走作废通道。"
+        ),
+    }

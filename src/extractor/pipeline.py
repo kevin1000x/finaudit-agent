@@ -80,8 +80,9 @@ DEFAULT_STATEMENT = "合并资产负债表"
 #: **本模块只处理从「某一行取某一列」的两个类别。**
 #:
 #: 另外三支（`NOTE_CHECKBOX` / `COLUMN_HEADER_PRESENCE` / `REPORT_METADATA`）
-#: 结构上不取行值，在各自的模块里实现。**目前只实现了 `NOTE_CHECKBOX`**
-#: （`extractor.notes`，`01.5-05` / wave 4）。
+#: 结构上不取行值，在 `extractor.notes` 里实现。**三支都已有实现**
+#: （`NOTE_CHECKBOX` 由 `01.5-05`；另两支由 `01.5-07`），
+#: 但**尚未接进本函数的批次产出** —— 见下方 `NotImplementedError` 的文案。
 #:
 #: ⚠️ **本行 2026-08-28 更正**（`N-43`）：原文写「由 `01.5-05` 实现」，指的是三支。
 #: 那是**这条注释自己编出来的排期** —— 它写于 `db8ab4d`（08-27），
@@ -350,9 +351,13 @@ def extract_records(
             f"{sorted(k.name for k in _KIND_HANDLED_HERE)}；"
             f"以下条目的 kind 尚未实现：{[(e.field_id, e.kind.name) for e in unsupported]}。"
             "**分派点在这里，实现不在这里**（L-55：各类别的处理逻辑不该堆在包装层）。"
-            "NOTE_CHECKBOX 已由 extractor.notes 实现（01.5-05）；"
-            "COLUMN_HEADER_PRESENCE / REPORT_METADATA 尚未实现，"
-            "且**不属于任何一份已写好的 PLAN**（台账 N-43）。"
+            "三支都已在 extractor.notes 里有实现："
+            "NOTE_CHECKBOX → read_scope_change（01.5-05）；"
+            "COLUMN_HEADER_PRESENCE → read_restatement_flag（01.5-07）；"
+            "REPORT_METADATA → derive_reporting_period_months（01.5-07）。"
+            "⚠️ **但它们还没有接进本函数的批次产出** —— 调用方目前要直接调那三个入口。"
+            "接进来需要先回答一个真问题：ExtractionRecord 的 column_header / unit / "
+            "currency 对一个复选框字段意味着什么。**编一个值填进去就是 F-2。**"
         )
     # `batch` 给了就往里并 —— 跨报表算指标时（如毛利率要 `is` 两个字段、
     # 而勾稽闸门建在 `bs` 三个字段上）必须是**同一个批次**：
