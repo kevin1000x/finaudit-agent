@@ -224,9 +224,43 @@ def _cmd_compute(args) -> int:
             if isinstance(outcome, Refusal):
                 print(f"拒答 [{outcome.code.name}] {outcome.metric_id}：{outcome.detail}")
             else:
-                print(f"{outcome.metric_id} = {outcome.value}（{outcome.unit}）")
+                print(
+                    f"{outcome.metric_id} = {outcome.value}（{outcome.unit}）"
+                    f"  {_comparability_line(outcome)}"
+                )
     # **一个拒答不让整批退出码变成 0**：拒答是正确行为，但调用方要看得见。
     return 3 if refused and refused == len(results) else 0
+
+
+def _comparability_line(outcome) -> str:
+    """人读输出里的可比性一栏。**三种状态各有各的字面，没有一种是「什么都不打印」。**
+
+    ## 为什么这一栏非有不可
+
+    `flags` / `flags_status` 一直都在 `--json` 里，而**人读输出只打一个数**。
+    对一个不加 `--json` 的使用者，那个标记等于不存在 ——
+    `revenue_growth_yoy` 会带着 `restated` 静静地打出一个同比增长率，
+    而它自己的 `common_pitfalls` 写着「比较期经追溯重述时，同比增长率含重述影响，
+    与未重述年度的同比数不在同一基础上」。
+
+    这正是 `ARCHITECTURE` §8.5 那条实证的形状：**算出来的留证在接线时被丢掉**
+    （hello-agents 的 `full_output_path` 形状完全正确、唯二两个调用点全部丢弃）。
+    只不过这次丢在**最后一层：打印**。
+
+    ## 为什么「没有标记」也要显式打出来
+
+    留空的话，「一个标记都没触发」与「根本没判」在屏幕上**长得一模一样**，
+    而两者的后果完全不同 —— `formula` 里那段注释讲的就是这件事，
+    这里是它在输出层的对应。⇒ 三种状态三种字面，**沉默不表示任何一种**。
+    """
+    status = getattr(outcome, "flags_status", None)
+    if status == "unevaluable":
+        note = (getattr(outcome, "flags_note", "") or "").splitlines()
+        why = note[0] if note else "未给出理由"
+        return f"⚠ 可比性标记判不了：{why}"
+    if getattr(outcome, "flags", ()):
+        return "⚠ 可比性标记：" + "、".join(outcome.flags)
+    return "可比性标记：无"
 
 
 #: 固件里 `all_label_sequences` 的取值范围。**刻意窄于运行时。**

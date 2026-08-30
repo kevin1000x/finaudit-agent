@@ -226,7 +226,8 @@ def test_接上之后flag真的置位而不是判不了(real_batch):
 
     from extractor.formula import compute_metrics
 
-    reconcile_batch(real_batch)
+    if not real_batch.sealed:
+        reconcile_batch(real_batch)
     metric_ids = sorted(
         load_definition(p).metric_id for p in iter_definition_paths(REPO_ROOT / "metrics")
     )
@@ -319,3 +320,56 @@ def test_记录的证据链能被序列化并保持齐全(real_batch):
     # 证据链要能出得去 —— note 记录的 value 是 bool / tuple，别在这里炸。
     blob = json.dumps([r.to_dict() for r in real_batch.records], ensure_ascii=False)
     assert "notes.restatement_flag" in blob
+
+
+# --------------------------------------------------------------------------
+# D-031：flag 不阻断计算 ⇒ 那它必须在**人读输出**里看得见
+# --------------------------------------------------------------------------
+
+
+def test_人读输出的三种可比性状态互不相同():
+    """`D-031` 的落地判据：**沉默不表示任何一种状态**。
+
+    留空的话，「一个标记都没触发」与「根本没判」在屏幕上长得一模一样，
+    而两者的后果完全不同。三种状态三种字面，逐条考。
+    """
+    import types
+
+    from extractor.__main__ import _comparability_line
+
+    raised = types.SimpleNamespace(
+        flags=("restated",), flags_status="evaluated", flags_note=""
+    )
+    clean = types.SimpleNamespace(flags=(), flags_status="evaluated", flags_note="")
+    blind = types.SimpleNamespace(
+        flags=(), flags_status="unevaluable", flags_note="操作数 x 缺失\n第二行"
+    )
+
+    a, b, c = (_comparability_line(o) for o in (raised, clean, blind))
+    assert "restated" in a
+    assert a != b and b != c and a != c
+    # 「没触发」必须是一句**说出来的话**，不是空字符串。
+    assert b.strip()
+    # 「判不了」必须带上理由 —— 一个只有状态没有理由的判不了，复核者无从下手（L-9）。
+    assert "操作数 x 缺失" in c
+    # 只取首行：多行理由会把一行输出撑成一段，而理由全文在 `--json` 里。
+    assert "第二行" not in c
+
+
+def test_带标记的指标在人读输出里真的打出了标记(real_batch):
+    """跑真的 `ComputeResult`，不是 `SimpleNamespace` —— 免得只考了 helper 自己。
+
+    `revenue_growth_yoy` 是**跨期**指标，重述直接影响它的可比性
+    （它自己的 `common_pitfalls` 逐字写着这一条，`enforced_by: flags.restated`）。
+    它带着 `restated` 却在人读输出里一声不吭，正是本条要挡的。
+    """
+    from extractor.__main__ import _comparability_line
+    from extractor.formula import compute_metric
+
+    # 批次是 module 级 fixture，可能已被前一条测试闩死。
+    # `seal()` 重复闩会抛 —— 这不是缺陷（`L-13`：重试不得跨闸门批次），照它的语义来。
+    if not real_batch.sealed:
+        reconcile_batch(real_batch)
+    outcome = compute_metric("revenue_growth_yoy", real_batch, REPO_ROOT / "metrics")
+    assert outcome.flags == ("restated",)
+    assert "restated" in _comparability_line(outcome)
