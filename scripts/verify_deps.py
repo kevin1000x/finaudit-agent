@@ -373,24 +373,45 @@ def check_download_floor(name: str, fetch=None) -> bool:
     return True
 
 
-def installed_license_fields(dist) -> list[str]:
-    """本机已装分发的许可证声明。字段名与 PyPI JSON 不同，故单列一个函数。"""
+def installed_license_fields(dist) -> tuple[list[str], list[str]]:
+    """本机已装分发的许可证声明。返回 `(声明列表, 读取失败的字段名)`。
+
+    字段名与 PyPI JSON 不同，故单列一个函数。
+
+    ## 为什么要把「读取失败」单独返回（`L-80`，2026-08-31）
+
+    原来两处 `except Exception` 一处赋 `None`、一处 `pass`，
+    **读取失败与「这个字段没有值」完全不可区分**。后果很具体：
+    若 `Classifier` 那一读抛异常，而 `License` 恰好给出一个非 AGPL 的自由文本，
+    则 `fields` 非空 ⇒ 调用方的「零声明」那条判据放它过去 ⇒
+    **一个我们根本没读到的 AGPL classifier 就这么没了**，
+    而门禁输出照样是一句「无 AGPL 系命中」。
+
+    调用方已经把「查不到许可证」与「许可证不是 AGPL」分开处理了
+    （见 `scan_installed_licenses` 里的 `silent` 那一段）——
+    **本函数原来的静默吞掉，正好把那条正确的设计架空**：
+    它让一次**部分读取**看起来像一次完整读取。
+
+    ⇒ 这是登记册 `L-80` / `B-7` 的形状：把失败降级成一个「形态合法」的返回值。
+    """
     md = dist.metadata
-    out = []
+    out: list[str] = []
+    unreadable: list[str] = []
     for key in ("License-Expression", "License"):
         try:
             v = md.get(key)
-        except Exception:
-            v = None
+        except Exception as exc:  # noqa: BLE001 - 元数据实现各异，读不到就是读不到
+            unreadable.append(f"{key}（{type(exc).__name__}）")
+            continue
         if v and str(v).strip() and str(v).strip().upper() != "UNKNOWN":
             out.append(str(v).strip().splitlines()[0])
     try:
         for c in md.get_all("Classifier") or []:
             if str(c).startswith("License ::"):
                 out.append(str(c))
-    except Exception:
-        pass
-    return out
+    except Exception as exc:  # noqa: BLE001
+        unreadable.append(f"Classifier（{type(exc).__name__}）")
+    return out, unreadable
 
 
 def scan_installed_licenses() -> bool:
@@ -418,13 +439,17 @@ def scan_installed_licenses() -> bool:
     print("\n== 已装分发的许可证扫描（含传递依赖）")
     hits = []
     unlicensed = []
+    unreadable_dists: list[tuple[str, list[str]]] = []
     total = 0
     for dist in distributions():
         name = (dist.metadata.get("Name") or "").strip()
         if not name:
             continue
         total += 1
-        fields = installed_license_fields(dist)
+        fields, unreadable = installed_license_fields(dist)
+        if unreadable:
+            # **读不到 ≠ 读到了没有。** 一次部分读取不许看起来像一次完整读取（`L-80`）。
+            unreadable_dists.append((name, unreadable))
         if not fields:
             unlicensed.append(name)
         hit = license_denied(name, fields)
@@ -440,6 +465,15 @@ def scan_installed_licenses() -> bool:
     # **「查不到许可证」与「许可证不是 AGPL」是两件事。**
     # 不分开的话，一个零声明的分发会因为「匹配不到 AGPL 模式」而静默通过 ——
     # 而门禁输出里照样是一句 OK。那正是本项目反复记的形状。
+    if unreadable_dists:
+        # **和「零声明」同等处置：不据此放行。**
+        # 差别只在文案 —— 「没有声明」与「声明读不出来」是两件事，
+        # 合并成一句会让复核者以为我们看过了。
+        for name, fields in sorted(unreadable_dists):
+            print(f"   [FAIL] {name} 的许可证元数据读不出来：{fields}")
+        print("          读不到 ≠ 不是 AGPL。**一次部分读取不许看起来像一次完整读取**（L-80）。")
+        return False
+
     silent = sorted(x for x in unlicensed if x.lower() not in SELF_DISTRIBUTIONS)
     if silent:
         print(f"   [FAIL] {len(silent)} 个已装分发**没有任何许可证声明**：{silent}")

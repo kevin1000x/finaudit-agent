@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from verify_deps import (  # noqa: E402
+    installed_license_fields,
     DENIED_LICENSE_PATTERNS,
     LICENSE_EXEMPTIONS,
     SKIPPED_CHECKS,
@@ -232,3 +233,67 @@ def test_门槛之上时把下调理由打进输出(capsys):
     assert "门槛已下调至" in out
     assert "D-030" in out
     _drain_skips()
+
+
+# --------------------------------------------------------------------------
+# L-80：失败不得降级成一个「形态合法」的返回值（2026-08-31）
+# --------------------------------------------------------------------------
+
+
+class _Metadata:
+    """一份**部分读不出来**的分发元数据。
+
+    这正是 `L-80` / `B-7` 要防的形态：`License` 读得到（一个非 AGPL 的自由文本），
+    而 `Classifier` 那一读抛异常 —— **里面可能正躺着一条 AGPL 声明**。
+    """
+
+    def __init__(self, license_value, classifier_exc):
+        self._license = license_value
+        self._exc = classifier_exc
+
+    def get(self, key):
+        return self._license if key == "License" else None
+
+    def get_all(self, key):
+        raise self._exc
+
+
+class _Dist:
+    def __init__(self, metadata):
+        self.metadata = metadata
+
+
+def test_许可证元数据读不出来时必须报出来而不是静默丢掉():
+    """`L-80`：**读不到 ≠ 读到了没有。**
+
+    原来 `Classifier` 那一读是 `except Exception: pass` ——
+    若它抛异常而 `License` 恰好给出一个非 AGPL 的自由文本，
+    则 `fields` 非空 ⇒ 调用方的「零声明」判据放它过去 ⇒
+    **一个我们根本没读到的 AGPL classifier 就这么没了**，
+    而门禁输出照样是一句「无 AGPL 系命中」。
+    **一次部分读取看起来像一次完整读取**，这就是 `B-7` 的原话。
+    """
+    dist = _Dist(_Metadata("MIT", RuntimeError("元数据后端炸了")))
+    fields, unreadable = installed_license_fields(dist)
+
+    assert fields == ["MIT"]
+    assert unreadable, "Classifier 读失败没有被报出来 —— 部分读取伪装成了完整读取"
+    assert any("Classifier" in x for x in unreadable)
+    # 异常类型要留在留证里：`RuntimeError` 与 `PermissionError` 的处置不同。
+    assert any("RuntimeError" in x for x in unreadable)
+
+
+def test_读得出来时不报读取失败():
+    """另一个方向。没有这一条，上面那条可以靠「永远报读取失败」满足。"""
+
+    class _Good:
+        def get(self, key):
+            return "MIT" if key == "License" else None
+
+        def get_all(self, key):
+            return ["License :: OSI Approved :: MIT License"]
+
+    fields, unreadable = installed_license_fields(_Dist(_Good()))
+    assert unreadable == []
+    assert "MIT" in fields[0]
+    assert any("License ::" in f for f in fields)
