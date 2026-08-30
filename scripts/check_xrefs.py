@@ -147,14 +147,20 @@ def tracked_markdown() -> list[Path]:
     markdown 也进扫描范围；被忽略的（scratch、产物）仍然不进。
     """
     out = subprocess.run(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "*.md"],
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "*.md"],
         cwd=REPO,
         capture_output=True,
         text=True,
         check=True,
-    ).stdout.split()
+    ).stdout.split(chr(0))
+    # `-z` **不是可选的**：不加时 git 按 `core.quotepath`（默认 true）把非 ASCII 路径
+    # 转义并加引号，拿它去 `open()` 必然找不到文件 —— 那个文件**静默地不被检查**。
+    # `.split()` 还会把带空格的路径切成两半。两者都属 `N-42` 那一族：
+    # **门禁看不见的东西，在证据里与「不存在」不可区分**。2026-08-31 在 scan.py 上实测炸出。
     keep = []
     for rel in out:
+        if not rel:
+            continue
         if any(rel.startswith(x) or rel == x for x in EXCLUDED):
             continue
         keep.append(REPO / rel)

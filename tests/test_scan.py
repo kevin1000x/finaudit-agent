@@ -353,3 +353,58 @@ def test_real_rules_file_shape(rules):
         "data/cache/",
         ".env",
     }
+
+
+# --------------------------------------------------------------------------
+# N-42 未做的那一半：本门禁的扫描视野有没有同样的缺口（2026-08-31 查出：有）
+# --------------------------------------------------------------------------
+
+
+def test_未跟踪但未被忽略的文件也要进内容扫描(repo, rules):
+    """`N-42` 同型。**这一条是 `AC-10`，漏了就是数据进库。**
+
+    形态与第一道门 2026-08-28 修的那个假绿一模一样：
+    一份**刚写完还没 `git add`** 的 markdown，裸 `git ls-files` 看不见 ⇒
+    门禁绿 ⇒ 随后 `git add -A && git commit` ⇒ **非公开数据就进库了**。
+    `PROJECT_SPEC` §10 把「任何非公开数据进入仓库」列为停止条件，
+    而这条路径上门禁全程没有说过一句话。
+    """
+    (repo / "刚写完还没add.md").write_text("联系人 li.si@some-corp.com.cn", encoding="utf-8")
+    # **刻意不 git add** —— 这正是要考的那一步。
+    assert "CONTACT_PATTERN" in _codes(scan_repository(repo, rules))
+
+
+def test_被gitignore忽略的东西仍然不进内容扫描(repo, rules):
+    """另一个方向：`--exclude-standard` 必须仍然生效。
+
+    没有这一条的话，上面那条的修法可以退化成「扫工作树上的一切」，
+    而那会把 `data/raw/*.pdf`（**设计上就该躺在工作树里不进库**，台账 `N-3`）
+    一并卷进来 —— **修一个漏报制造一堆误报**。
+    """
+    raw = repo / "data" / "raw"
+    raw.mkdir(parents=True)
+    (raw / "annual.md").write_text("联系人 wang.wu@some-corp.com.cn", encoding="utf-8")
+    gitignore = repo / ".gitignore"
+    gitignore.write_text(gitignore.read_text(encoding="utf-8") + "\ndata/raw/\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    assert "CONTACT_PATTERN" not in _codes(scan_repository(repo, rules))
+
+
+def test_禁止入库的文件类型仍然只看已跟踪(repo, rules):
+    """**这一处用「已跟踪」是对的，不许跟着上面一起改。**
+
+    `forbidden_tracked_file_types` 禁的是「`.pdf` 被**纳入版本控制**」，
+    而**未跟踪的 PDF 是设计的一部分**（`data/raw/*.pdf`，台账 `N-3`）。
+    换成 `--others` 会把它们全报成违规。
+    ⇒ 两个集合各用各的，本条锁住这个区分。
+    """
+    from semantic_layer.scan import _scannable_files, _tracked_files
+
+    (repo / "untracked.pdf").write_bytes(b"%PDF-1.4 fake")
+    assert "FILE_TYPE_FORBIDDEN" not in _codes(scan_repository(repo, rules))
+    # 两个枚举确实是**不同的集合** —— 若哪天被合并成一个，本条会红。
+    assert "untracked.pdf" in _scannable_files(repo)
+    assert "untracked.pdf" not in _tracked_files(repo)
+
+    _git(repo, "add", "untracked.pdf")
+    assert "FILE_TYPE_FORBIDDEN" in _codes(scan_repository(repo, rules))

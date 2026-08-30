@@ -94,9 +94,29 @@ EXEMPT: set[tuple[str, str]] = set()
 
 def tracked_references() -> list[Path]:
     out = subprocess.run(
-        ["git", "ls-files", f"{SCOPE}*.md"], cwd=REPO, capture_output=True, text=True, check=True
-    ).stdout.split()
-    return [REPO / rel for rel in out]
+        # `--cached --others --exclude-standard` = 已跟踪 + 未跟踪但未被忽略。
+        # **裸 `ls-files` 只看得见已跟踪的**，于是一份新写的、还没 `git add` 的
+        # references 产物，它的台账声称对本门禁不存在 —— 门禁绿，问题下一轮才炸。
+        # 这就是 `N-42` 在第一道门上实测到的那个假绿，2026-08-31 查出本门禁同型。
+        [
+            "git",
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            f"{SCOPE}*.md",
+        ],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split(chr(0))
+    # `-z` **不是可选的**：不加时 git 按 `core.quotepath`（默认 true）把非 ASCII 路径
+    # 转义并加引号，拿它去 `open()` 必然找不到文件 —— 那个文件**静默地不被检查**。
+    # `.split()` 还会把带空格的路径切成两半。两者都属 `N-42` 那一族：
+    # **门禁看不见的东西，在证据里与「不存在」不可区分**。2026-08-31 在 scan.py 上实测炸出。
+    return [REPO / rel for rel in out if rel]
 
 
 def check_file(path: Path) -> list[str]:

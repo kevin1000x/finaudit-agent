@@ -118,8 +118,43 @@ def load_scan_rules(path: Path | str = DEFAULT_RULES_PATH) -> ScanRules:
 
 
 def _tracked_files(root: Path) -> list[str]:
+    """**已跟踪**的文件。用于 `forbidden_tracked_file_types`。
+
+    ⚠️ **这里用「已跟踪」是对的，不要改成 `--others`**（2026-08-31 核过）：
+    那条规则禁的是「`.pdf` 被**纳入版本控制**」，而**未跟踪的 PDF 是设计的一部分**
+    —— `data/raw/*.pdf` 本来就该躺在工作树里不进库（台账 `N-3`）。
+    换成 `--others` 会把它们全报成违规，**修一个漏报制造一堆误报**。
+    """
+    return _git_ls(root, ["--cached"])
+
+
+def _scannable_files(root: Path) -> list[str]:
+    """内容扫描的对象：**已跟踪 + 未跟踪但未被忽略**。
+
+    与 `_tracked_files` 分开是 `N-42` 的处置（2026-08-31）：
+    `AC-10` 问的是「仓库内有没有非公开数据」，而一份**刚写完还没 `git add`** 的
+    markdown 里的邮箱地址，裸 `git ls-files` **看不见** ——
+    门禁绿、随后 `git add -A && git commit`，数据就进库了。
+    第一道门（`check_xrefs`）已于 2026-08-28 因同一形态修过，本函数是同型修复。
+
+    `--exclude-standard` 让 `.gitignore` 里的东西（含 `data/raw/*.pdf`）仍然不进扫描面。
+    """
+    return _git_ls(root, ["--cached", "--others", "--exclude-standard"])
+
+
+def _git_ls(root: Path, flags: list[str]) -> list[str]:
+    """`git ls-files -z`，**NUL 分隔**。
+
+    ⚠️ **`-z` 不是可选的。** 不加时 git 按 `core.quotepath`（默认 true）
+    把非 ASCII 路径**转义成 `"å..."` 这种形式**并加引号 ——
+    拿它去 `open()` 必然找不到文件，于是**那个文件静默地不被扫描**。
+    与 `N-42` 是同一族：门禁看不见的东西，在证据里与「不存在」不可区分。
+    本仓当前没有非 ASCII 文件名，所以这条一直没有表现出来 ——
+    2026-08-31 写 `N-42` 回归测试时用了一个中文文件名，当场炸出来。
+    `-z` 顺带也把带空格 / 换行的路径一并解决了。
+    """
     proc = subprocess.run(
-        ["git", "-C", str(root), "ls-files"],
+        ["git", "-C", str(root), "ls-files", "-z", *flags],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -127,7 +162,7 @@ def _tracked_files(root: Path) -> list[str]:
     )
     if proc.returncode != 0:
         raise ScanRulesError(f"无法列出被跟踪文件（git ls-files 退出 {proc.returncode}）：{proc.stderr.strip()}")
-    return [line for line in proc.stdout.splitlines() if line]
+    return [line for line in proc.stdout.split(chr(0)) if line]
 
 
 def _check_file_types(tracked: list[str], rules: ScanRules) -> list[ScanFinding]:
@@ -236,10 +271,14 @@ def scan_repository(root: Path | str, rules: ScanRules) -> list[ScanFinding]:
     """
     root = Path(root)
     tracked = _tracked_files(root)
+    # **两个集合，各用各的**（`N-42` 的处置）：
+    # 「哪些文件不许进版本控制」问的是已跟踪；
+    # 「仓库里有没有非公开数据」问的是工作树上会被提交的一切。
+    scannable = _scannable_files(root)
     findings = [
         *_check_file_types(tracked, rules),
         *_check_gitignore(root, rules),
-        *_check_content(root, tracked, rules),
-        *_check_provenance(root, tracked, rules),
+        *_check_content(root, scannable, rules),
+        *_check_provenance(root, scannable, rules),
     ]
     return sorted(findings, key=lambda f: (f.path, f.rule, f.detail))

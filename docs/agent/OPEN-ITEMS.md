@@ -464,6 +464,34 @@ T-1 归并时发现**四条已经落地的东西，`references/` 里的标注仍
 - ⬜ **未做的那一半**：其余五道门（`scan` / `check_reading_ledger` / `check_gates` 等）
   **各自的扫描范围有没有同样的缺口，本轮没有逐个查**。记 `UNVERIFIED`，不记「已确认无」。
 
+
+- ✅ **未做的那一半已做 2026-08-31**：逐道核对其余门禁的扫描视野。**结论不是「都有」也不是「都没有」**：
+
+  | 门禁 | 枚举方式 | 有没有同一缺口 |
+  |---|---|---|
+  | `check_xrefs.py` | `ls-files --cached --others --exclude-standard` | 已于 08-28 修 |
+  | `check_reading_ledger.py` | 裸 `ls-files references/*.md` | 🔴 **有** —— 已修 |
+  | `semantic_layer scan` 的**内容/来源**扫描 | 裸 `ls-files` | 🔴 **有** —— 已修。**这一条是 `AC-10`，漏了就是数据进库** |
+  | `semantic_layer scan` 的 `forbidden_tracked_file_types` | 裸 `ls-files` | ✅ **不是缺口** —— 见下 |
+  | `semantic_layer validate` | `metrics/*.yaml` 文件系统 glob | ✅ 无 |
+  | `check_gates.py` | `tests/**` + `references/*.md` 文件系统 glob | ✅ 无 |
+  | `verify_deps.py` | 不枚举文件（读 `pyproject` 与已装分发） | 不适用 |
+
+- ⚠️ **`forbidden_tracked_file_types` 用「已跟踪」是对的，不许跟着一起改。**
+  那条规则禁的是「`.pdf` 被**纳入版本控制**」，而**未跟踪的 PDF 是设计的一部分**
+  （`data/raw/*.pdf`，台账 `N-3`）。换成 `--others` 会把它们全报成违规 ——
+  **修一个漏报制造一堆误报**。⇒ `scan.py` 里拆成 `_tracked_files` 与 `_scannable_files`
+  两个集合，各用各的，并有一条测试锁住「它们确实是不同的集合」。
+
+- 🔴 **写这半条的回归测试时，当场炸出一个更深的同族缺陷**：
+  三处 `git ls-files` **都没有 `-z`**，而 git 按 `core.quotepath`（默认 true）
+  把非 ASCII 路径**转义成 `"å…"` 并加引号** ——
+  拿它去 `open()` 必然找不到文件，**那个文件就静默地不被检查**。
+  `.stdout.split()` 还会把带空格的路径切成两半。
+  本仓当前没有非 ASCII 文件名，所以它一直没有表现出来；
+  测试里用了一个中文文件名，立刻现形。三处已全部改为 `-z` + 按 NUL 切分。
+  ⇒ **与 `N-42` 是同一族**：门禁看不见的东西，在证据里与「不存在」不可区分。
+
 ### N-41 — 字节码缓存能让「造回归 → 看红 → 回退」这个程序整段失效（2026-08-28，实测）
 
 - **归属**：agent 可做

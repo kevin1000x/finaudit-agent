@@ -144,3 +144,24 @@ def test_真实仓库当前为绿且零豁免():
     for path in crl.tracked_references():
         problems.extend(crl.check_file(path))
     assert problems == [], "\n".join(problems)
+
+
+def test_未跟踪但未被忽略的references产物也在扫描视野里():
+    """`N-42` 同型（2026-08-31 查出本门禁与 `scan` 都有这个缺口）。
+
+    一份新写的、还没 `git add` 的 references 产物，它的台账声称对本门禁**不存在** ——
+    门禁绿，问题下一轮才炸。第一道门 2026-08-28 已因同一形态修过。
+
+    这里直接考枚举函数：跑真门禁需要在真仓库里造脏文件，
+    而那正是 `scratch` fixture 当初被改掉的理由（进程被杀会残留）。
+    """
+    import inspect
+
+    # **点名那个函数**，不要退回整模块 —— 拿整模块做子串匹配，
+    # 这三条断言会被文件里任何一处提到这些串的地方满足（包括注释），
+    # 那就成了一条恒真检查。今天刚在 `RV-9` 的负控制上栽过一次同样的跟头。
+    source = inspect.getsource(crl.tracked_references)
+    assert "--others" in source, "枚举仍是裸 ls-files —— 未跟踪的新产物看不见（N-42）"
+    assert "--exclude-standard" in source, ".gitignore 里的东西不该进扫描面"
+    # `-z`：不加时非 ASCII 路径会被 git 转义并加引号，拿它去 open() 必然找不到文件。
+    assert '"-z"' in source, "缺 -z：非 ASCII 或含空格的路径会被静默跳过"
