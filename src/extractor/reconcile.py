@@ -35,7 +35,13 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from . import locate
-from .record import CellState, ExtractionBatch, RecordKind, RetrievalOutcome
+from .record import (
+    CellState,
+    ExtractionBatch,
+    RecordKind,
+    RetrievalOutcome,
+    readable_amount,
+)
 
 __all__ = [
     "BALANCE_SHEET_IDENTITY",
@@ -100,18 +106,12 @@ def _readable_amount(batch: ExtractionBatch, field_id: str) -> Decimal | None:
     **不当 0**：当 0 会让一张缺了负债合计的报表在恒等式上「差额 = 权益」而被
     如实报为不通过，看起来像数据错，实际是我们没取到 —— 归因就此错位。
     """
-    record = batch.by_field(field_id)
-    if record is None:
-        return None
-    if record.retrieval is RetrievalOutcome.ATTEMPTED_UNKNOWN:
-        return None
-    if record.cell_state is CellState.ROW_ABSENT:
-        return None
-    if record.cell_state is CellState.EMPTY_CELL:
-        return Decimal(0)
-    if not isinstance(record.value, Decimal):
-        return None
-    return record.value
+    # **语义全部在 `record.readable_amount`**（复核 `RV-9`，2026-08-31 收敛）。
+    # 本函数与 `crosscheck._pdf_amount` 此前是复制粘贴的两份实现，四态完全相同
+    # 而没有任何测试锁住一致 —— 分叉的表现形式是「同一条记录，勾稽闸门当 0、
+    # 跨源对照当缺失」，两边各自都说得通，没有任何东西会报错。
+    # 本函数留下的只有「按 field_id 从批次里取记录」这一步。
+    return readable_amount(batch.by_field(field_id))
 
 
 def reconcile_batch(

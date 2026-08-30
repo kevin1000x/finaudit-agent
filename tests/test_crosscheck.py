@@ -359,6 +359,91 @@ def test_全仓只有一个_akshare_数值转换点():
         )
 
 
+#: 全 `src/` 下**非字面量** `Decimal(...)` 的清点：`(文件, 函数, 一句话理由)`。
+#:
+#: **这不是豁免名单，是清单。** 豁免名单让某几处**不受检查**；
+#: 本清单要求**每一处都被点名并写明理由**，多出一处就红。
+#: 与 `record.MERGE_SEMANTICS` / `check_xrefs.KNOWN_COLLISIONS` 是同一个机制。
+#:
+#: 复核 `RV-7` 记的洞正是这里：原来方向②**只扫 `crosscheck.py`**，
+#: 于是 `Decimal(v)`（正是 `D-029` 判据 3 要防的那个）放在 `src/` 下任何别的文件里，
+#: 两道检查都看不见 —— 复核实测 M15：加进 `units.py`，41 passed 全绿。
+DECIMAL_CONVERSION_SITES = {
+    ("extractor/crosscheck.py", "_reference_decimal"): (
+        "AKShare 侧 float → Decimal 的**唯一**转换点。用 repr() 而不是 str()，"
+        "是为了拿到能唯一还原该 float 的十进制串（D-029 判据 3）。"
+    ),
+    ("extractor/formula.py", "_tokenize"): (
+        "把**公式串**里的数字字面量转成 Decimal。输入是我们自己写的 metrics/*.yaml，"
+        "不是任何外部数据源，与 AKShare 无关。"
+    ),
+    ("extractor/locate.py", "parse_amount"): (
+        "把**PDF 版面文本**里的金额串转成 Decimal（去掉千分位逗号）。"
+        "输入是年报原文，与 AKShare 无关。"
+    ),
+}
+
+
+def _enclosing_function(tree: ast.AST, target: ast.AST) -> str:
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if any(sub is target for sub in ast.walk(node)):
+                return node.name
+    return "<模块级>"
+
+
+def test_全_src_下每一处非字面量Decimal都被点名登记():
+    """`RV-7` 的收口：把方向②从「只扫 crosscheck.py」扩到**全 `src/`**。
+
+    ⚠️ **没有扩成「只许一处」**，因为那会误伤两处正当的转换：
+    `formula` 解析公式串里的数字字面量、`locate` 解析 PDF 版面上的金额串 ——
+    两者的输入都不是 AKShare，与 `D-029` 判据 3 无关。
+    AST **看不出一个 `Decimal(...)` 的输入是从哪来的**，所以「只许一处」这条
+    机械规则在这里表达不了要表达的东西。
+
+    ⇒ 改成**逐处点名**：多一处就红，红了要么去掉，要么进清单并写明输入是什么。
+    这样新增的 `Decimal(v)` 不可能再像 M15 那样悄悄躺在 `units.py` 里。
+
+    ## 这条**证明不了**什么
+
+    它保证的是「每一处转换都被点名」，**不是**「AKShare 的 float 只从一处流过」。
+    后者需要数据流分析，AST 给不了。`D-029` 判据 3 的措辞已于 2026-08-31
+    同步收窄到这个强度 —— **声称的范围不许大于被证明的范围**。
+
+    ⚠️ **还有一条更具体的漏，是跑负控制时当场发现的**：
+    `_is_decimal` 按**名字**认（`Decimal` / `x.Decimal`），
+    所以 `from decimal import Decimal as _D` 之后写 `_D(v)`，**这条检查看不见**。
+    实测：用别名写的探针本条**不红**，换成本模块已有的 `Decimal` 名字才红。
+    ⇒ 它挡的是**无意间新增**的转换点，**挡不住有意绕开**的写法。
+    不补这个洞是因为补法（追踪 import 别名）会把一条简单检查变成一个
+    小型解析器，而它要防的是「顺手写了一个」不是「有人存心藏」——
+    **但这句限定必须写在这里，不能让读者以为它挡得住后者。**
+    """
+    found = {}
+    for path in sorted((REPO_ROOT / "src").rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and _is_decimal(node.func)):
+                continue
+            arg = node.args[0] if node.args else None
+            if isinstance(arg, ast.Constant):
+                continue
+            rel = path.relative_to(REPO_ROOT / "src").as_posix()
+            found[(rel, _enclosing_function(tree, node))] = node.lineno
+
+    unregistered = sorted(k for k in found if k not in DECIMAL_CONVERSION_SITES)
+    assert unregistered == [], (
+        f"这些非字面量 Decimal(...) 转换点没有登记：{unregistered}。"
+        "要么去掉，要么进 DECIMAL_CONVERSION_SITES 并写明它的输入是什么 —— "
+        "AKShare 侧的 float 只许走 _reference_decimal（D-029 判据 3）。"
+    )
+    stale = sorted(k for k in DECIMAL_CONVERSION_SITES if k not in found)
+    assert stale == [], (
+        f"清单里这些位置已经不存在了：{stale}。"
+        "清单必须跟着代码走 —— 一份含过期条目的清单会让下一个人以为那里还有转换。"
+    )
+
+
 # --------------------------------------------------------------------------
 # 三、判定：一致 / 不一致 / 不可比是三个取值（D-029）
 # --------------------------------------------------------------------------
@@ -812,3 +897,97 @@ def test_固件覆盖率是子集不是全集_并把缺口点名():
     }
     assert len(mapped) == 24
     assert len(declared_field_ids()) == 31
+
+
+def test_RV3_没有参照值的记录不再被静默丢弃():
+    """`RV-3`：`extract_batch` 25 条进去、`cross_validate_batch` 24 条出来，
+    而 `to_dict()` 里**没有任何一项**告诉读者少了谁。
+
+    与 `C-15`（「20 个里 0 个不一致」被读成「24 个全核过」）同形，且高了一层：
+    **从 JSON 只能看到 24，看不到 25。**
+    """
+    batch = _batch_with({"bs.total_assets": "100.00", "bs.total_liabilities": "40.00"})
+    refs = {"bs.total_assets": _reference(raw=100.0)}
+
+    outcome = cross_validate_batch(batch, refs)
+    payload = outcome.to_dict()
+
+    assert outcome.unreferenced == ("bs.total_liabilities",)
+    assert payload["unreferenced"] == ["bs.total_liabilities"]
+    # 分子分母之外还要能看出**批次里到底有几条**。
+    assert payload["records_in_batch"] == 2
+    assert len(payload["results"]) == 1
+    # 只加字段不改 note，读 note 的人仍然只看到那 1 条。
+    assert "根本没进对照" in payload["note"]
+    assert "bs.total_liabilities" in payload["note"]
+
+
+def test_RV3_没进对照与不可比是两件事():
+    """`unreferenced` **不是** `INCOMPARABLE`：
+    前者「压根没进对照」，后者「进了对照但判不了」。合并会丢掉一半信息。
+    """
+    batch = _batch_with({"bs.total_assets": "100.00", "bs.total_liabilities": "40.00"})
+    outcome = cross_validate_batch(batch, {"bs.total_assets": _reference(raw=100.0)})
+    assert outcome.incomparable == 0
+    assert len(outcome.unreferenced) == 1
+
+
+def test_RV8_取flag那一行被锁住(monkeypatch):
+    """`RV-8`：把 `source_disagreement_flag()` 换成硬编码字面量，**41 条全绿**。
+
+    锁只存在一个方向 —— 改 YAML ⇒ 函数抛错 ⇒ `test_flag_名逐字取自_flags_yaml` 红。
+    **改调用点则无人发现。** 本条补上另一个方向：
+    monkeypatch 掉函数返回值，断言 `cross_validate` 的输出**跟着变**。
+    """
+    import extractor.crosscheck as cc
+
+    monkeypatch.setattr(cc, "source_disagreement_flag", lambda *a, **k: "被换掉的标记名")
+    record = _record(value=Decimal("100.00"))
+    result = cc.cross_validate(record, _reference(raw=999.0))
+
+    assert result.verdict is CrossCheckVerdict.DISAGREES
+    assert result.flags == ("被换掉的标记名",), (
+        "取 flag 那一行没有走 source_disagreement_flag() —— "
+        "改调用点（换成硬编码字面量）不会被任何测试发现（RV-8）"
+    )
+
+
+def test_RV9_三态语义只有一个定义点():
+    """`RV-9`：`_pdf_amount` 与 `reconcile._readable_amount` 曾是复制粘贴的两份实现，
+    四态完全相同而**没有任何测试锁住两者一致**。
+
+    分叉的表现形式是「同一条记录，勾稽闸门当 0、跨源对照当缺失」——
+    两边各自都说得通，没有任何东西会报错。
+    """
+    import inspect
+    import textwrap
+
+    from extractor import crosscheck as cc
+    from extractor import reconcile as rc
+    from extractor.record import readable_amount
+
+    def _delegates(fn) -> tuple[bool, int]:
+        """走 AST，**不做源码子串匹配**。
+
+        初版写的是 `assert "readable_amount" in inspect.getsource(fn)` ——
+        造回归时当场发现它**不会红**：把四态重新内联回去之后，
+        函数上方那段解释「语义全部在 record.readable_amount」的**注释**还在，
+        子串照样命中。⇒ 一条查源码文本的断言，会被**注释**满足。
+        这正是本仓反复记的那个形状，只不过这次出现在我自己写的负控制上。
+        """
+        tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+        calls = {
+            n.func.id
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        }
+        branches = sum(1 for n in ast.walk(tree) if isinstance(n, ast.If))
+        return "readable_amount" in calls, branches
+
+    for fn in (cc._pdf_amount, rc._readable_amount):
+        delegates, branches = _delegates(fn)
+        assert delegates, f"{fn.__name__} 没有委派给 record.readable_amount"
+        # **委派之外不许再有分支**：四态判断只许有一份，重新内联回去就会带回 4 个 `if`。
+        assert branches == 0, f"{fn.__name__} 里还有 {branches} 处分支，语义可能又分叉了"
+
+    assert readable_amount(None) is None

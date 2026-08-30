@@ -64,6 +64,7 @@ __all__ = [
     "ExtractionBatch",
     "make_batch_id",
     "BASIS_FIELDS_BY_KIND",
+    "readable_amount",
     "EVIDENCE_IDENTIFIER_FIELDS",
     "evidence_identifiers",
 ]
@@ -592,6 +593,53 @@ class ExtractionBatch:
             if record.field_id == field_id:
                 return record
         return None
+
+
+# --------------------------------------------------------------------------
+# SC-3 / A-2 的三态语义 —— **全包唯一定义点**（复核 `RV-9`）
+# --------------------------------------------------------------------------
+
+
+def readable_amount(record: "ExtractionRecord | None") -> Decimal | None:
+    """这条记录**能不能参与算术**，能就给出数值，不能就是 `None`。
+
+    ## 为什么这个函数必须只有一份
+
+    2026-08-28 的独立复核（`RV-9`）查出：`crosscheck._pdf_amount` 与
+    `reconcile._readable_amount` 四态**完全相同**，是复制粘贴的重复实现，
+    **没有任何测试锁住两者一致**。
+    ⇒ `SC-3` 的三态语义当时有**两个定义点**，会分叉 ——
+    而分叉的表现形式是「同一条记录，勾稽闸门当 0、跨源对照当缺失」，
+    两边各自都说得通，没有任何东西会报错。
+
+    ## 四态
+
+    - `ATTEMPTED_UNKNOWN` ⇒ `None`。试过但判不出，**不在已知态里挑一个报**（`L-10` / `F-2`）。
+    - `ROW_ABSENT` ⇒ `None`。整行不存在。
+    - `EMPTY_CELL` ⇒ `Decimal(0)`。**行在、格子空 = 披露了这一行且本期为零**，
+      是取到了一个零，不是没取到（`SC-3` / `A-2` 实测）。
+    - 其余 ⇒ 值本身，但**必须是 `Decimal`**。
+
+    ⚠️ **`ROW_ABSENT` 与 `ATTEMPTED_UNKNOWN` 一律不当 0。** 当 0 会让一张缺了
+    负债合计的报表在恒等式上「差额 = 权益」而被如实报为不通过 ——
+    看起来像数据错，实际是我们没取到，**归因就此错位**。
+
+    ⚠️ **布尔与集合值一律 `None`**（`isinstance(..., Decimal)` 那一关拦住）：
+    `notes.*` 那两支 `kind` 的值参与不了算术。`True` 在 Python 里能当 1 用，
+    这一关就是拦它的。
+    """
+    if record is None:
+        return None
+    if record.retrieval is RetrievalOutcome.ATTEMPTED_UNKNOWN:
+        return None
+    if record.cell_state is CellState.ROW_ABSENT:
+        return None
+    if record.cell_state is CellState.EMPTY_CELL:
+        return Decimal(0)
+    if not isinstance(record.value, Decimal):
+        return None
+    return record.value
+
 
 
 # --------------------------------------------------------------------------

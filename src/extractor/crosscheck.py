@@ -71,7 +71,13 @@ import yaml
 
 from semantic_layer.resolve import Refusal, RefusalCode
 
-from .record import CellState, ExtractionBatch, ExtractionRecord, RetrievalOutcome
+from .record import (
+    CellState,
+    ExtractionBatch,
+    ExtractionRecord,
+    RetrievalOutcome,
+    readable_amount,
+)
 from .units import UnitMismatchError, scale_of, to_yuan
 
 __all__ = [
@@ -658,18 +664,12 @@ class CrossCheckResult:
 def _pdf_amount(record: ExtractionRecord) -> Decimal | None:
     """能参与对照的 PDF 侧数值；取不到即 None。
 
-    与 `reconcile._readable_amount` 同一套三态语义（SC-3 / A-2）：
-    `EMPTY_CELL`（行在、格子空）按 0 参与，`ROW_ABSENT` 与 `ATTEMPTED_UNKNOWN` 取不到。
+    **薄封装，语义全部在 `record.readable_amount`**（复核 `RV-9`，2026-08-31 收敛）。
+    本函数与 `reconcile._readable_amount` 此前是**复制粘贴的两份实现**，
+    四态完全相同而没有任何测试锁住一致 —— `SC-3` 的三态语义有两个定义点，会分叉。
+    留着这个名字是因为它在本模块里读起来比 `readable_amount(record)` 更贴合语境。
     """
-    if record.retrieval is RetrievalOutcome.ATTEMPTED_UNKNOWN:
-        return None
-    if record.cell_state is CellState.ROW_ABSENT:
-        return None
-    if record.cell_state is CellState.EMPTY_CELL:
-        return Decimal(0)
-    if not isinstance(record.value, Decimal):
-        return None
-    return record.value
+    return readable_amount(record)
 
 
 def _incomparable(
@@ -779,10 +779,23 @@ class BatchCrossCheck:
     disagreement_ratio: Fraction
     miscalibration_suspected: bool
     note: str
+    #: **这批里根本没进对照的 `field_id`**（参照源里没有它）。`RV-3`。
+    #:
+    #: 为什么必须单列一栏：原来这些记录被 `continue` 直接吞掉，
+    #: `extract_batch` 产出 25 条、本函数产出 24 条结果，而 `to_dict()` 里
+    #: **没有任何一项**告诉读者「这批还有 1 个字段根本没进对照」。
+    #: ⇒ **从 JSON 只能看到 24，看不到 25。**
+    #: 与 `C-15`（「20 个里 0 个不一致」会被读成「24 个全核过」）同形，且高了一层。
+    #:
+    #: ⚠️ 它**不是** `INCOMPARABLE`：那一支是「进了对照但判不了」，
+    #: 这一栏是「压根没进对照」。两者的处置不同，合并会丢掉一半信息。
+    unreferenced: tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
         return {
             "results": [r.to_dict() for r in self.results],
+            "unreferenced": list(self.unreferenced),
+            "records_in_batch": len(self.results) + len(self.unreferenced),
             "comparable": self.comparable,
             "incomparable": self.incomparable,
             "disagreements": self.disagreements,
@@ -812,9 +825,13 @@ def cross_validate_batch(
     正是 `01.5-RESEARCH` 的 `A3` 警告的那件事。宁可把分母摆出来让人看见。
     """
     results: list[CrossCheckResult] = []
+    unreferenced: list[str] = []
     for record in batch.records:
         reference = references.get(record.field_id)
         if reference is None:
+            # **记下来再跳过，不是直接跳过**（`RV-3`）：一个被静默吞掉的字段，
+            # 在 JSON 里与「这个字段不存在」完全不可区分。
+            unreferenced.append(record.field_id)
             continue
         results.append(cross_validate(record, reference, tolerance, period))
 
@@ -840,6 +857,13 @@ def cross_validate_batch(
             f"触发占比 {ratio}（{disagreements}/{comparable}），"
             f"未超过 D-029 的反转阈值 {MISCALIBRATION_THRESHOLD}。"
         )
+    if unreferenced:
+        # 只加字段不改 `note`，读 `note` 的人仍然只看到那 24 个（`RV-3` 的原意）。
+        note += (
+            f"⚠️ 另有 {len(unreferenced)} 个字段**根本没进对照**"
+            f"（参照源里没有它们）：{'、'.join(unreferenced)}。"
+            "它们不在上面任何一个计数里 —— 既不是「一致」也不是「不可比」。"
+        )
 
     return BatchCrossCheck(
         results=tuple(results),
@@ -849,6 +873,7 @@ def cross_validate_batch(
         disagreement_ratio=ratio,
         miscalibration_suspected=suspected,
         note=note,
+        unreferenced=tuple(unreferenced),
     )
 
 

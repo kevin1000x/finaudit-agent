@@ -1043,10 +1043,22 @@ wave 2 用三家公司实测（`docs/agent/phase-01.5/PROBE-COMBINATION.md`）�
      一条记错功劳的判据，会让下一个人删掉真正起作用的那行还以为没动到锁。
      **实测里最要紧的那一支不是单位，是 `REFERENCE_NAN`**：茅台四个「格子空 = 0」的
      字段在 AKShare 侧全是 `NaN`，当 0 会比出四条**从未被建立过的跨源一致**
-  3. ✅ `_reference_decimal()` 是全仓唯一转换点，走 `Decimal(repr(v))`。
-     `test_全仓只有一个_akshare_数值转换点` 是 **AST 级**双向检查：
-     `src/` 下 `Decimal(repr(...))` 只许一处，且 `crosscheck.py` 里非字面量参数的
-     `Decimal(...)` 调用只许是那一处（后者拦的是不含 `repr` 的 `Decimal(raw)`）。
+  3. ✅ `_reference_decimal()` 是 **AKShare 侧 float → Decimal 的唯一转换点**，走 `Decimal(repr(v))`。
+     ⚠️ **措辞 2026-08-31 收窄**（复核 `RV-7`）：原文写的是「**全仓**唯一转换点」，
+     而被机械保证的范围比那句话小 —— **声称的范围大于被证明的范围**。
+     机械保证的是下面三条，逐条写清各自到哪儿为止：
+     - `src/` 下 `Decimal(repr(...))` **只许一处**，且必须在 `crosscheck.py` 里
+     - `crosscheck.py` 里非字面量参数的 `Decimal(...)` 只许是那一处
+       （拦的是不含 `repr` 的 `Decimal(raw)`）
+     - **全 `src/`** 下每一处非字面量 `Decimal(...)` 都必须在
+       `tests/test_crosscheck.py::DECIMAL_CONVERSION_SITES` 里**被点名并写明输入是什么**，
+       多一处就红（2026-08-31 新增，补上 `RV-7` 实测的那个洞：
+       原来方向②只扫 `crosscheck.py`，`Decimal(v)` 放进 `units.py` 两道检查都看不见）
+     **没有**保证的是「AKShare 的 float 只从这一处流过」—— 那需要数据流分析，
+     AST 给不了。全 `src/` 现有三处非字面量转换，另两处的输入分别是**公式串**
+     （`formula._tokenize`）与 **PDF 版面文本**（`locate.parse_amount`），与 AKShare 无关；
+     所以「只许一处」这条更强的规则在这里**表达不了要表达的东西**，
+     强行扩张只会误伤（这也是 `RV-7` 给的「二选一」里为什么两条都做了）。
      **造回归验过会红**：把 `raw_reference` 改成 `Decimal(reference.raw)` 后该用例失败
   4. ✅ `BatchCrossCheck.disagreement_ratio` 用 `Fraction` 算（不是浮点，
      否则「恰好 1/3」这条边界会变成一次靠舍入决定的判断），分子分母都进 `to_dict()`，
