@@ -485,19 +485,69 @@ def test_每个kind都在KEYS_BY_KIND里登记了必需键与禁止键():
     )
 
 
-def test_未实现的kind在分派点显式抛错而不是被跳过(view, source):
-    """跳过会让那些字段**静默地不出现在批次里**，而调用方看到一个「成功」的批次。"""
+def test_未处理的kind在分派点显式抛错而不是被跳过(view, source):
+    """跳过会让那些字段**静默地不出现在批次里**，而调用方看到一个「成功」的批次。
+
+    ⚠️ **本条 2026-08-31 换了受试对象，守的性质没变。**
+    原来拿 `NOTE_CHECKBOX` 当「未实现的 kind」，而三支 `kind` 已于本日接进
+    批次产出（`N-43` 判据 3），那个前提消失了。
+    **前提消失不等于这条不变量消失** —— 于是改用一个真正不在
+    `_KIND_HANDLED_HERE` 里的 `kind` 来考它。
+    直接删掉这条测试，会把「不静默跳过」这条守卫一并删掉。
+    """
     import dataclasses
 
     from extractor.mapping import load_pdf_mapping as _load
-    from extractor.pipeline import extract_records
+    from extractor.pipeline import _KIND_HANDLED_HERE, extract_records
 
     notes = _load("notes")
     checkbox = [e for e in notes.entries if e.kind is RecordKind.NOTE_CHECKBOX]
     assert checkbox, "notes.yaml 里应当有 NOTE_CHECKBOX 条目"
-    table = dataclasses.replace(notes, entries=tuple(checkbox))
-    with pytest.raises(NotImplementedError, match="NOTE_CHECKBOX"):
-        extract_records(view, table, source, statement=checkbox[0].statement)
+
+    outsiders = [k for k in RecordKind if k not in _KIND_HANDLED_HERE]
+    if not outsiders:
+        # 五支全在 `_KIND_HANDLED_HERE` 里 —— 那就没有「未处理的 kind」可考。
+        # 造一个不在枚举里的冒充者，考的仍是同一条：**不认识就抛，不跳过**。
+        fake = dataclasses.replace(checkbox[0], kind="不是任何一支 kind")  # type: ignore[arg-type]
+        table = dataclasses.replace(notes, entries=(fake,))
+        with pytest.raises(NotImplementedError, match="不在其中"):
+            extract_records(view, table, source, statement=fake.statement)
+        return
+
+    fake = dataclasses.replace(checkbox[0], kind=outsiders[0])
+    table = dataclasses.replace(notes, entries=(fake,))
+    with pytest.raises(NotImplementedError, match=outsiders[0].name):
+        extract_records(view, table, source, statement=fake.statement)
+
+
+def test_三支kind已接进批次产出而不再抛未实现(source):
+    """`N-43` 判据 3 的正向：接线之后它们**真的产出记录**，不是仍然抛错。
+
+    没有这一条，上面那条改完之后「三支 kind 到底接上了没有」就没有任何东西在看。
+    """
+    import pdfplumber
+
+    from extractor.mapping import load_pdf_mapping as _load
+    from extractor.pipeline import extract_records
+
+    pdf_path = REPO_ROOT / "data" / "raw" / "600519_2023.pdf"
+    if not pdf_path.exists():
+        pytest.skip(f"本机语料不在：{pdf_path}（PDF 永不进版本控制）")
+
+    table = _load("notes")
+    with pdfplumber.open(str(pdf_path), password="") as pdf:
+        batch = extract_records(
+            None, table, source, statement="合并范围的变更", pdf=pdf
+        )
+
+    got = {r.field_id: r for r in batch.records}
+    assert "notes.consolidation_scope_change" in got
+    assert "notes.business_combination_type" in got
+    # 三个口径类字段在这一支上必须是 None —— 填了值就是 F-2，构造边界会拦。
+    for record in got.values():
+        assert record.unit is None
+        assert record.currency is None
+        assert record.column_header is None
 
 
 # --------------------------------------------------------------------------

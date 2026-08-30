@@ -70,6 +70,15 @@ __all__ = [
     "derive_consolidation_scope_change",
     "read_scope_change",
     "scope_change_from_lines",
+    # 2026-08-31 补：下面六个由 `01.5-07` 加入，当时**漏了没进 `__all__`**。
+    # 不是功能缺陷（Python 不靠 `__all__` 做可见性），但 `__all__` 是这个模块
+    # 对外声明的接口清单 —— 少了六个，读它的人会以为那几支不是公开入口。
+    "RestatementReading",
+    "restatement_from_lines",
+    "read_restatement_flag",
+    "ReportType",
+    "derive_reporting_period_months",
+    "reporting_period_months_provenance",
 ]
 
 #: 章节标题的**正文**，不含序号。序号跨公司会变（茅台 `九、`、万华 `八、`、顺丰 `五、`），

@@ -63,6 +63,7 @@ __all__ = [
     "ExtractionRecord",
     "ExtractionBatch",
     "make_batch_id",
+    "BASIS_FIELDS_BY_KIND",
     "EVIDENCE_IDENTIFIER_FIELDS",
     "evidence_identifiers",
 ]
@@ -153,6 +154,32 @@ class MergeSemantics(Enum):
 
     REPLACE = "整体覆盖"
     APPEND = "追加，不丢弃已有项"
+
+
+#: 三个口径类字段在每支 `kind` 上的要求。`True` = 必须非空文本，`False` = 必须是 `None`。
+#:
+#: **这张表是 `L-35` 的加强**：`kind` 从「只是个标签」变成「决定哪些字段必须在」的判据。
+#: 完整推导见 `docs/agent/phase-01.5/KIND-WIRING.md` §2。
+#:
+#: ⚠️ **`REPORT_METADATA` 故意不在表里。** 它不该进 `records`（§2.3）——
+#: `notes.reporting_period_months` 由报告类型派生，`PROBE-14 §3` 实测整份 143 页
+#: 逐行搜四个候选串全部零命中，**它不在纸上**。一个从未被抽取过的值放进
+#: 「一次抽取的记录」，是记录类型本身的范畴错误，不是「它的某几个字段填不出来」。
+#: 不在表里 ⇒ 构造它会抛错并指向这段说明，**不会静默通过**。
+BASIS_FIELDS_BY_KIND: Mapping[RecordKind, Mapping[str, bool]] = {
+    RecordKind.STATEMENT_LINE: {"column_header": True, "unit": True, "currency": True},
+    RecordKind.KPI_DISCLOSED: {"column_header": True, "unit": True, "currency": True},
+    # 判「某个列头在不在」：`column_header` 是**被判存在性的那个串**（如 `调整后`），
+    # 不是「我从哪列取的数」。有内容，必须填。而布尔没有量纲、没有币种。
+    RecordKind.COLUMN_HEADER_PRESENCE: {
+        "column_header": True,
+        "unit": False,
+        "currency": False,
+    },
+    # 复选框不在任何「列」里：版面形态是 `□适用  √不适用` 紧跟在子项标题下面，
+    # 是一行的两个并列勾选框，不是一张表的某一列。三个都不适用。
+    RecordKind.NOTE_CHECKBOX: {"column_header": False, "unit": False, "currency": False},
+}
 
 
 def _require_text(value: Any, name: str) -> str:
@@ -246,9 +273,31 @@ class ExtractionRecord:
     anchor_page: int
     pdf_sha256: str
     source_url: str
-    unit: str
-    currency: str
-    column_header: str
+    #: ⚠️ 下面三个口径类字段是 `str | None`，**但仍是必需位置参数、没有默认值**。
+    #:
+    #: 这个区分是 `docs/agent/phase-01.5/KIND-WIRING.md` §3.1 的结论：
+    #: `ARCHITECTURE` §8.5 的实证讲的是「**可选**出处会在接线时被丢掉」，
+    #: 而**防丢的性质来自「没有默认值」，不来自「必须非空」**。
+    #: 写入方漏写仍然是 `TypeError`，只是现在它可以**显式写 `None`** 来表达「不适用」。
+    #:
+    #: 为什么需要「不适用」：一个复选框字段没有量纲，问它的 `unit` 是什么
+    #: **不是「答案未知」，是问题本身没有意义**。在 `unit` 里填一个表示「没有单位」的串，
+    #: 等于把「没有单位」写成「单位是『没有单位』」—— 与 `D-028` 拒掉的那个 `无`
+    #: 哨兵值是同一个范畴错误。
+    #:
+    #: 哪支 `kind` 要填、哪支必须是 `None`，由 `BASIS_FIELDS_BY_KIND` 按 `kind` 定死，
+    #: **两个方向都拦**（该填的没填、不该填的填了，都是构造失败）。
+    unit: str | None
+    currency: str | None
+    #: ⚠️ **本字段在两类 `kind` 上语义相反，别拿它做统一的下游推断。**
+    #:
+    #: - 行值类（`STATEMENT_LINE` / `KPI_DISCLOSED`）：**我从哪一列取的数**
+    #:   （记版面上印的那串字，如 `2023年12月31日`，不是口径名 `期末余额`）
+    #: - `COLUMN_HEADER_PRESENCE`：**我找的是哪个列头**（如 `调整后`），
+    #:   而这条记录的**值**就是「找到了没有」
+    #:
+    #: 共用一个字段名而方向相反，是一处真实歧义。写在这里而不是靠人记得。
+    column_header: str | None
     #: 这一行的列归属是不是**从首页表头继承来的**。
     #:
     #: 它是 `ColumnBinding.header_inherited` 的下游消费点。加这个字段是因为
@@ -298,9 +347,7 @@ class ExtractionRecord:
         if not _SHA256_RE.match(self.pdf_sha256):
             raise ValueError(f"pdf_sha256 必须是 64 位小写十六进制，实际是 {self.pdf_sha256!r}")
         _require_text(self.source_url, "source_url")
-        _require_text(self.unit, "unit")
-        _require_text(self.currency, "currency")
-        _require_text(self.column_header, "column_header")
+        self._check_basis_fields()
         _require_text(self.batch_id, "batch_id")
 
         if isinstance(self.mapping_version, bool) or not isinstance(self.mapping_version, int):
@@ -324,6 +371,34 @@ class ExtractionRecord:
         self._check_state_coherence()
 
     # -- 不变量 ------------------------------------------------------------
+
+    def _check_basis_fields(self) -> None:
+        """三个口径类字段按 `kind` 双向 fail-closed（`KIND-WIRING.md` §3.2）。
+
+        **两个方向都拦，这比原来只拦「不许为空」更严**：
+        原来 `unit="元"` 盖在一条复选框记录上是**能构造出来的**，现在它会 `ValueError`。
+        ⇒ `F-2`（给没有该概念的字段编一个值）在这三个字段上从「靠人记得」
+        变成「构造边界拦住」。
+        """
+        spec = BASIS_FIELDS_BY_KIND.get(self.kind)
+        if spec is None:
+            raise ValueError(
+                f"{self.kind.name} 不在 BASIS_FIELDS_BY_KIND 里，因此不能构造成 ExtractionRecord。"
+                "若这是 REPORT_METADATA：它**不该进 records**（KIND-WIRING.md §2.3）—— "
+                "纸上不印这一行，一个从未被抽取过的值放进抽取记录是记录类型本身的范畴错误。"
+                "它走 ExtractionBatch.derived。"
+            )
+        for name, required in spec.items():
+            value = getattr(self, name)
+            if required:
+                _require_text(value, name)
+            elif value is not None:
+                raise ValueError(
+                    f"{self.kind.name} 的 {name} 必须是 None，实际是 {value!r}。"
+                    f"这一支 kind 上「{name}」这个概念不适用 —— "
+                    "填一个表示「没有」的值，等于把「没有」写成「有一个叫『没有』的值」"
+                    "（与 D-028 拒掉的 `无` 哨兵值同型）。见 KIND-WIRING.md §1。"
+                )
 
     def _check_truncation_coherence(self) -> None:
         """L-45：截断与状态的双向绑定。
@@ -445,6 +520,20 @@ class ExtractionBatch:
     #: 前者是历史批次（快照机制上线前建的），后者是这个指标当时就不存在。
     #: 两者的处置不同，所以不合并成一个「取不到」。
     definition_versions: Mapping[str, int] = field(default_factory=dict)
+    #: **派生值** —— 不是从版面上抽来的，因此**不进 `records`**。
+    #:
+    #: 唯一的住户目前是 `notes.reporting_period_months`：它由报告类型决定，
+    #: `PROBE-14 §3` 实测整份 143 页逐行搜四个候选串**全部零命中**，**纸上不印这一行**。
+    #: 把它塞进 `ExtractionRecord`（「一个字段的**一次抽取**，连同全部出处」）
+    #: 是**记录类型本身的范畴错误**，不是「它的某几个字段填不出来」。
+    #:
+    #: **为什么不干脆丢掉**：丢掉会让这个字段静默地不出现在批次里，
+    #: 而调用方看到的是一个「成功」的批次，只是少了点东西 ——
+    #: 与 `pipeline` 里那条「抛 NotImplementedError 而不是跳过」是同一条理由。
+    #: 放在**与 `records` 并列**的位置：在批次里看得见，但**不冒充抽取**。
+    #: 每一项自带 `derived: True` / `extracted_from_layout: False`（见
+    #: `notes.reporting_period_months_provenance`），复核者不会去年报上找那一行。
+    derived: list[Mapping[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         _require_text(self.batch_id, "batch_id")
@@ -552,6 +641,11 @@ def evidence_identifiers(record: ExtractionRecord) -> frozenset[str]:
     out: set[str] = set()
     for name in EVIDENCE_IDENTIFIER_FIELDS:
         value = getattr(record, name)
+        if value is None:
+            # `column_header` 在 `NOTE_CHECKBOX` 上就是 None（那一支没有「列」这个概念）。
+            # **跳过，不要塞一个 `"None"` 进去** —— 那会造出一个字面上能在
+            # 序列化输出里找到、实际不指认任何东西的「标识」，正是 J-6 要抓的形状。
+            continue
         out.add(value if isinstance(value, str) else str(value))
     return frozenset(out)
 

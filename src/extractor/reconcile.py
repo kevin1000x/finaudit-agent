@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from . import locate
-from .record import CellState, ExtractionBatch, RetrievalOutcome
+from .record import CellState, ExtractionBatch, RecordKind, RetrievalOutcome
 
 __all__ = [
     "BALANCE_SHEET_IDENTITY",
@@ -175,12 +175,19 @@ class ColumnBindingResult:
     passed: bool
     checked: int
     mismatches: tuple[tuple[str, str, str | None, str], ...] = ()
+    #: `(field_id, 理由)` —— **被判定为「这条记录没有取数列可查」的记录**。
+    #:
+    #: 为什么要单列一栏而不是默默 `continue`：`checked` 只报「查了几条」，
+    #: 一个静默跳过的字段在证据里与「不存在这个字段」**完全不可区分**。
+    #: 这正是复核 `RV-3` 记的形状（批次 25 条进去 24 条出来，JSON 里看不出少了谁）。
+    not_applicable: tuple[tuple[str, str], ...] = ()
 
     def to_dict(self) -> dict:
         return {
             "passed": self.passed,
             "checked": self.checked,
             "mismatches": [list(m) for m in self.mismatches],
+            "not_applicable": [list(x) for x in self.not_applicable],
             "source": SOURCE_COLUMN_BINDING,
         }
 
@@ -211,14 +218,40 @@ def check_column_binding(
 
     映射表里没有对应条目的记录、以及 `column_header` 为 `None` 的记录（不取列的类别）
     **不计入 `checked`**。把它们算成通过会让 `checked` 变成一个虚高的数。
+
+    `COLUMN_HEADER_PRESENCE` 的记录**也不计入**，但它与上面两类不同：它的
+    `column_header` **非空**，只是语义相反（是「找的哪个列头」不是「取的哪一列」）。
+    这一类**逐条记进 `not_applicable` 并给出理由**，不静默 `continue` ——
+    静默跳过的字段在证据里与「不存在这个字段」不可区分（复核 `RV-3` 的形状）。
     """
     mismatches: list[tuple[str, str, str | None, str]] = []
+    not_applicable: list[tuple[str, str]] = []
     checked = 0
     for record in batch.records:
         entry = mapping.by_field(record.field_id)
         if entry is None or entry.column_header is None:
             continue
         if record.column_header is None:
+            continue
+        if record.kind is RecordKind.COLUMN_HEADER_PRESENCE:
+            # ⚠️ **这一支的 `column_header` 语义与行值类相反**，
+            # 拿 `role_of` 去解它必然解出 `None` 并报一条**假的**不符。
+            #
+            # 行值类记的是「我从哪一列取的数」（版面上印的 `2023年12月31日`）；
+            # 这一支记的是「**我找的是哪个列头**」（`调整后`），
+            # 而这条记录的**值**就是「找到了没有」——它压根没有「取数列」这回事。
+            # ⇒ 本闸门问的那个问题（「取的是不是对的那一列」）在它身上**不成立**。
+            #
+            # 2026-08-31 接线时当场炸出来的：接上之后 notes 命名空间立刻报
+            # `passed=false`，唯一的 mismatch 是 `(notes.restatement_flag, 调整后, null, 调整后)`
+            # —— 版面串与要的口径**逐字相同**却判不符，这本身就是判据用错了对象的信号。
+            not_applicable.append(
+                (
+                    record.field_id,
+                    "COLUMN_HEADER_PRESENCE：column_header 是被判存在性的那个列头，"
+                    "不是取数列，本闸门的判据在它身上不成立",
+                )
+            )
             continue
         checked += 1
         resolved, _resolution = locate.role_of(record.column_header, fiscal_year)
@@ -227,5 +260,8 @@ def check_column_binding(
                 (record.field_id, record.column_header, resolved, entry.column_header)
             )
     return ColumnBindingResult(
-        passed=not mismatches, checked=checked, mismatches=tuple(mismatches)
+        passed=not mismatches,
+        checked=checked,
+        mismatches=tuple(mismatches),
+        not_applicable=tuple(not_applicable),
     )

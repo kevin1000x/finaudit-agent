@@ -47,7 +47,7 @@ from typing import Mapping, Sequence
 
 from semantic_layer.resolve import Refusal, RefusalCode
 
-from . import locate
+from . import locate, notes
 from .download import DownloadResult, fetch_annual_report
 from .mapping import FieldMapping, PdfMappingTable, load_pdf_mapping, match_row
 from .record import (
@@ -77,6 +77,7 @@ __all__ = [
     "DEFAULT_EXTRACTION_PLAN",
     "PLACEHOLDER_TEXTS",
     "REQUIRED_EVIDENCE_KEYS",
+    "required_evidence_keys",
     "CompletenessReport",
     "evidence_completeness",
     "completeness_report",
@@ -102,7 +103,17 @@ DEFAULT_STATEMENT = "合并资产负债表"
 #:
 #: ⚠️ 抛 `NotImplementedError` 而不是跳过：跳过会让那些字段**静默地不出现在批次里**，
 #: 而调用方看到的是一个「成功」的批次，只是少了几条记录。
-_KIND_HANDLED_HERE = frozenset({RecordKind.STATEMENT_LINE, RecordKind.KPI_DISCLOSED})
+_ROW_VALUED_KINDS = frozenset({RecordKind.STATEMENT_LINE, RecordKind.KPI_DISCLOSED})
+
+#: 本函数处理的全部类别。**五支全在**（2026-08-31，`N-43` 判据 3 接线完成）——
+#: `REPORT_METADATA` 也「处理」，只是它的处理方式是**进 `batch.derived` 而不进 `records`**。
+_KIND_HANDLED_HERE = _ROW_VALUED_KINDS | frozenset(
+    {
+        RecordKind.NOTE_CHECKBOX,
+        RecordKind.COLUMN_HEADER_PRESENCE,
+        RecordKind.REPORT_METADATA,
+    }
+)
 
 #: 取数口径三元组（D-023 / L-2 / J-7）。整表逐行读时三个子字段取**显式值**，
 #: 不留空 —— `sampling="整表逐行"` 陈述的是「这是整表」，本身是信息。
@@ -259,35 +270,45 @@ def read_statement(
     )
 
 
-# --------------------------------------------------------------------------
-# 留痕：**整个 src/extractor/ 下唯一的采集点**（L-55）
-# --------------------------------------------------------------------------
+@dataclass(frozen=True)
+class _ResolvedFacts:
+    """一个条目**已经解出来的事实**，交给唯一的盖章点去盖出处。
+
+    ## 为什么要有这一层
+
+    `L-55` 要求留痕的采集点唯一，而 `tests/test_record.py::test_留痕采集点唯一`
+    用 AST 断言 `_stamp_provenance` 在 `pipeline.py` 里**恰好 1 处调用点**。
+    接第二支、第三支 `kind` 时有两条路：加第二个调用点（那条断言会红，而它红得对），
+    或者**把「各支 kind 怎么解出事实」与「怎么盖出处」分开** —— 取后者。
+
+    ⇒ 各支 `kind` 各自算出 `_ResolvedFacts`，**盖章的代码只有一份、调用点只有一处**。
+    这正是 `L-55` 那句话的原意：**凡是要求「每次都做」的事，就不能放在调用点。**
+    """
+
+    value: "Decimal | str | bool | tuple[str, ...] | None"
+    retrieval: RetrievalOutcome
+    cell_state: CellState | None
+    page: int
+    anchor_page: int
+    #: 三个口径类字段。**按 `kind` 可以是 `None`** —— 见
+    #: `record.BASIS_FIELDS_BY_KIND` 与 `docs/agent/phase-01.5/KIND-WIRING.md`。
+    unit: str | None
+    currency: str | None
+    column_header: str | None
+    header_inherited: bool
 
 
-def _stamp_provenance(
-    *,
+def _facts_from_row(
     entry: FieldMapping,
-    mapping_version: int,
-    source: ExtractionSource,
     view: StatementView,
     column: locate.ColumnBinding,
     matched: tuple[locate.ReconstructedRow, ...],
-) -> ExtractionRecord:
-    """把一次匹配结果盖上**一次独立复核所需的全部出处**，产出一条记录。
-
-    这是全包唯一一处构造 `ExtractionRecord` 的地方。出处不是「记得填」的字段，
-    而是**这里不填就构造不出来**的必需参数 —— `record.py` 那边全部字段无默认值，
-    漏一个立刻 `TypeError`。
-
-    `column_header` 记的是**版面上印的那串字**（例如 `2023年12月31日`），
-    不是映射表里的口径名（`期末余额`）。理由：这条记录要证明的是
-    「取的是哪一列」，而口径名由 `field_id` + `mapping_version` 已经可以复原。
-    A-9 说得很清楚 —— 勾稽闸门证明不了取的是对的那一列，能证明的只有这串字。
-    """
+) -> _ResolvedFacts:
+    """行值类（`STATEMENT_LINE` / `KPI_DISCLOSED`）：从某一行取某一列的值。"""
     if not matched:
         retrieval = RetrievalOutcome.ABSENT
         cell_state: CellState | None = CellState.ROW_ABSENT
-        value = None
+        value: object = None
         page = view.anchor.page
     elif len(matched) > 1:
         # 试过、也扫到了，但判不出是哪一行。**不在两个已知态里挑一个报**（L-10 / F-2）。
@@ -310,23 +331,177 @@ def _stamp_provenance(
             cell_state = CellState.VALUE_PRESENT
             value = cell.amount
 
-    return ExtractionRecord(
-        field_id=entry.field_id,
-        kind=entry.kind,
+    return _ResolvedFacts(
         value=value,
-        status=ExtractionStatus.SUCCESS,
         retrieval=retrieval,
-        basis_confirmation=BasisConfirmation.CONFIRMED,
-        source_freshness=source.freshness,
         cell_state=cell_state,
         page=page,
         anchor_page=view.anchor.page,
-        pdf_sha256=source.pdf_sha256,
-        source_url=source.source_url,
         unit=view.header.unit,
         currency=view.header.currency,
+        # 记的是**版面上印的那串字**（`2023年12月31日`），不是映射表里的口径名（`期末余额`）。
+        # 这条记录要证明的是「取的是哪一列」，而口径名由 `field_id` + `mapping_version`
+        # 已经可以复原。A-9 说得很清楚 —— 勾稽闸门证明不了取的是对的那一列，
+        # 能证明的只有这串字。
         column_header=column.header_text,
         header_inherited=column.header_inherited,
+    )
+
+
+def _facts_from_note(entry: FieldMapping, notes_ctx: "_NotesContext") -> _ResolvedFacts:
+    """不从行取值的两支 `kind`。三个口径类字段按 `KIND-WIRING.md` §2 取 `None` 或真值。
+
+    **判不出时一律 `ATTEMPTED_UNKNOWN` + `value=None`**，不在两个已知态里挑一个报。
+    两个读数器都自带 `undecidable` + `undecidable_reason`（`L-9`：一个只有布尔
+    没有理由的「不可判定」，复核者无从下手），理由原样进 `undecidable` 的留证。
+    """
+    if entry.kind is RecordKind.NOTE_CHECKBOX:
+        reading = notes_ctx.scope_change()
+        if reading.undecidable:
+            return _ResolvedFacts(
+                value=None,
+                retrieval=RetrievalOutcome.ATTEMPTED_UNKNOWN,
+                cell_state=None,
+                page=reading.page or reading.anchor_page or 1,
+                anchor_page=reading.anchor_page or 1,
+                unit=None,
+                currency=None,
+                column_header=None,
+                header_inherited=False,
+            )
+        if entry.field_id == "notes.consolidation_scope_change":
+            value: object = notes.derive_consolidation_scope_change(reading)
+        elif entry.field_id == "notes.business_combination_type":
+            # `D-028`：集合值。**空集即表示本期无企业合并**，不是「没抽到」——
+            # 取值域里没有 `无` 这个哨兵值，那是范畴错误。
+            value = tuple(sorted(m.name for m in notes.derive_business_combination_type(reading)))
+        else:
+            raise NotImplementedError(
+                f"{entry.field_id} 声明为 NOTE_CHECKBOX，但本函数不认识它。"
+                "**抛错不是跳过**：跳过会让这个字段静默地不出现在批次里，"
+                "而调用方看到的是一个「成功」的批次，只是少了一条记录。"
+            )
+        return _ResolvedFacts(
+            value=value,
+            retrieval=RetrievalOutcome.GOT_VALUE,
+            cell_state=CellState.VALUE_PRESENT,
+            page=reading.page or reading.anchor_page or 1,
+            anchor_page=reading.anchor_page or 1,
+            # 复选框不在任何「列」里：版面形态是 `□适用  □不适用` 紧跟在子项标题下面，
+            # 是一行的两个并列勾选框，不是一张表的某一列。布尔/集合也没有量纲与币种。
+            unit=None,
+            currency=None,
+            column_header=None,
+            header_inherited=False,
+        )
+
+    if entry.kind is RecordKind.COLUMN_HEADER_PRESENCE:
+        reading = notes_ctx.restatement()
+        if reading.undecidable:
+            return _ResolvedFacts(
+                value=None,
+                retrieval=RetrievalOutcome.ATTEMPTED_UNKNOWN,
+                cell_state=None,
+                page=reading.anchor_page or 1,
+                anchor_page=reading.anchor_page or 1,
+                unit=None,
+                currency=None,
+                column_header=entry.column_header,
+                header_inherited=False,
+            )
+        return _ResolvedFacts(
+            value=reading.restated,
+            retrieval=RetrievalOutcome.GOT_VALUE,
+            cell_state=CellState.VALUE_PRESENT,
+            page=(reading.matched_pages[0] if reading.matched_pages else reading.anchor_page or 1),
+            anchor_page=reading.anchor_page or 1,
+            unit=None,
+            currency=None,
+            # ⚠️ 这一支的 `column_header` 语义与行值类**相反**：
+            # 行值类记的是「我从哪一列取的数」，这里记的是「**我找的是哪个列头**」，
+            # 而本条记录的**值**就是「找到了没有」。同名不同向，别做统一的下游推断。
+            column_header=entry.column_header,
+            header_inherited=False,
+        )
+
+    raise NotImplementedError(f"{entry.kind.name} 不由本函数处理")
+
+
+class _NotesContext:
+    """两支不从行取值的 `kind` 所需的读数，**整份 PDF 只读一次**。
+
+    读数器扫的是全篇章节锚点，不是某张表的区间。逐条目重读会把一份 143 页的 PDF
+    扫上三遍，而三遍的结果按定义必须相同 —— 那不是稳健性，是浪费。
+    """
+
+    def __init__(self, pdf) -> None:
+        self._pdf = pdf
+        self._scope = None
+        self._restatement = None
+
+    def _require_pdf(self, what: str):
+        if self._pdf is None:
+            raise MappingZeroHit(
+                f"{what} 需要整份 PDF（它扫的是全篇章节锚点，不是某张表的区间），"
+                "而本次调用没有给 pdf。**不退而返回一个「判不出」** —— "
+                "「没给我 PDF」与「PDF 上判不出」是两件事，混成一个会让"
+                "调用方以为年报上真的没有这一节。"
+            )
+        return self._pdf
+
+    def scope_change(self):
+        if self._scope is None:
+            self._scope = notes.read_scope_change(self._require_pdf("read_scope_change"))
+        return self._scope
+
+    def restatement(self):
+        if self._restatement is None:
+            self._restatement = notes.read_restatement_flag(
+                self._require_pdf("read_restatement_flag")
+            )
+        return self._restatement
+
+
+# --------------------------------------------------------------------------
+# 留痕：**整个 src/extractor/ 下唯一的采集点**（L-55）
+# --------------------------------------------------------------------------
+
+
+def _stamp_provenance(
+    *,
+    entry: FieldMapping,
+    mapping_version: int,
+    source: ExtractionSource,
+    facts: _ResolvedFacts,
+) -> ExtractionRecord:
+    """把已解出的事实盖上**一次独立复核所需的全部出处**，产出一条记录。
+
+    这是全包唯一一处构造 `ExtractionRecord` 的地方，也是唯一一处调用点
+    （`tests/test_record.py::test_留痕采集点唯一` 用 AST 把这两条都钉着）。
+    出处不是「记得填」的字段，而是**这里不填就构造不出来**的必需参数 ——
+    `record.py` 那边全部字段无默认值，漏一个立刻 `TypeError`。
+
+    ⚠️ **本函数不判断任何事实。** 「取到没取到」「是哪一页」「哪一列」全部由
+    `_facts_from_row` / `_facts_from_note` 在上游解好。分开的理由见 `_ResolvedFacts`
+    的 docstring：要让盖章的代码只有一份，各支 `kind` 的解法就不能挤进来。
+    """
+    return ExtractionRecord(
+        field_id=entry.field_id,
+        kind=entry.kind,
+        value=facts.value,
+        status=ExtractionStatus.SUCCESS,
+        retrieval=facts.retrieval,
+        basis_confirmation=BasisConfirmation.CONFIRMED,
+        source_freshness=source.freshness,
+        cell_state=facts.cell_state,
+        page=facts.page,
+        anchor_page=facts.anchor_page,
+        pdf_sha256=source.pdf_sha256,
+        source_url=source.source_url,
+        unit=facts.unit,
+        currency=facts.currency,
+        column_header=facts.column_header,
+        header_inherited=facts.header_inherited,
         mapping_version=mapping_version,
         selection=FULL_TABLE_SELECTION,
         truncation_stats={},
@@ -335,16 +510,22 @@ def _stamp_provenance(
 
 
 def extract_records(
-    view: StatementView,
+    view: StatementView | None,
     mapping: PdfMappingTable,
     source: ExtractionSource,
     statement: str = DEFAULT_STATEMENT,
     batch: ExtractionBatch | None = None,
+    pdf=None,
 ) -> ExtractionBatch:
-    """把版面事实 + 映射表 → 一个批次的抽取记录。**不联网、不读盘。**
+    """把版面事实 + 映射表 → 一个批次的抽取记录。**不联网。**
 
-    分离出这一层是为了让回归用例跑在 `tests/fixtures/maotai_2023_bs_rows.json`
-    这份**抽取产物**固件上，不必每次真下 PDF（PDF 永远不许进版本控制）。
+    `view` 是三大表那一路的输入，可以来自
+    `tests/fixtures/maotai_2023_bs_rows.json` 这份**抽取产物**固件，
+    不必每次真下 PDF（PDF 永远不许进版本控制）。
+
+    `pdf` 只有不从行取值的两支 `kind` 需要（它们扫的是全篇章节锚点）。
+    只跑行值类时可以不给；给了也不会被行值类那条路用到。
+    `view` 在只跑 notes 类时可以是 `None`。
     """
     entries = mapping.for_statement(statement)
     if not entries:
@@ -354,17 +535,15 @@ def extract_records(
     unsupported = [e for e in entries if e.kind not in _KIND_HANDLED_HERE]
     if unsupported:
         raise NotImplementedError(
-            "本函数只处理 "
+            "本函数处理 "
             f"{sorted(k.name for k in _KIND_HANDLED_HERE)}；"
-            f"以下条目的 kind 尚未实现：{[(e.field_id, e.kind.name) for e in unsupported]}。"
-            "**分派点在这里，实现不在这里**（L-55：各类别的处理逻辑不该堆在包装层）。"
-            "三支都已在 extractor.notes 里有实现："
-            "NOTE_CHECKBOX → read_scope_change（01.5-05）；"
-            "COLUMN_HEADER_PRESENCE → read_restatement_flag（01.5-07）；"
-            "REPORT_METADATA → derive_reporting_period_months（01.5-07）。"
-            "⚠️ **但它们还没有接进本函数的批次产出** —— 调用方目前要直接调那三个入口。"
-            "接进来需要先回答一个真问题：ExtractionRecord 的 column_header / unit / "
-            "currency 对一个复选框字段意味着什么。**编一个值填进去就是 F-2。**"
+            # `getattr(..., "name", ...)`：`kind` 本该是枚举成员，但**报错路径自己不能崩** ——
+            # 一条因为 kind 写坏而进到这里的条目，若让格式化抛 AttributeError，
+            # 调用方看到的是一个与真实原因无关的异常。
+            f"以下条目的 kind 不在其中："
+            f"{[(e.field_id, getattr(e.kind, 'name', e.kind)) for e in unsupported]}。"
+            "**抛错不是跳过**：跳过会让那些字段静默地不出现在批次里，"
+            "而调用方看到的是一个「成功」的批次，只是少了几条记录。"
         )
     # `batch` 给了就往里并 —— 跨报表算指标时（如毛利率要 `is` 两个字段、
     # 而勾稽闸门建在 `bs` 三个字段上）必须是**同一个批次**：
@@ -377,32 +556,54 @@ def extract_records(
             source.pdf_sha256,
             definition_versions=snapshot_definition_versions(),
         )
+    notes_ctx = _NotesContext(pdf)
     for entry in entries:
-        column = view.header.by_role(entry.column_header)
-        if column is None:
-            raise MappingZeroHit(
-                f"{entry.field_id}：表头里绑不到口径为 {entry.column_header!r} 的列。"
-                f"已绑定的列是 {[(c.header_text, c.role) for c in view.header.columns]}。"
-                "口径类开关缺失即在读入边界 fail-closed，不退而取某一列（L-34）。"
+        if entry.kind is RecordKind.REPORT_METADATA:
+            # **不进 `records`**（`KIND-WIRING.md` §2.3）：纸上不印这一行，
+            # 一个从未被抽取过的值放进「一次抽取的记录」是记录类型本身的范畴错误。
+            # 但也**不静默跳过** —— 它进与 `records` 并列的 `derived`，
+            # 自带 `derived: True` / `extracted_from_layout: False`，看得见但不冒充抽取。
+            batch.derived.append(
+                notes.reporting_period_months_provenance(notes.ReportType.ANNUAL)
             )
-        matched = tuple(row for row in view.rows if match_row(row, entry))
-        if not matched and not any(entry.matches(seq) for seq in view.all_label_sequences):
-            raise MappingZeroHit(
-                f"{entry.field_id} 的 label 变体 {entry.label_variants} "
-                "在整份 PDF 上一次都没匹配上。单一权威表里，一条匹配不到任何东西的规则"
-                "只可能是写错了（L-36）。"
+            continue
+
+        if entry.kind in _ROW_VALUED_KINDS:
+            if view is None:
+                raise MappingZeroHit(
+                    f"{entry.field_id} 是 {entry.kind.name}，需要 view，而本次调用没有给。"
+                )
+            column = view.header.by_role(entry.column_header)
+            if column is None:
+                raise MappingZeroHit(
+                    f"{entry.field_id}：表头里绑不到口径为 {entry.column_header!r} 的列。"
+                    f"已绑定的列是 {[(c.header_text, c.role) for c in view.header.columns]}。"
+                    "口径类开关缺失即在读入边界 fail-closed，不退而取某一列（L-34）。"
+                )
+            matched = tuple(row for row in view.rows if match_row(row, entry))
+            if not matched and not any(entry.matches(seq) for seq in view.all_label_sequences):
+                raise MappingZeroHit(
+                    f"{entry.field_id} 的 label 变体 {entry.label_variants} "
+                    "在整份 PDF 上一次都没匹配上。单一权威表里，一条匹配不到任何东西的规则"
+                    "只可能是写错了（L-36）。"
+                )
+            facts = _facts_from_row(
+                entry,
+                view,
+                column.inherited_to(matched[0].page) if matched else column,
+                matched,
             )
+        else:
+            facts = _facts_from_note(entry, notes_ctx)
+
         record = _stamp_provenance(
             entry=entry,
             mapping_version=mapping.mapping_version,
             source=source,
-            view=view,
-            column=column.inherited_to(matched[0].page) if matched else column,
-            matched=matched,
+            facts=facts,
         )
         batch.add_record(record)
     return batch
-
 
 #: 跨报表抽取的默认计划：`(namespace, statement)`。
 #:
@@ -413,7 +614,21 @@ DEFAULT_EXTRACTION_PLAN = (
     ("bs", "合并资产负债表"),
     ("is", "合并利润表"),
     ("cfs", "合并现金流量表"),
+    # 2026-08-31 接入（`N-43` 判据 3）。这两步**不需要 view** ——
+    # 它们的条目全是不从行取值的 `kind`，读数器扫的是全篇章节锚点。
+    ("notes", "合并范围的变更"),
+    ("notes", "近三年主要会计数据和财务指标"),
 )
+
+#: ⚠️ **`kpi` 仍不在默认计划里，这是有意的，不是漏了。**
+#:
+#: `kpi.roe_weighted_average_disclosed` 是 `KPI_DISCLOSED` —— **行值类**，
+#: 它要一个「近三年主要会计数据和财务指标」那一节的 `StatementView`。
+#: 而 `read_statement` 找的是**报表**锚点（`locate.find_statement_anchors`），
+#: 给不出这一节的 view。
+#: ⇒ 接它需要先让 `locate` 能对**章节**做同样的锚点 + 行重组，那是另一件事。
+#: **不硬塞**：塞进来会在 `read_statement` 上抛 `SheetHeaderNotFound`，
+#: 而那个异常的字面意思是「版面与实测形态不符」——一个**与真实原因无关**的报错。
 
 
 def extract_batch(
@@ -444,8 +659,16 @@ def extract_batch(
             with pdfplumber.open(str(path)) as pdf:
                 batch: ExtractionBatch | None = None
                 for ns, stmt in steps:
-                    view = read_statement(pdf, stmt, year)
-                    batch = extract_records(view, mappings[ns], source, stmt, batch=batch)
+                    # 只有含行值类条目的那几步才需要 view。
+                    # **按条目的 `kind` 判，不按命名空间猜** —— 命名空间与 `kind`
+                    # 没有一一对应（`notes` 里既有 `STATEMENT_LINE` 也有两支不取行值的），
+                    # 按命名空间猜是 `L-35` 明令禁止的那种形状启发式。
+                    entries = mappings[ns].for_statement(stmt)
+                    needs_view = any(e.kind in _ROW_VALUED_KINDS for e in entries)
+                    view = read_statement(pdf, stmt, year) if needs_view else None
+                    batch = extract_records(
+                        view, mappings[ns], source, stmt, batch=batch, pdf=pdf
+                    )
                 assert batch is not None
                 return batch
         except locate.SheetHeaderNotFound as exc:
@@ -719,6 +942,43 @@ class CompletenessReport:
         }
 
 
+#: 与 `kind` 无关的那部分必需键。三个口径类字段不在这里 —— 它们按 `kind` 取。
+_KIND_INDEPENDENT_KEYS: tuple[str, ...] = tuple(
+    k for k in REQUIRED_EVIDENCE_KEYS if k not in ("column_header", "unit", "currency")
+)
+
+
+def required_evidence_keys(kind_name: str | None) -> tuple[str, ...]:
+    """这条记录按它自己的 `kind` 该有哪些键（`KIND-WIRING.md` §3.3）。
+
+    **为什么必须按 `kind` 取**：`NOTE_CHECKBOX` 的 `unit` / `currency` / `column_header`
+    在构造边界就被强制为 `None`（那一支上这三个概念不适用）。
+    若照行值类的键表去数，每条 note 记录会平白记 **3 处缺口**，
+    齐全率**永远不可能是 1** —— 那会让 `AC-05` 这条**保证类**标准
+    变成一个正确的抽取器永远达不到的标准。
+    与 `value` / `cell_state` 被排除在外是同一个理由。
+
+    ⚠️ **不是「note 记录就少查几项」的豁免**：那三个键**换成了另一个方向的检查** ——
+    构造边界要求它们必须是 `None`，填了值就构造不出来。
+    检查没有变松，只是搬到了 `record.__post_init__` 里。
+    """
+    from .record import BASIS_FIELDS_BY_KIND, RecordKind
+
+    try:
+        kind = RecordKind[kind_name] if kind_name else None
+    except KeyError:
+        kind = None
+    if kind is None:
+        # 认不出 `kind` 时按**最严**的那套查。放宽会让一条 kind 写坏的记录
+        # 反而少查三项 —— 「认不出就少查」是一条自我豁免的规则。
+        return REQUIRED_EVIDENCE_KEYS
+    spec = BASIS_FIELDS_BY_KIND.get(kind, {})
+    allowed = set(_KIND_INDEPENDENT_KEYS) | {n for n, required in spec.items() if required}
+    # **照 `REQUIRED_EVIDENCE_KEYS` 的顺序返回**，不是「无关键 + 追加」——
+    # 后者会让同一套键在不同 kind 上排出不同顺序，而 `keys_checked` 是要给人读的。
+    return tuple(k for k in REQUIRED_EVIDENCE_KEYS if k in allowed)
+
+
 def evidence_completeness(payloads: Sequence[Mapping]) -> CompletenessReport:
     """在**序列化后的证据链**上按 `AC-05` 写死的口径数一遍。
 
@@ -735,6 +995,7 @@ def evidence_completeness(payloads: Sequence[Mapping]) -> CompletenessReport:
     """
     gaps: list[tuple[str, str, str]] = []
     illegal: list[tuple[str, str]] = []
+    checked: set[str] = set()
     filled = 0
     total = 0
     for index, payload in enumerate(payloads):
@@ -743,7 +1004,9 @@ def evidence_completeness(payloads: Sequence[Mapping]) -> CompletenessReport:
             where = raw_id
         else:
             where = f"<第 {index + 1} 条无 field_id>"
-        for key in REQUIRED_EVIDENCE_KEYS:
+        keys = required_evidence_keys(_dig(payload, "kind") if isinstance(_dig(payload, "kind"), str) else None)
+        checked.update(keys)
+        for key in keys:
             total += 1
             reason = _judge(payload, key)
             if reason is None:
@@ -753,7 +1016,9 @@ def evidence_completeness(payloads: Sequence[Mapping]) -> CompletenessReport:
         for problem in _truncation_problems(payload):
             illegal.append((where, problem))
     return CompletenessReport(
-        keys_checked=REQUIRED_EVIDENCE_KEYS,
+        # 实际查过的键，按 `kind` 可能少于 `REQUIRED_EVIDENCE_KEYS`。
+        # 报**查过的**而不是报那张全表 —— 报全表会让读者以为每条记录都查了 14 项。
+        keys_checked=tuple(k for k in REQUIRED_EVIDENCE_KEYS if k in checked) or REQUIRED_EVIDENCE_KEYS,
         filled=filled,
         total=total,
         gaps=tuple(gaps),

@@ -387,11 +387,27 @@ T-1 归并时发现**四条已经落地的东西，`references/` 里的标注仍
      两支已实现（`1e06a4b`）：`read_restatement_flag` / `derive_reporting_period_months`。
   2. ~~若决定不做，写成已知缺口~~ —— **前提消失**（决定做了）。
      留档不删：「问题因前提消失而消解」与「问题被回答」是两回事，混同会让决策记录失真。
-  3. [ ] **仍未做完的那一半**：三支 `kind` 都有实现了，但**没接进 `pipeline` 的批次产出**。
-     接之前要先回答：`ExtractionRecord` 的 `column_header` / `unit` / `currency`
-     对一个复选框字段意味着什么。**编一个值填进去就是 `F-2`。**
-     ⚠️ 在接上之前，「`restated` 能判了」这件事**还没有传导到 `flags_status`** ——
-     6 个指标的 `unevaluable` 现状不变。
+  3. ✅ **已做 2026-08-31**：三支 `kind` 已接进 `pipeline` 的批次产出。
+     设计问题先答后动手，答案落在 `docs/agent/phase-01.5/KIND-WIRING.md` ——
+     **没有统一答案，三支各不相同，而这件事本身就是结论**：
+     `NOTE_CHECKBOX` 三个口径类字段全是 `None`（复选框不在任何「列」里，布尔没有量纲）；
+     `COLUMN_HEADER_PRESENCE` 的 `column_header` **有且是核心**（被判存在性的那个列头，
+     语义与行值类**相反**）；`REPORT_METADATA` **根本不进 `records`**
+     （纸上不印这一行，放进「一次抽取的记录」是记录类型本身的范畴错误），
+     改进与 `records` 并列的 `batch.derived`，自带 `derived: True` / `extracted_from_layout: False`。
+     形状上做了一处关键区分：**必需参数 ≠ 非空值** —— 防丢的性质来自「没有默认值」，
+     不来自「必须非空」，所以 `str | None` 的必需位置参数同样丢不掉。
+     fail-closed 因此改成**双向且按 `kind`**：改之前 `unit="元"` 盖在一条复选框记录上
+     **是能构造出来的**，改之后它 `ValueError`。⇒ `F-2` 在这三个字段上
+     从「靠人记得」变成「构造边界拦住」。
+     🔴 **实测效果，并更正一处旧数**：`flags_status = unevaluable` **12 → 0**、
+     `evaluated` **6 → 18**，11 个指标真实置位 flag（`restated` 10 个 + `scope_change` 1 个，
+     后者是 `A-8` 那处假阴性的端到端确认）。
+     ⚠️ **本条此前写的「6 个指标的 `unevaluable`」是错的，实测是 12** ——
+     数字来源已无从追溯，方向没错但数量错了，在此更正，不在别处沿用。
+     剩 2 个 `UNAVAILABLE` 明确 out of scope（要「非三大表章节」的 `StatementView`）。
+     接线当天炸出两处真问题，都已修并有负控制：列绑定闸门对
+     `COLUMN_HEADER_PRESENCE` 报**假的**不符；派生值不并进求值行则那条 flag 判不了。
 
 ### ~~N-42 — 交叉引用门禁看不见未跟踪的新文件~~ → **已修 2026-08-28**
 

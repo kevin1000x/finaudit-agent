@@ -616,6 +616,23 @@ def compute_metric(
     from semantic_layer.resolve import active_flags
 
     row = {r.field_id: r.value for r in batch.records}
+    # **派生值也要进这一行**（2026-08-31，`N-43` 判据 3 接线）。
+    #
+    # `batch.derived` 装的是「值知道、但不是从版面上抽来的」那些字段，目前只有
+    # `notes.reporting_period_months`（由报告类型决定，纸上不印这一行）。
+    # 不并进来的话，`period_length_mismatch` 这条 flag 的 trigger
+    # （`notes.reporting_period_months != 12`）会因为**操作数缺失**而求值失败，
+    # 于是整条指标记 `unevaluable` —— 而那个值其实是**知道的**。
+    # 「知道但没告诉求值器」和「不知道」在证据里长得一样，这是本项目反复记的那个形状。
+    #
+    # ⚠️ **并进求值行不等于把它当成抽取记录**：它仍然不在 `batch.records` 里，
+    # 证据侧仍带着 `derived: True` / `extracted_from_layout: False`
+    # （见 `notes.reporting_period_months_provenance`）。
+    # 复核者不会被引去年报上找那一行 —— 那正是分开放两处的目的。
+    for item in batch.derived:
+        field_id = item.get("field")
+        if field_id and field_id not in row:
+            row[field_id] = item.get("value")
     flag_outcome = active_flags(defn, row)
     if isinstance(flag_outcome, Refusal):
         flags, flags_status = (), "unevaluable"
