@@ -154,10 +154,13 @@ def check_file(path: Path) -> list[str]:
             cited = {int(x) for x in re.findall(rf"{re.escape(ch)}:(\d+)", prose_text)}
             if any(lo <= c <= hi for c in cited):
                 continue
-        if True:
-            problems.append(
-                f"{rel}:{lineno}  台账称已读 `{tok}`，但正文（表格之外）里找不到它"
-            )
+        # 走到这里 = 上面每一条豁免路径都没命中。**没有条件可判了，直接记。**
+        # （2026-08-31 去掉一个恒真的 `if True:`：它是重构剩下的脚手架，
+        #   包着的代码本来就无条件执行。留着不会出错，但它长得像一处「还有判据」，
+        #   而这份脚本自己的 R3 讲的正是「构造上不可能红的条件不算条件」。）
+        problems.append(
+            f"{rel}:{lineno}  台账称已读 `{tok}`，但正文（表格之外）里找不到它"
+        )
 
     return problems
 

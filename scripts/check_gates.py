@@ -83,6 +83,15 @@ harness 对这种情况给了正解（**`invariants.md:59`**，逐字见
 - **抓不到间接断言。** 若测试把断言封进一个 helper（`_expect_red(...)`），
   R1 会误报。目前仓库里没有这种写法；出现时应显式登记进 `INDIRECT_ASSERT_HELPERS`，
   **而不是放宽 R1**——放宽会让 R1 退化。
+- **R2 只保证「有一条具名负控制」，不保证它覆盖这道门的全部判据。**（2026-08-31 实测，台账 `N-45`）
+  实例是真的：`verify_deps.py` 的 `DENIED_LICENSE_PATTERNS` 有**两条**模式
+  （`AGPL` 与 `affero`），而登记的负控制 `test_pymupdf_is_rejected_via_classifier`
+  用的 classifier 是「GNU **Affero** General Public License v3」——
+  **只考得到 `affero` 那条**。把 `AGPL` 打掉，登记的负控制**照样绿**
+  （覆盖它的是另外两条**没有登记**的测试）。
+  ⇒ 「R2 通过」读作「这道门有一条被证明会红的用例」是对的，
+  读作「这道门每条判据都有负控制」是**错的**。与 `N-40` 是同一族的粒度问题，
+  只是发生在 R2 上而不是 R1 上。
 - **不检查门禁本身是不是绿的。** 那是各道门自己的事，本脚本只看「它们会不会红」。
 - **可达性只判到常量条件为止。** 2026-08-24 的独立复核抓出六类「构造上不会红却被放行」
   的形态，已全部修掉并有回归测试锁住（`pytest.xfail` 调用、`@pytest.mark.skip/skipif/xfail`、

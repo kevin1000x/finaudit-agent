@@ -1035,6 +1035,60 @@ interest_bearing_debt_ratio = (非流动负债一年内到期57,054,879.48 + 租
 读数路径独立于抽取器（走 `pdfplumber` 原始文本），**但执行者不独立于抽取器的产出方**。
 这条限定不随签署消失 —— 它是这份证据**是什么**，不是它**够不够**。
 
+### §E 六道登记门禁的变异扫描（`N-41` 判据 3 的返工，2026-08-31 实跑）
+
+> `A guard only guards if the regression actually fails it.`
+> 全程 `PYTHONDONTWRITEBYTECODE=1`（`N-41`），每次变异前 `ast.parse` / `yaml.safe_load`
+> **自证仍合法** —— 2026-08-24 那次就是被语法错误骗过去的（门禁确实红了，
+> 但红的原因是解析失败，不是它声称在查的那件事）。
+
+**做法与 `N-41` 判据 3 的原文不同，先说清楚**：原文要求「复核**既有的**变异结论并重跑」。
+实际做的是**对六道登记门禁逐道做一次当下的扫描** —— 那些历史变异针对的代码大多已经改过，
+**复原出来的结论对今天的代码没有约束力**。考古能得到「当时那次验证不算数」，
+得不到「今天这道门在守」。后者才是要的东西。
+⚠️ **历史 prose 记录因此仍记 `UNVERIFIED`**，不写成「已复核」。
+
+| # | 门禁 | 造的回归 | 该红的负控制 | 结果 |
+|---|---|---|---|---|
+| G1 | `check_xrefs.py` | `if ident not in reg[ns]:` → `if False:` | `test_checker_flags_unknown_id_end_to_end` | **红 → 回退绿** |
+| G2 | `check_reading_ledger.py` | 把「记一条问题」那段禁用 | `test_大文件声称全文而正文零出现_必须报红` | **红 → 回退绿** |
+| G3a | `verify_deps.py` | 打掉 `affero` 那条模式 | `test_pymupdf_is_rejected_via_classifier` | **红 → 回退绿** |
+| G3b | `verify_deps.py` | 打掉 `\\bAGPL` 那条模式 | 同上（登记的那条） | 🔴 **仍绿 —— 见下** |
+| G3c | `verify_deps.py` | 同 G3b | 另外两条**未登记**的测试 | **红 → 回退绿** |
+| G4 | `semantic_layer scan` | `scan_rules.yaml` 的 `CONTACT_PATTERN` 正则打成永不命中 | `test_contact_pattern_detected` | **红 → 回退绿** |
+| G5 | `semantic_layer validate` | `if not defn.grain:` → `if False:` | `test_removing_grain_triggers_r1` | **红 → 回退绿** |
+| G6 | `check_gates.py` | `if _failure_points(fn) > 0:` → `if True:` | `test_无断言的测试必须报红` | **红 → 回退绿** |
+
+**六道门，五道干净通过。第三道查出 `N-45`。**
+
+### §E.1 🔴 G3 那一格：先下了个错结论，查清后是另一回事
+
+扫描脚本对 G3b 打的是「**这道门的负控制不设防**」。**那个结论是错的。**
+
+真相：`DENIED_LICENSE_PATTERNS` 有**两条**模式（`\\bAGPL` 与 `affero`），
+而登记的负控制用的 classifier 是「GNU **Affero** General Public License v3」——
+字符串里有 `Affero`，**没有 `AGPL`**。⇒ 打掉 `\\bAGPL` 对它毫无影响。
+**是我的变异打错了地方，不是门禁的缺陷。**
+
+G3c 把靶子换成另外两条测试，立刻红 ⇒ `\\bAGPL` 那条**确实有覆盖**，
+只是覆盖它的两条测试**没有登记进 `GATES`**。
+
+⇒ **真正的缺口在「`R2` 证明了什么」这句话上**（台账 `N-45`）：
+`R2` 保证的是「这道门**有一条**被证明会红的用例」，
+**不是**「这道门每条判据都有负控制」。已写进 `check_gates.py` 的「明确抓不到什么」。
+
+⚠️ **这一格本身也是一条教训**：`rules/commands.md` 一直写着「**红的原因要正确**」，
+而这次踩的是它的镜像 —— **绿的原因也要正确**。
+「造回归后是绿」有两种解释：**门禁不设防**，或者**变异打错了地方**。
+两者的处置完全相反，**必须查清是哪一种再下结论**。
+
+### §E.2 顺带清掉的一处
+
+`check_reading_ledger.py` 里有一个恒真的 `if True:` 包着「记一条问题」那段
+（重构剩下的脚手架，包着的代码本来就无条件执行）。留着不会出错，
+但它长得像一处「还有判据」，而这份脚本自己的 R3 讲的正是
+「构造上不可能红的条件不算条件」。已去掉。
+
 ## Phase 2 — 证据链
 
 | 验收标准 | 验证方法 | 实际命令 | 期望结果 | 实际结果 | 证据 | 状态 |
