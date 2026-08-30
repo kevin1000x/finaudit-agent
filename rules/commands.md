@@ -99,6 +99,14 @@ Linux runner 默认 UTF-8，所以 CI 从不暴露这条：**这是「本地绿 
 
 **跑变异时必须设 `PYTHONDONTWRITEBYTECODE=1`（2026-08-28 实测，登记册 `N-41`）。**
 
+✅ **2026-08-31 起，pytest 这条路上忘了设也没关系**（`N-41` 判据 2）：
+`tests/conftest.py` 会在会话开始时 ① 关掉字节码写入、
+② **删掉 `src/` 下已有的 `__pycache__`** —— 第 ② 条才是要紧的那条，
+因为骗过验证的是**读**到上一轮留下的 `.pyc`，不是写。
+⚠️ **本条规则不删**：它仍然管到 pytest 之外的场景 ——
+直接用 `python -c` 驱动的探针、以及任何不经过 pytest 的变异脚本，
+conftest 根本不会被加载。**「有一条路自动了」不等于「所有路都自动了」。**
+
 🔴 **这一条不是保险，是这个程序被真实骗过一次之后加的。**
 
 变异 `entry.column_name == column_name` → `column_name in entry.column_name`

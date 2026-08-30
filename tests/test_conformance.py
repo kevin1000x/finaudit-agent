@@ -318,3 +318,55 @@ def test_语义层导入的是当前工作树而不是主工作树():
         "此时 pytest 与 `python -m semantic_layer` 导入的是两份不同的代码。"
         "处置见 rules/commands.md 第 0 步：显式覆盖 PYTHONPATH。"
     )
+
+
+# --------------------------------------------------------------------------
+# N-41 判据 2：陈旧字节码在 src/ 上不可能存在（2026-08-31）
+# --------------------------------------------------------------------------
+
+
+def test_本次会话不写字节码():
+    """`conftest.py` 的第 1 条。**只做这一条等于没做** —— 见下一条。"""
+    import sys as _sys
+
+    assert _sys.dont_write_bytecode is True, (
+        "本次会话仍会写 .pyc —— conftest 的那一行没生效或被谁改回去了（N-41）"
+    )
+
+
+def test_src下没有任何陈旧字节码():
+    """`conftest.py` 的第 2 条，**要紧的是这一条**。
+
+    骗过「造回归 → 看红 → 回退」的是**读**到上一轮留下的 `.pyc`，不是写。
+    `.pyc` 的失效判据是源文件的 `(mtime, size)`，而 **mtime 是秒级** ——
+    等长变异在同一秒内改完又回退时，Python 继续跑缓存的字节码，
+    而 `grep` 与 `inspect.getsource()` 读文件不读字节码，**证明不了任何事**。
+
+    ⚠️ 本条断言的是一个**当前状态**：会话开始时 conftest 清过，且此后不再写。
+    它红了说明有东西在测试运行期间往 `src/` 写了 `.pyc` —— 那正是要防的。
+    """
+    from pathlib import Path as _Path
+
+    src = _Path(__file__).resolve().parent.parent / "src"
+    caches = sorted(p.relative_to(src).as_posix() for p in src.rglob("__pycache__"))
+    assert caches == [], (
+        f"`src/` 下出现了字节码缓存：{caches}。"
+        "陈旧字节码能让「造回归 → 看红 → 回退」整段失效（N-41）—— "
+        "两个方向都会被骗，而「造回归后是绿」那个方向会产出一条"
+        "「我验过了、这道门不设防」的结论，**而验证根本没发生**。"
+    )
+
+
+def test_清理确实做过而不是从来就没有缓存():
+    """基线。**没有它，上一条在「本机从没跑过 Python」时也会绿。**
+
+    与 `test_留痕采集点唯一这条断言不是空转` 同一道理：空集也满足相等。
+    这里断言 conftest 的清理函数**本身可用** —— 而不是断言「本次清掉了几个」，
+    那个数取决于上一轮留了什么，是非确定的。
+    """
+    import conftest
+
+    assert hasattr(conftest, "PURGED_AT_STARTUP")
+    assert callable(conftest._purge_src_bytecode)
+    # 再跑一次必须返回空列表：第一次已经清干净，且此后不写。
+    assert conftest._purge_src_bytecode() == []
