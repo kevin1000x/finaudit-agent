@@ -138,13 +138,21 @@ def test_恒真字面量断言不算断言(scratch, expr):
     """`invariants.md:5` 禁止断言恒真物。构造上不可能红的断言等于没有断言。"""
     scratch.write_text(f"def test_x():\n    assert {expr}\n", encoding="utf-8")
     problems = _problems(scratch)
-    assert len(problems) == 1, f"`assert {expr}` 应被判为恒真"
+    # 断言的是**哪一条问题**，不是问题的**个数**。
+    # 2026-08-31 加 R6 之后同一行会同时触发两条（R3 让它不计入可失败点
+    # ⇒ R1 报「没有任何可失败点」；R6 报「这条断言语法上恒为真」），
+    # 原来那句 `len(problems) == 1` 会因此变红 —— **红得没有道理**：
+    # 本条考的是 R3，与新增的 R6 无关。按数量断言从一开始就比按内容断言脆。
+    assert any("没有任何可失败点" in x for x in problems), (
+        f"`assert {expr}` 应被判为恒真"
+    )
 
 
 def test_自比较断言不算断言(scratch):
     """`assert x == x` 恒真，且是重构残留的常见形态。"""
     scratch.write_text("def test_x():\n    y = compute()\n    assert y == y\n", encoding="utf-8")
-    assert len(_problems(scratch)) == 1
+    # 按内容断言，不按个数 —— 理由同上（R6 于 2026-08-31 新增）。
+    assert any("没有任何可失败点" in x for x in _problems(scratch))
 
 
 def test_假值字面量断言不算恒真(scratch):
@@ -424,7 +432,8 @@ def test_有副作用的自比较不算恒真(scratch):
 
 def test_无副作用的自比较仍算恒真(scratch):
     scratch.write_text("def test_x():\n    y = 1\n    assert y == y\n", encoding="utf-8")
-    assert len(_problems(scratch)) == 1
+    # 按内容断言，不按个数 —— 理由同上（R6 于 2026-08-31 新增）。
+    assert any("没有任何可失败点" in x for x in _problems(scratch))
 
 
 def test_xfail_不在可失败点白名单里():
@@ -552,3 +561,100 @@ def test_R5的输入缺失时不得静默通过(monkeypatch, tmp_path):
     problems = cg.check_landed_items_are_back_annotated()
     assert len(problems) == 1
     assert "不得静默通过" in problems[0]
+
+
+# --------------------------------------------------------------------------
+# R6：恒真断言**逐条**报（台账 N-40 判据 2，2026-08-31）
+# --------------------------------------------------------------------------
+
+
+def test_R6_抓住_N40_的原始实例(scratch):
+    """`N-40` 的实例是真的，不是假想：`assert pat.search(...) or True`。
+
+    它与两条真断言并排站着，所以 R1 判「这个函数能红」—— **判定本身没错**。
+    错的是粒度：那一行看起来在检查、实际什么都不检查，而它长得和真的一模一样。
+    它在仓库里活了若干轮，本门禁每轮都放行。
+    """
+    scratch.write_text(
+        "import re\n"
+        "def test_看起来在查大小写不敏感():\n"
+        "    pat = re.compile('agpl', re.I)\n"
+        "    assert pat.search('AGPL-3.0') or True\n"
+        "    assert pat.pattern\n",
+        encoding="utf-8",
+    )
+    problems = _problems(scratch)
+    assert any("语法上恒为真" in p for p in problems), problems
+    # **关键**：这个函数里另有一条真断言，R1 因此不会报它 ——
+    # 若 R6 不存在，这段代码整体是「通过」的。
+    assert not any("没有任何可失败点" in p for p in problems)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    assert True\n",
+        "    assert 1\n",
+        "    assert 'non-empty'\n",
+        "    assert (1, 2)\n",
+        "    assert x == x\n",
+        "    assert x or True\n",
+        "    assert x or 1\n",
+        "    assert True and 1\n",
+        "    assert x or (y and True) or True\n",
+    ],
+)
+def test_R6_逐条形态都报(scratch, body):
+    """语法上恒真的几种写法。`or` 任一支恒真即恒真，`and` 要全部恒真。"""
+    scratch.write_text(f"def test_x():\n    x = 1\n    y = 2\n{body}", encoding="utf-8")
+    assert any("语法上恒为真" in p for p in _problems(scratch))
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    assert x\n",
+        "    assert x or y\n",              # 两支都是名字 —— 语法上判不出
+        "    assert x and True\n",          # `and` 少一支恒真就不是恒真
+        "    assert len([x]) >= 0\n",       # 语义上恒真，**语法上不是** —— 明确不抓
+        "    assert x == y\n",
+        "    assert ()\n",                  # 恒**假**，是另一类问题，不归 R6
+        "    assert []\n",
+    ],
+)
+def test_R6_不误报(scratch, body):
+    """**宁可漏判，不许误报。**
+
+    误报的代价不是「多修一处」——是有人去放宽这道门，而放宽会让它退化。
+    `assert len(xs) >= 0` 这一条尤其要留着：它语义上恒真，
+    但 R6 抓的是「**写法上**就不可能假」，不是「这条断言有没有意义」。
+    后者没有机械判据（见 `_tautological_asserts` 的「明确抓不到什么」）。
+    """
+    scratch.write_text(f"def test_x():\n    x = 1\n    y = 2\n{body}", encoding="utf-8")
+    assert not any("语法上恒为真" in p for p in _problems(scratch))
+
+
+def test_R6_扫的是整个模块不只是test函数(scratch):
+    """恒真断言写在 helper 里同样什么都不检查，而 helper 正是它最容易藏的地方。"""
+    scratch.write_text(
+        "def _helper(v):\n"
+        "    assert v or True\n"
+        "    return v\n"
+        "def test_x():\n"
+        "    assert _helper(1) == 1\n",
+        encoding="utf-8",
+    )
+    problems = _problems(scratch)
+    assert any("语法上恒为真" in p for p in problems), problems
+
+
+def test_R6_在全仓上当前零命中():
+    """基线。**没有这一条，上面那些「会报」证明不了 R6 没在到处误报。**
+
+    ⚠️ 这条断言的是**现状**，不是不变量：将来真写出一条恒真断言时它应该红，
+    而红的处置是**改那条断言**，不是把这条测试删掉或加豁免。
+    """
+    hits = []
+    for module in sorted((REPO / "tests").glob("test_*.py")):
+        hits += [p for p in _problems(module) if "语法上恒为真" in p]
+    assert hits == [], hits

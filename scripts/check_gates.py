@@ -48,6 +48,14 @@ F-2 此前**只有识别方法，没有执行机制**——本脚本是它的执
 比对就退化成一次 grep——**和交叉引用是同一个形状**。
 这不检查回标内容对不对，只检查**有没有回标**；见「明确抓不到什么」。
 
+**R6 —— 恒真断言本身就是问题，逐条查。**（2026-08-31 新增，台账 `N-40` 判据 2）
+R3 只是让恒真断言**不计入** R1 的可失败点，管的是「这个函数整体能不能红」。
+R6 管的是**每一条断言**：一条 `assert x or True` 与两条真断言并排站着时，
+R1 判「能红」是对的，而那一行**看起来在检查、实际什么都不检查**。
+`N-40` 的实例在仓库里活了若干轮，本脚本每轮都放行。
+⚠️ **只查语法上恒真，不查运行时恒真** —— 后者需要求值，
+那条路通向一个自己会出错的检查器。宁可漏判，不许误报。
+
 **R3 —— 恒真断言不算断言。**
 `assert True` / `assert 1` / `assert "x"` / `assert x == x` 这类**构造上不可能红**的断言
 不计入 R1 的可失败点。`invariants.md:5` 逐字禁止「断言 service/method 存在」这类恒真物。
@@ -236,6 +244,33 @@ def _is_tautological(node: ast.Assert) -> bool:
             # 门禁误报的代价是有人去放宽 R1，而放宽会让 R1 退化。
             if _side_effect_free(left) and _side_effect_free(right):
                 return ast.dump(left) == ast.dump(right)
+    if isinstance(test, ast.BoolOp):
+        # 2026-08-31 补（台账 `N-40`）。**这一支是 `N-40` 的原始实例**：
+        # `assert pat.search(...) or True` —— `X or True` 恒为真，任何输入都不会红，
+        # 而它在仓库里活了若干轮，本脚本每轮都放行。
+        #
+        # `or`：任一支恒真 ⇒ 整式恒真（短路后另一支根本不求值）。
+        # `and`：**全部**恒真才恒真 —— 少一个都可能假。
+        parts = [_truthy_expr(v) for v in test.values]
+        return any(parts) if isinstance(test.op, ast.Or) else all(parts)
+    return False
+
+
+def _truthy_expr(node: ast.expr) -> bool:
+    """这个**表达式**在语法上是否恒为真。
+
+    ⚠️ **只判语法，不判运行时**（`N-40` 判据里逐字写着这条边界）：
+    运行时恒真需要求值，而那条路通向一个**自己会出错的检查器** ——
+    一个误报的门禁的代价是有人去放宽它，而放宽会让它退化。
+    ⇒ 宁可漏判，不许误报。
+    """
+    if isinstance(node, ast.Constant):
+        return bool(node.value)
+    if isinstance(node, (ast.List, ast.Tuple, ast.Dict, ast.Set)):
+        return _nonempty_literal(node)
+    if isinstance(node, ast.BoolOp):
+        parts = [_truthy_expr(v) for v in node.values]
+        return any(parts) if isinstance(node.op, ast.Or) else all(parts)
     return False
 
 
@@ -449,8 +484,49 @@ def _no_assert_reason(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
     return first[len(NO_ASSERT_PREFIX):].strip()
 
 
+def _tautological_asserts(tree: ast.AST, rel: str) -> list[str]:
+    """R6：**逐条**查断言，不是「这个函数里有没有一条能红的」。
+
+    ## R6 与 R3 的分工（两条都要，缺一不可）
+
+    - **R3** 说的是「恒真断言**不计入** R1 的可失败点」——
+      它管的是「这个函数**整体**能不能红」。
+    - **R6** 说的是「恒真断言**本身就是问题**」——
+      哪怕同一个函数里另有两条真断言、整体照样会红。
+
+    ⇒ `N-40` 记的正是 R3 拦不住的那种：
+    `tests/test_verify_deps_license.py` 里 `assert pat.search(...) or True`
+    与两条真断言并排站着，R1 判「能红」（对的），
+    而**那一行看起来在检查、实际什么都不检查**，长得和真的一模一样。
+    它在仓库里活了若干轮，每轮都被放行。
+
+    ## 边界：**只查语法上恒真，不查运行时恒真**
+
+    `N-40` 判据里逐字写着这条边界。运行时恒真需要求值，
+    而那条路通向一个**自己会出错的检查器**；一个误报的门禁的代价是
+    有人去放宽它，而放宽会让它退化。⇒ **宁可漏判，不许误报。**
+
+    ## 明确抓不到什么
+
+    - `assert x or y`（`y` 是名字而不是字面量）—— 可能恒真，语法上判不出。
+    - `assert f()`，其中 `f` 永远返回真 —— 那是运行时的事。
+    - `assert len(xs) >= 0` —— 语义上恒真，语法上是一个普通比较。
+      **这一条尤其要记住**：R6 抓的是「写法上就不可能假」，
+      不是「这条断言有没有意义」。后者没有机械判据。
+    """
+    problems: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assert) and _is_tautological(node):
+            problems.append(
+                f"{rel}:{node.lineno}  这条断言在**语法上恒为真**，任何输入都不会红 —— "
+                "一段看起来在检查、实际什么都不检查的代码（台账 `N-40`）。"
+                "要么写成真的断言，要么删掉；**不要加豁免**。"
+            )
+    return problems
+
+
 def check_module(path: pathlib.Path) -> tuple[list[str], dict[str, str]]:
-    """R1 + R3。
+    """R1 + R3 + R6。
 
     返回 `(问题列表, {测试全名: 无断言声明的理由})`。
     理由要拿到**模块之外**去查重——反模板机制是全仓唯一，见 docstring。
@@ -464,6 +540,10 @@ def check_module(path: pathlib.Path) -> tuple[list[str], dict[str, str]]:
         # 语法错的测试模块 pytest 收集不到 ⇒ 它的断言一条都不会跑。
         # **崩掉的门禁不是门禁**：这里必须报出来，而不是让 SyntaxError 冒到顶层。
         return [f"{rel}  语法错误，pytest 收集不到 —— 它的断言一条都不会执行"], {}
+
+    # R6 扫**整个模块**的每一条断言，不只扫 `test_*` 函数体 ——
+    # 一条恒真断言写在 helper 里同样什么都不检查，而 helper 正是它最容易藏的地方。
+    problems.extend(_tautological_asserts(tree, rel))
 
     for name, fn in _test_functions(tree).items():
         if f"{path.name}::{name}" in EXEMPT_TESTS:
