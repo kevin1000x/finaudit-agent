@@ -253,3 +253,54 @@ def test_redacted_provider_never_contains_the_key():
     assert secret not in blob
     assert "sk-b" in blob, "指纹要够识别是哪把钥匙"
     assert str(len(secret)) in blob
+
+
+# --------------------------------------------------------------------------
+# frozen-02 待办：冻结夹具的取值域已与 D-028 不一致（2026-08-31 钉住）
+# --------------------------------------------------------------------------
+
+
+def test_冻结夹具与D028取值域的已知不一致被钉死():
+    """**这条不是在说「一切正常」，是把一处已知的不一致钉在原地。**
+
+    `D-028` 把 `notes.business_combination_type` 从单值枚举改成集合值，
+    并**取消了 `无` 这个哨兵值**（空集即表示本期无企业合并）。
+    而 `eval/frozen-01/fixtures/synthetic-01.yaml` 里仍有 **6 处** `无` ——
+    **它们是冻结的，`D-012` 不许改**，所以这不是缺陷而是一笔**如实记着的欠账**
+    （处置在 `frozen-02`，与 `N-19` 同批）。
+
+    ## 为什么要写成一条测试而不是只写进文档
+
+    文档写了会过期，而这处不一致**没有任何机制在看着它**：
+    夹具值从不被校验取值域（`D-020` 把 trigger 移走之后无人读它），
+    所以它可以一直躺着，直到某天有人拿新的 `enum_values` 去消费旧夹具。
+
+    本条把**已知不一致的规模**钉住：
+    - 多出第 7 处 ⇒ 红。有人在往冻结集里加东西，那是 `D-012` 的事。
+    - 少于 6 处 ⇒ 红。**冻结集被改动了** —— 这比多一处更严重。
+    - `enum_values` 里重新出现 `无` ⇒ 红。`D-028` 被悄悄推翻了。
+
+    ⚠️ **红了不要改这条测试的数字**，先查是哪一边变了。
+    """
+    import yaml
+
+    fixture = REPO_ROOT / "eval" / "frozen-01" / "fixtures" / "synthetic-01.yaml"
+    stale = fixture.read_text(encoding="utf-8").count("notes.business_combination_type: 无")
+    assert stale == 6, (
+        f"冻结夹具里 `business_combination_type: 无` 有 {stale} 处，登记的是 6 处。"
+        "多了 ⇒ 有人往冻结集里加东西；少了 ⇒ 冻结集被改动（D-012）。"
+    )
+
+    defn = yaml.safe_load(
+        (REPO_ROOT / "metrics" / "minority_interest_share.yaml").read_text(encoding="utf-8")
+    )
+    field = next(
+        f for f in defn["source_fields"] if f["id"] == "notes.business_combination_type"
+    )
+    assert field["value_shape"] == "set"
+    assert "无" not in field["enum_values"], (
+        "`无` 又回到 enum_values 里了 —— D-028 明写取消这个哨兵值："
+        "在集合域里放一个「无」，是把「没有元素」写成「有一个叫『没有』的元素」。"
+    )
+    # 这两句合起来才是本条的意思：**定义侧已经改了，冻结侧没跟上，且不许跟上。**
+    assert stale > 0 and "无" not in field["enum_values"]
