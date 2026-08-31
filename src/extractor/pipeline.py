@@ -71,6 +71,8 @@ __all__ = [
     "ExtractionSource",
     "StatementView",
     "read_statement",
+    "STATEMENTS_SECTION_TITLE",
+    "STATEMENTS_NEXT_SECTION_TITLE",
     "snapshot_definition_versions",
     "extract_records",
     "extract_batch",
@@ -245,6 +247,44 @@ def _all_label_sequences(
     return frozenset(row.label_lines for row in locate._stitch(raw))
 
 
+#: 报表所在章节的标题与它的右边界。**序号容差、正文逐字**（与 `notes` 那套同一模型）。
+#:
+#: 两份上交所年报实测：`二、 财务报表` 在茅台 2023 = p58、万华 2019 = p71，
+#: 各自正好是第一张报表锚点所在页；右边界 `三、 公司基本情况` 在 p75 / p87。
+STATEMENTS_SECTION_TITLE = "财务报表"
+STATEMENTS_NEXT_SECTION_TITLE = "公司基本情况"
+
+
+def _statements_section_span(pdf, y_tolerance):
+    """报表章节的区间 `(起, 止)`；定位不到就返回 `None`。
+
+    ## 它解决的是什么（万华 2019 实测）
+
+    `find_statement_anchors` 按**整词逐字**认标题，于是**附注正文里提到的报表名
+    也会成为锚点**。万华 2019 上「合并资产负债表」定位到 **3 个**：
+    p71 是真标题，另外两个在 p112 —— 一句
+    `2018年12月31 日受影响的合并资产负债表和母公司资产负债表：`
+    与一张对照表的列头行。⇒ `read_statement` 的「恰好 1 个」判定不通过，
+    **整条计算在第二家公司上直接拒答**。
+
+    ## 找不到这一节时**退回今天的行为**，而不是拒答
+
+    ⚠️ 这与 `read_restatement_flag` 那条「不退回全篇搜索」看起来相反，实则不同：
+    那里退回全篇会**产出一个错误答案**（p78 / p107 的「调整后」会让它误判 True）；
+    这里退回全篇只是回到**今天就在跑的**那条路，而那条路遇歧义**本来就拒答**。
+    ⇒ 加这一层是**严格收窄**，不引入任何新的静默失败。
+    """
+    anchors = locate.find_section_anchors(
+        pdf, (STATEMENTS_SECTION_TITLE, STATEMENTS_NEXT_SECTION_TITLE), y_tolerance
+    )
+    section = [a for a in anchors if a.title == STATEMENTS_SECTION_TITLE]
+    if len(section) != 1:
+        # 恰好一个才算定位到。多个 ⇒ 结构与模型不符，**不挑一个用**（`F-2`）。
+        return None
+    start = section[0]
+    return start, locate.next_anchor_after(anchors, start)
+
+
 def read_statement(
     pdf,
     statement: str,
@@ -253,6 +293,15 @@ def read_statement(
 ) -> StatementView:
     """定位一张报表并读出它的版面事实。找不到锚点 / 表头即抛 `LookupError`。"""
     anchors = locate.find_statement_anchors(pdf, y_tolerance)
+    span = _statements_section_span(pdf, y_tolerance)
+    if span is not None:
+        start, end = span
+        def _inside(a) -> bool:
+            if (a.page, a.y) <= (start.page, start.y):
+                return False
+            return end is None or (a.page, a.y) < (end.page, end.y)
+
+        anchors = [a for a in anchors if _inside(a)]
     matching = [a for a in anchors if a.title == statement]
     if len(matching) != 1:
         raise locate.SheetHeaderNotFound(

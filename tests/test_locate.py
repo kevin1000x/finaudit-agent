@@ -317,3 +317,64 @@ def test_重叠为零的单元格不归入任何列():
         y=100.0,
     )
     assert row.cell_in(column) is None
+
+
+# --------------------------------------------------------------------------
+# 报表锚点限定在「财务报表」这一节内（2026-08-31，万华 2019 实测逼出来的）
+# --------------------------------------------------------------------------
+
+
+def test_报表锚点被限定在财务报表那一节内():
+    """🔴 **这条不是假想风险，是万华 2019 上的真实拒答。**
+
+    `find_statement_anchors` 按**整词逐字**认标题，于是**附注正文里提到的报表名
+    也会成为锚点**。万华 600309 · 2019 上「合并资产负债表」定位到 **3 个**：
+    p71 是真标题，另外两个在 p112 ——
+    一句 `2018年12月31 日受影响的合并资产负债表和母公司资产负债表：`
+    与一张对照表的列头行 `合并资产负债表    母公司资产负债表`。
+
+    ⇒ `read_statement` 的「恰好 1 个」判定不通过，
+    **整条计算在第二家公司上直接拒答**（`RefusalCode.UNAVAILABLE`，退 3）。
+
+    限定区间 `[二、财务报表, 三、公司基本情况)` 之后：
+    茅台 p58–p75、万华 p71–p87，两家的八个报表锚点都落在各自区间内，
+    p112 / p116 那三处被挡在外面。
+    """
+    import pdfplumber
+
+    from extractor import locate
+    from extractor.pipeline import _statements_section_span, read_statement
+
+    repo_root = Path(__file__).resolve().parent.parent
+    for code, year, expect in (("600519", 2023, (58, 75)), ("600309", 2019, (71, 87))):
+        path = repo_root / "data" / "raw" / f"{code}_{year}.pdf"
+        if not path.exists():
+            pytest.skip(f"本机语料不在：{path}（PDF 永不进版本控制）")
+        with pdfplumber.open(str(path), password="") as pdf:
+            span = _statements_section_span(pdf, locate.DEFAULT_Y_TOLERANCE)
+            assert span is not None, f"{code} 定位不到「财务报表」这一节"
+            start, end = span
+            assert (start.page, None if end is None else end.page) == expect
+            # 三张合并报表在**两家**上都各自恰好定位到一个锚点。
+            for statement in ("合并资产负债表", "合并利润表", "合并现金流量表"):
+                view = read_statement(pdf, statement, year)
+                assert start.page <= view.anchor.page < end.page
+                assert view.rows, f"{code} {statement} 区间内零行"
+
+
+def test_定位不到那一节时退回今天的行为而不是拒答():
+    """⚠️ 这与 `read_restatement_flag` 那条「不退回全篇搜索」看起来相反，实则不同。
+
+    那里退回全篇会**产出一个错误答案**（区间外的「调整后」会让它误判 `True`）；
+    这里退回全篇只是回到**加这一层之前就在跑的**那条路，
+    而那条路遇歧义（锚点不唯一）**本来就拒答**。
+    ⇒ 加这一层是**严格收窄**，不引入任何新的静默失败。**本条把这个性质钉住。**
+    """
+    import inspect
+
+    from extractor import pipeline
+
+    source = inspect.getsource(pipeline.read_statement)
+    # 找不到区间时必须是「不过滤」，不是「抛异常」。
+    assert "if span is not None:" in source
+    assert "raise" not in source.split("if span is not None:")[0]
