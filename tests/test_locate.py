@@ -11,6 +11,7 @@ A-6 明写「探测跑通 ≠ 有回归用例」。本文件就是把那次探�
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,8 @@ from extractor.locate import (
     parse_amount,
 )
 from extractor.pipeline import StatementView
+
+REPO = Path(__file__).resolve().parent.parent
 
 FIXTURE = Path(__file__).parent / "fixtures" / "maotai_2023_bs_rows.json"
 
@@ -343,11 +346,11 @@ def test_报表锚点被限定在财务报表那一节内():
     import pdfplumber
 
     from extractor import locate
+    from extractor.mapping import load_pdf_mapping, match_row
     from extractor.pipeline import _statements_section_span, read_statement
 
-    repo_root = Path(__file__).resolve().parent.parent
     for code, year, expect in (("600519", 2023, (58, 75)), ("600309", 2019, (71, 87))):
-        path = repo_root / "data" / "raw" / f"{code}_{year}.pdf"
+        path = REPO / "data" / "raw" / f"{code}_{year}.pdf"
         if not path.exists():
             pytest.skip(f"本机语料不在：{path}（PDF 永不进版本控制）")
         with pdfplumber.open(str(path), password="") as pdf:
@@ -360,6 +363,61 @@ def test_报表锚点被限定在财务报表那一节内():
                 view = read_statement(pdf, statement, year)
                 assert start.page <= view.anchor.page < end.page
                 assert view.rows, f"{code} {statement} 区间内零行"
+
+            # 顺带在**同一次解析**上考映射覆盖 —— 不另开一次 PDF（213 页解析不便宜）。
+            # `bs` 的 15 条在两家上都必须全命中且**不多命中**：
+            # 多命中意味着标签变体互相串了，那比零命中更危险（会静默取错行）。
+            bs_view = read_statement(pdf, "合并资产负债表", year)
+            table = load_pdf_mapping("bs", REPO / "data" / "mappings" / "pdf")
+            for entry in table.for_statement("合并资产负债表"):
+                hits = [r for r in bs_view.rows if match_row(r, entry)]
+                assert len(hits) == 1, f"{code} {entry.field_id} 命中 {len(hits)} 行，期望恰好 1"
+
+
+def test_万华2019的三个比率算得出且勾稽通过():
+    """🔴 **第二家公司第一次算出真实财务比率。**
+
+    2026-08-31 之前，`VERIFICATION.md` §C.1 记的是「万华只测过合并范围的变更那一节」。
+    补了两条标签变体（`bs.total_equity` 无「合计」、`is.net_profit` 不折行）之后，
+    `bs` 的 15 条在万华上全命中。
+
+    ⚠️ **期望值独立可核**：万华 2019 p73 印着
+    负债和所有者权益总计 `96,865,322,655.29`、所有者权益 `43,931,258,971.63`
+    ⇒ 负债 = 52,934,063,683.66 ⇒ 资产负债率 = **0.5465**。
+    本条断言的是这个数，不是照抄抽取器的输出。
+    """
+    import hashlib
+
+    import pdfplumber
+
+    from extractor.formula import compute_metrics
+    from extractor.mapping import load_pdf_mapping
+    from extractor.pipeline import ExtractionSource, extract_records, read_statement
+    from extractor.reconcile import reconcile_batch
+    from extractor.record import SourceFreshness
+
+    path = REPO / "data" / "raw" / "600309_2019.pdf"
+    if not path.exists():
+        pytest.skip(f"本机语料不在：{path}（PDF 永不进版本控制）")
+
+    source = ExtractionSource(
+        stock_code="600309",
+        fiscal_year=2019,
+        pdf_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        source_url=f"file://{path.as_posix()}",
+        freshness=SourceFreshness.REUSED_CACHED,
+    )
+    table = load_pdf_mapping("bs", REPO / "data" / "mappings" / "pdf")
+    with pdfplumber.open(str(path), password="") as pdf:
+        view = read_statement(pdf, "合并资产负债表", 2019)
+        batch = extract_records(view, table, source, "合并资产负债表")
+
+    gate = reconcile_batch(batch)
+    assert gate.passed, f"万华勾稽不通过，差额 {gate.difference}"
+    assert gate.difference == Decimal("0.00")
+
+    outcome = compute_metrics(["debt_to_asset_ratio"], batch, REPO / "metrics")[0]
+    assert round(outcome.value, 4) == Decimal("0.5465")
 
 
 def test_定位不到那一节时退回今天的行为而不是拒答():
