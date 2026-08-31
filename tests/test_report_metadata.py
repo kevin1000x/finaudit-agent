@@ -109,17 +109,28 @@ def test_两个列头名都逐字取自映射口径():
     assert RESTATEMENT_NEXT_SECTION_TITLE == "境内外会计准则下会计数据差异"
 
 
-def test_单样本这条限定写在实现里而不是只写在文档里():
-    """`F-1`：「有 调整后/调整前 列 ⟺ 发生追溯重述」这条规则**反例形态一次都没观察到**。
+def test_跨排版限定写在实现里而不是只写在文档里():
+    """`F-1`：不许在任何地方把这条规则写成「已验证」。
 
-    不许在任何地方把它写成「已验证」。这条测试锁住那句限定确实还在源码里 ——
+    ⚠️ **本条 2026-08-31 换了锁的对象，因为被锁的那句话过期了。**
+    原来锁的是「**反例形态一次都没观察到，也没有去找**」——
+    **去找了**：顺丰控股 002352 · 2021 那份表一个「调整后」都没有，
+    而 p12 注文逐字写着「公司无需追溯调整或重述以前年度会计数据」，
+    **真值就是 `False`**，规则给出的也是 `False`。
+
+    **前提消失不等于限定消失。** 现在锁的是更新之后那三条限定 ——
+    三家公司两个模板不叫「跨排版已验证」、另一种反例仍是零样本、
+    以及顺丰那份是靠补入第二种标题措辞才判得出来的。
     限定一旦从代码里消失，下一个人读到的就是一条无条件成立的规则。
     """
     import extractor.notes as notes
 
     source = Path(notes.__file__).read_text(encoding="utf-8")
-    assert "跨排版未验证" in source
-    assert "反例形态" in source
+    assert "不许写成「已验证」" in source
+    assert "另一种反例仍是零样本" in source
+    assert "三家公司、两个模板" in source
+    # 旧那句必须**不在**了 —— 它现在是一句假话，留着比没有更糟。
+    assert "一次都没观察到，也没有去找" not in source
 
 
 # --------------------------------------------------------------------------
@@ -186,3 +197,75 @@ def test_派生值标注为派生而不是抽取():
     assert prov["extracted_from_layout"] is False
     assert prov["value"] == 12
     assert "不在纸上" in prov["note"] or "报告类型" in prov["note"]
+
+
+# --------------------------------------------------------------------------
+# 跨公司实证（2026-08-31）：三份真实年报，两个交易所模板
+# --------------------------------------------------------------------------
+
+_CORPUS = (
+    ("600519", 2023, True, "上交所：`七、 近三年主要会计数据和财务指标`"),
+    ("600309", 2019, True, "上交所：同上"),
+    ("002352", 2021, False, "深交所：`主要会计数据和财务指标`，**无「近三年」**"),
+)
+
+
+@pytest.mark.parametrize("code, year, expected, note", _CORPUS)
+def test_三份真实年报上的判定与年报自述一致(code, year, expected, note):
+    """🔴 **这三条是 `VERIFICATION.md` §C.7 那条证据缺口的收口。**
+
+    原本记着「反例形态从未被观察到，也没有去找过」。去找了：
+    顺丰 002352 · 2021 那份表**一个「调整后」都没有**，
+    而 p12 注文逐字写着「**公司无需追溯调整或重述以前年度会计数据**」——
+    **真值就是 `False`**，这也是 `restated is False` 这条分支
+    **第一次被真实数据走到**。
+
+    ⚠️ 期望值不是照抄抽取器的输出，是照抄**年报自己说的话**：
+    茅台 p5「本公司对比较期间相关财务数据进行追溯调整」⇒ `True`；
+    顺丰 p12「公司无需追溯调整或重述以前年度会计数据」⇒ `False`。
+
+    ## 为什么这三条必须跑真 PDF，而不是跑固件
+
+    本模块其余的回归都跑在 `maotai_2023_restatement.json` 上 —— 那份固件存的是
+    **区间内的行**，驱动的是 `restatement_from_lines`（判定逻辑）。
+    **而 2026-08-31 改的是上一层：章节锚点的标题匹配。**
+    固件从锚点之后才开始，**覆盖不到那处改动** ——
+    拿固件去验它，等于验了一件与改动无关的事。
+
+    ## 代价，如实写在这里
+
+    这三条把本地全量套件从约 **77 秒**拉到约 **162 秒**（三份 PDF 共 638 页的解析）。
+    ⚠️ **CI 不受影响**：`data/raw/` 从不进版本控制，CI 上这三条一律 `skip`。
+    ⇒ 付这个时间的只有本机，而本机正是唯一有语料、也唯一能验这件事的地方。
+    """
+    pdf_path = Path(__file__).resolve().parent.parent / "data" / "raw" / f"{code}_{year}.pdf"
+    if not pdf_path.exists():
+        pytest.skip(f"本机语料不在：{pdf_path}（PDF 永不进版本控制）")
+    import pdfplumber
+
+    from extractor.notes import read_restatement_flag
+
+    with pdfplumber.open(str(pdf_path), password="") as pdf:
+        reading = read_restatement_flag(pdf)
+
+    assert not reading.undecidable, f"{code} {year} 判不出（{note}）：{reading.undecidable_reason}"
+    assert reading.restated is expected, f"{code} {year} 判成 {reading.restated}，与年报自述不符"
+    # `False` 必须不带命中行 —— 这条不变量此前只有构造样本走过。
+    if expected is False:
+        assert reading.matched_lines == ()
+
+
+def test_两种标题措辞都在册且不许退化成子串匹配():
+    """`近三年…` 包含 `主要会计数据…`，子串匹配看起来能一石二鸟。
+
+    **但本模块的锚点判定靠的正是「整行逐字相等（或序号 + 逐字相等）」**，
+    改成子串会同时命中正文里任何提到这几个字的行 ——
+    放弃逐字，就等于放弃 `C-2` 那条「对序号容差、对正文逐字」。
+    """
+    from extractor.notes import RESTATEMENT_SECTION_TITLE, RESTATEMENT_SECTION_TITLES
+
+    assert RESTATEMENT_SECTION_TITLE in RESTATEMENT_SECTION_TITLES
+    assert "主要会计数据和财务指标" in RESTATEMENT_SECTION_TITLES
+    assert len(RESTATEMENT_SECTION_TITLES) == 2
+    # 两种措辞是**包含关系**，这正是不能改成子串匹配的原因 —— 把这件事本身钉住。
+    assert RESTATEMENT_SECTION_TITLES[1] in RESTATEMENT_SECTION_TITLE

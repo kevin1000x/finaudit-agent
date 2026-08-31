@@ -76,6 +76,7 @@ __all__ = [
     "RestatementReading",
     "restatement_from_lines",
     "read_restatement_flag",
+    "RESTATEMENT_SECTION_TITLES",
     "ReportType",
     "derive_reporting_period_months",
     "reporting_period_months_provenance",
@@ -324,6 +325,27 @@ RECORD_KIND = RecordKind.NOTE_CHECKBOX
 #: 章节正文，不含序号。茅台 2023 排「七、」，跨公司会变（`C-2`）。
 RESTATEMENT_SECTION_TITLE = "近三年主要会计数据和财务指标"
 
+#: 同一节在不同交易所模板下的**另一种措辞**（2026-08-31 实测补入）。
+#:
+#: 顺丰控股 002352 · 2021（深交所）p12 的标题整行就是 `主要会计数据和财务指标`，
+#: **没有「近三年」三个字**；茅台 600519 · 2023 与万华 600309 · 2019（上交所）
+#: 两份都是 `七、 近三年主要会计数据和财务指标`。
+#:
+#: 🔴 **补这一条是因为它造成过一次真实的判不出**：`VERIFICATION.md` §C.7 原本把这条规则
+#: 记为单样本、且**反例形态从未被观察到、也没有去找过**。2026-08-31 去找了 —— 顺丰那份的表**一个「调整后」都没有**，
+#: 而同页注文逐字写着「**公司无需追溯调整或重述以前年度会计数据**」，
+#: **真值就是 `False`**。而我们因为标题对不上而判 `undecidable`：
+#: **一个本来知道的答案，被一处措辞差异变成了「判不出」。**
+#:
+#: ⚠️ **两种措辞都必须列出来，不许改成子串匹配。** `近三年…` 包含 `主要会计数据…`，
+#: 子串匹配看起来能一石二鸟 —— 但它同时会命中正文里任何提到这几个字的行，
+#: 而本模块的锚点判定靠的正是「**整行**逐字相等（或序号 + 逐字相等）」。
+#: 放弃逐字，就等于放弃了 `C-2` 那条「对序号容差、对正文逐字」。
+RESTATEMENT_SECTION_TITLES = (
+    RESTATEMENT_SECTION_TITLE,
+    "主要会计数据和财务指标",
+)
+
 #: 区间右端点。实测下一章是「八、境内外会计准则下会计数据差异」（p6 y=77.7）。
 RESTATEMENT_NEXT_SECTION_TITLE = "境内外会计准则下会计数据差异"
 
@@ -392,11 +414,31 @@ def restatement_from_lines(
     只有 p5 那 3 行在本章节内。**干扰项与目标字面完全相同** ——
     这比 p77 的会计政策段落更难查，因为连人工复核都分不出来。
 
-    ⚠️ **单样本，跨排版未验证。** 「有 调整后/调整前 列 ⟺ 发生追溯重述」
-    这条规则在茅台 2023 上成立，且与 p5 y=487.2 逐字写着的
-    「本公司对比较期间相关财务数据进行追溯调整」互证；
-    但**反例形态**（未重述却拆两列，或重述了却没拆）**一次都没观察到，也没有去找**。
-    按 `F-1`，此处不写成「已验证」。
+    ## 跨排版验证的现状（2026-08-31 更新 —— **原来那句限定已经过期，如实改**）
+
+    ⚠️ **原文说反例形态从未被观察到、也没有去找过。去找了，找到了一个。**
+    （原话不逐字抄在这里：它现在是一句假话，而一句被逐字保留的假话
+    会被下一个略读的人当成现状 —— 与 `L-47` 那条过期的枚举支数同型。）
+
+    本机三份年报，两个交易所模板，结果：
+
+    | 样本 | 标题措辞 | 判定 | 与年报自述互证 |
+    |---|---|---|---|
+    | 茅台 600519 · 2023（上交所） | `七、 近三年主要会计数据和财务指标` | `True` | p5 逐字「本公司对比较期间相关财务数据进行追溯调整」 |
+    | 万华 600309 · 2019（上交所） | 同上 | `True` | 命中 4 行 |
+    | 顺丰 002352 · 2021（**深交所**） | `主要会计数据和财务指标`（**无「近三年」**） | **`False`** | p12 逐字「**公司无需追溯调整或重述以前年度会计数据**」 |
+
+    ⇒ **反例形态已观察到一个**：顺丰那份表里一个「调整后」都没有，
+    而年报自己说了没有重述 —— **规则给出的 `False` 与自述一致**。
+    这也是 `restated is False` 这条分支**第一次被真实数据走到**。
+
+    ⚠️ **但仍然不许写成「已验证」，三条限定照旧**：
+    1. **三家公司、两个模板**，不是「跨排版已验证」。
+    2. **另一种反例仍是零样本**：「重述了却没拆两列」——
+       上表三家里没有这一形态，且**没有已知的办法去构造它**（要一份真实年报）。
+    3. 顺丰那份**是靠补入第二种标题措辞才判得出来的** ——
+       在补入之前它判 `undecidable`。**一个本来知道的答案，被一处措辞差异变成了「判不出」**；
+       第四家公司完全可能有第三种措辞。按 `F-1`，此处不写成「已验证」。
     """
     if anchor_page is None:
         return RestatementReading(
@@ -438,9 +480,11 @@ def read_restatement_flag(pdf, y_tolerance: float | None = None) -> RestatementR
 
     tolerance = DEFAULT_Y_TOLERANCE if y_tolerance is None else y_tolerance
     anchors = find_section_anchors(
-        pdf, (RESTATEMENT_SECTION_TITLE, RESTATEMENT_NEXT_SECTION_TITLE), tolerance
+        pdf, (*RESTATEMENT_SECTION_TITLES, RESTATEMENT_NEXT_SECTION_TITLE), tolerance
     )
-    section = [a for a in anchors if a.title == RESTATEMENT_SECTION_TITLE]
+    section = [a for a in anchors if a.title in RESTATEMENT_SECTION_TITLES]
+    # **恰好一个才算定位到。** 两种措辞同时命中不同的行 ⇒ 这份年报的结构与我们的模型不符，
+    # 那是「判不出」，不是「挑一个用」—— 在两个候选里挑一个报，正是 `F-2` 的形状。
     if len(section) != 1:
         return restatement_from_lines([], anchor_page=None)
 
