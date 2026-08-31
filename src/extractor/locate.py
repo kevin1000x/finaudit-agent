@@ -78,6 +78,7 @@ __all__ = [
     "DEFAULT_Y_TOLERANCE",
     "NUMERIC_CELL_RE",
     "SheetHeaderNotFound",
+    "AmbiguousColumnRole",
     "Cell",
     "StatementAnchor",
     "ColumnBinding",
@@ -186,6 +187,13 @@ class ApplicabilityUnreadable(LookupError):
     **不返回「不适用」这个看起来安全的默认。** 读不出来和读出「不适用」是两回事：
     前者是「够不着」，后者是一条事实陈述。混同它们，A-8 记的那种真实假阴性
     就会从「flag 不置位」退化成「flag 不置位且无人知道为什么」。
+    """
+
+
+class AmbiguousColumnRole(ValueError):
+    """同一个口径名在一张表头里解出了多列（2026-08-31，万华 2019 实测）。
+
+    **这是「我们写错了」，不是「够不着数据」** —— 按 `D-022` 决策二走异常而不是 `Refusal`。
     """
 
 
@@ -328,10 +336,41 @@ class SheetHeader:
     y: float
 
     def by_role(self, role: str) -> ColumnBinding | None:
-        for column in self.columns:
-            if column.role == role:
-                return column
-        return None
+        """按口径名取列。**取不到返回 `None`；取到多个抛错，不挑一个。**
+
+        ## 为什么多个要抛而不是取第一个（2026-08-31，万华 2019 实测）
+
+        原实现是「遍历，返回第一个匹配的」。万华化学 600309 · 2019 的合并资产负债表
+        **有三列**，而其中**两列被解到同一个口径**：
+
+        ```
+        2019年12月31日 -> 期末余额
+        2018年12月31日 -> 期初余额
+        2018年1月1日   -> 期初余额     ← 与上一列同 role
+        ```
+
+        （第三列是准则变更的追溯起点，与它 `restated = True` 一致。）
+
+        ⇒ 原实现会**静默返回排在前面的那一列**。今天没有任何字段映射到 `期初余额`，
+        所以没有产出错数 —— 但那是运气，不是设计。
+        **「在两个候选里挑一个报」正是 `F-2` 的形状**，而它一旦发生，
+        表现形式是「取到了一个看起来合理的数」，没有任何东西会说出来。
+
+        ⚠️ **抛错而不是返回 `None`**：两者的原因不同，处置也不同 ——
+        「表头里没有这个口径」是映射表或版面的问题，
+        「同一个口径解出了两列」是**我们的列解析规则在这份版面上不够细**。
+        合并成一个 `None`，调用方看到的报错会指向错误的方向。
+        """
+        matched = [column for column in self.columns if column.role == role]
+        if len(matched) > 1:
+            raise AmbiguousColumnRole(
+                f"口径 {role!r} 在表头里解出了 {len(matched)} 列："
+                f"{[c.header_text for c in matched]}。"
+                "**不挑一个用** —— 挑出来的那个会是一个看起来合理的数，"
+                "而没有任何东西会说出来（F-2）。"
+                "要么把列解析规则写细到能分开它们，要么这份版面本就不该用这个口径名。"
+            )
+        return matched[0] if matched else None
 
     @property
     def label_max_x(self) -> float:

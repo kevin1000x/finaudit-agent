@@ -436,3 +436,43 @@ def test_定位不到那一节时退回今天的行为而不是拒答():
     # 找不到区间时必须是「不过滤」，不是「抛异常」。
     assert "if span is not None:" in source
     assert "raise" not in source.split("if span is not None:")[0]
+
+
+def test_同一口径解出多列时抛错而不是挑第一个():
+    """🔴 **万华 2019 实测出来的静默歧义。**
+
+    它的合并资产负债表**有三列**，而其中**两列被解到同一个口径**：
+
+    ```
+    2019年12月31日 -> 期末余额
+    2018年12月31日 -> 期初余额
+    2018年1月1日   -> 期初余额     ← 与上一列同 role
+    ```
+
+    原实现是「遍历，返回第一个匹配的」⇒ **静默返回排在前面的那一列**。
+    今天没有任何字段映射到 `期初余额`，所以没有产出错数 —— **但那是运气，不是设计**。
+    「在两个候选里挑一个报」正是 `F-2` 的形状，而它一旦发生，
+    表现形式是「取到了一个看起来合理的数」，没有任何东西会说出来。
+
+    ⚠️ 抛错而不是返回 `None`：两者原因不同、处置也不同 ——
+    「表头里没有这个口径」是映射表或版面的问题；
+    「同一个口径解出两列」是**我们的列解析规则在这份版面上不够细**。
+    """
+    import pdfplumber
+
+    from extractor.locate import AmbiguousColumnRole
+    from extractor.pipeline import read_statement
+
+    path = REPO / "data" / "raw" / "600309_2019.pdf"
+    if not path.exists():
+        pytest.skip(f"本机语料不在：{path}（PDF 永不进版本控制）")
+
+    with pdfplumber.open(str(path), password="") as pdf:
+        view = read_statement(pdf, "合并资产负债表", 2019)
+
+    # 唯一的那个仍然取得到 —— 不许因为「有歧义」把好的一并挡掉。
+    assert view.header.by_role("期末余额").header_text == "2019年12月31日"
+    with pytest.raises(AmbiguousColumnRole, match="解出了 2 列"):
+        view.header.by_role("期初余额")
+    # 取不到仍然是 `None`，不是抛错 —— 两条路径必须分开。
+    assert view.header.by_role("不存在的口径") is None
