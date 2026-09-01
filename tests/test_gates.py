@@ -70,6 +70,67 @@ def _declared(path: Path) -> dict[str, str]:
 
 
 # --------------------------------------------------------------------------
+# 扫描范围 —— **视野的缺口不会以红的形式表现出来**（N-42 那一族）
+# --------------------------------------------------------------------------
+
+
+def test_门禁的扫描范围与pytest的收集范围一致():
+    """🔴 **2026-09-02 实测出来的视野缺口。**
+
+    原实现只扫 `test_*.py`，而 pytest 的默认 `python_files` 是
+    `test_*.py` **和** `*_test.py`，`pyproject.toml` 也没有覆盖它。
+    ⇒ 一份叫 `foo_test.py` 的测试，**pytest 会跑它，第六道门看不见它**。
+
+    本仓当前 `*_test.py` 有 0 个文件，所以它一直表现为一切正常 ——
+    这正是 `N-42` 的形状：**门禁看不见的东西，在证据里与「不存在」不可区分**。
+
+    ⚠️ 这条红了**不要去改 `PYTEST_FILE_PATTERNS` 让它变绿** ——
+    先看是不是有人在 `pyproject.toml` 里写了 `python_files`。
+    两个声明必须对上，**改哪一个是另一回事**。
+    """
+    import tomllib
+
+    cfg = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+    ini = cfg.get("tool", {}).get("pytest", {}).get("ini_options", {})
+    # 没有覆盖 ⇒ 实际生效的就是 pytest 的默认两条。
+    declared = ini.get("python_files")
+    expected = tuple(declared) if declared else ("test_*.py", "*_test.py")
+    assert tuple(cg.PYTEST_FILE_PATTERNS) == expected, (
+        f"check_gates 扫 {cg.PYTEST_FILE_PATTERNS}，而 pytest 收 {expected} —— "
+        "两者一旦不同，差集里的测试会被跑、但不被 R1 检查"
+    )
+
+
+def test_下划线test结尾的模块也在扫描范围里(tmp_path, monkeypatch):
+    """负控制：把无断言的测试放进 `*_test.py`，**必须照样被抓住**。
+
+    这一条与上一条是两件事：上一条锁「两个声明对得上」，
+    这一条锁「扫描真的按两条 pattern 走」——
+    只改常量不改 `rglob` 的话，上一条仍然绿。
+    """
+    monkeypatch.setattr(cg, "REPO", tmp_path)
+    monkeypatch.setattr(cg, "TESTS_DIR", tmp_path / "tests")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "zz_probe_test.py").write_text(
+        _src("def test_一个断言都没有():", "    x = 1 + 1"), encoding="utf-8"
+    )
+
+    modules = cg.iter_test_modules()
+    assert [m.name for m in modules] == ["zz_probe_test.py"]
+    assert len(cg.check_module(modules[0])[0]) == 1
+
+
+def test_两条pattern匹配到同一个文件时不重复扫(tmp_path, monkeypatch):
+    """`test_a_test.py` 同时满足 `test_*.py` 与 `*_test.py`。"""
+    monkeypatch.setattr(cg, "REPO", tmp_path)
+    monkeypatch.setattr(cg, "TESTS_DIR", tmp_path / "tests")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_a_test.py").write_text(
+        _src("def test_x():", "    assert True"), encoding="utf-8"
+    )
+    assert len(cg.iter_test_modules()) == 1
+
+# --------------------------------------------------------------------------
 # R1 —— 每个 test_* 必须能失败
 # --------------------------------------------------------------------------
 

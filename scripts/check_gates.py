@@ -136,6 +136,45 @@ from dataclasses import dataclass
 REPO = pathlib.Path(__file__).resolve().parent.parent
 TESTS_DIR = REPO / "tests"
 
+#: 本门禁的**扫描范围**。必须与 pytest 实际收集的文件集一致 —— 见 `iter_test_modules`。
+#:
+#: 这两个值是 pytest 的默认 `python_files`。`pyproject.toml` 的
+#: `[tool.pytest.ini_options]` **没有**覆盖 `python_files`，所以默认值就是实际值。
+#: ⚠️ 哪天有人在 pyproject 里写了 `python_files`，
+#: `tests/test_gates.py::test_门禁的扫描范围与pytest的收集范围一致` 会红。
+PYTEST_FILE_PATTERNS: tuple[str, ...] = ("test_*.py", "*_test.py")
+
+
+def iter_test_modules() -> list[pathlib.Path]:
+    """本门禁要检查的测试模块。**扫描范围本身就是判据的一部分。**
+
+    ## 为什么不是一句 `rglob("test_*.py")`（2026-09-02 实测）
+
+    原实现只扫 `test_*.py`，而 pytest 的默认 `python_files` 是
+    `test_*.py` **和** `*_test.py` 两条，pyproject 里也没有覆盖它。
+    ⇒ 一份叫 `foo_test.py` 的测试，**pytest 会跑它，本门禁看不见它**。
+
+    当场量过，不是推演：临时放一个 `tests/zz_probe_test.py`，里面一个函数、零断言 ——
+
+    ```
+    pytest --collect-only  ⇒ 1 test collected
+    check_gates.py         ⇒ 扫描 34 个测试模块……门禁的门禁：通过   ← 看不见它
+    改名为 test_zz_probe.py ⇒ 扫描 35 个测试模块……门禁的门禁：不通过 ← R1 抓住了
+    ```
+
+    本仓当前 `*_test.py` 有 **0 个文件**，所以这个缺口一直没有表现出来 ——
+    **这正是 `N-42` 那一族的形状**：门禁看不见的东西，在证据里与「不存在」不可区分。
+    「绿」只对它的视野成立，而视野的缺口不会以红的形式表现出来，它表现为一切正常。
+
+    ⚠️ **去重按解析后的路径，不按文件名。** 两条 pattern 有可能匹配到同一个文件
+    （例如 `test_a_test.py`），扫两遍会让 R1 的报错重复出现。
+    """
+    seen: dict[pathlib.Path, None] = {}
+    for pattern in PYTEST_FILE_PATTERNS:
+        for path in TESTS_DIR.rglob(pattern):
+            seen.setdefault(path.resolve(), None)
+    return sorted(seen)
+
 
 @dataclass(frozen=True)
 class Gate:
@@ -713,7 +752,7 @@ def check_landed_items_are_back_annotated() -> list[str]:
 def main() -> int:
     problems: list[str] = []
     declared: dict[str, str] = {}
-    for path in sorted(TESTS_DIR.rglob("test_*.py")):
+    for path in iter_test_modules():
         module_problems, module_declared = check_module(path)
         problems.extend(module_problems)
         declared.update(module_declared)
@@ -722,7 +761,7 @@ def main() -> int:
     problems.extend(check_gates_are_wired_into_ci())
     problems.extend(check_landed_items_are_back_annotated())
 
-    scanned = sorted(p.name for p in TESTS_DIR.rglob("test_*.py"))
+    scanned = [p.name for p in iter_test_modules()]
     print(f"扫描 {len(scanned)} 个测试模块，{len(GATES)} 道已登记门禁。")
     print(f"已登记豁免 {len(EXEMPT_TESTS)} 条，间接断言 helper {len(INDIRECT_ASSERT_HELPERS)} 条（均应为 0）。")
     print(f"`{NO_ASSERT_PREFIX}` 声明 {len(declared)} 条 —— **它长起来就等于 R1 在退化**。")
