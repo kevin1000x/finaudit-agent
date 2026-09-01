@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: 骨架与 cninfo 延伸
-current_phase: "01.5"
-current_phase_name: 数据接入层
-status: phase-1.5-complete
-stopped_at: ✅ **Phase 1.5 已收口（2026-08-31）** —— 八条 Success Criteria 全部成立（`SC-2` / `SC-8` 由操作者签 `PASS`，29 个字段逐字核对零不一致）。**同日把欠账清到底：登记册里未勾的判据只剩 1 条**（`N-45` 判据 2，机械化留白且写明了理由）。本轮结掉：`N-43` 判据 3（三支 `kind` 接进 `pipeline`，`unevaluable` **12 → 0**）、`D-031`（标记不阻断计算 + 修掉人读输出看不见标记）、`N-41` 判据 3（六道门变异扫描 → `N-45`）与判据 2（陈旧字节码状态不可能存在）、`N-40` 判据 2（`R6`）、`N-42` 未做的一半、复核 10 条 findings 全部处置完、`N-46`（frozen-02 清单建册）、`L-26`（文档符号检查，扫出 6 个已分叉的名字）、`L-6`（证据字段产生/消费矩阵）、`L-80`（判据写成 + 修掉一处削弱 `D-014` 的静默吞掉）。**784 passed**（收口时 723 → +61），七道门全 exit 0，`已落地` 63 / `部分落地` 3 / `BLOCKED` 9。🔴 **剩下的都要操作者**：`N-20`（只读 YAML 判定义是否对人可读，执行者代答无效，Phase 2 前必做）、`L-25`（装 mypy = 新增依赖，属技术选型且要过供应链门禁）、`N-46`（何时建 frozen-02）、`N-44`（`D-030` 余量 08-31 实测 3,482,602，余量 16.1%，斜率放缓至日均约 −50,300，跌破时**处置不是再下调**）。**下一个阶段是 Phase 0**（cninfo 实证结论），按项目流程要先 `/gsd-plan-phase`，未擅自开工。`L-70` / `L-12` 分别被「抽取器尚无自主写盘路径」与 `U-01` 正当挡着
-last_updated: "2026-08-31T00:00:00Z"
-last_activity: 2026-08-31
-last_activity_desc: **一天内把 Phase 1.5 收口后的欠账清到只剩 1 条未勾判据**。最要紧的三条：`unevaluable` **12 → 0**（并更正台账里「6 个」这个错数）；`L-26` 一次扫出 **6 个文档里点名而代码里没有的符号**，5 个此前无人发现；`L-80` 的判据带出一处**削弱 `D-014` 的静默吞掉** —— 读许可证 classifier 的 `except Exception: pass` 会让**一次部分读取伪装成完整读取**，而调用方那段「零声明 ≠ 不是 AGPL」的正确设计因此被架空。⚠️ 同日**第五次**踩同一族转义（八进制），且是在写「不要这么踩」那条规则的正文里；另立一条流程规矩：**最后一次改动之后整条链必须从头跑一遍**（`F-8` 管短路，不管「跑的是不是全套」）
+current_phase: "00"
+current_phase_name: cninfo 实证结论（规划中，尚未开工）
+status: phase-0-planning
+stopped_at: "🔴 **Phase 0 已起草计划，但被三条 A 区条目挡着，未开工。** `.planning/phases/00-cninfo-empirical/`（`CONTEXT.md` 193 行 + `00-01-PLAN.md`）已落盘：ROADMAP 那节写于 2026-08-10 的五条前提**逐条复验仍成立**（Fog 连行号都没变），但三周里出现四件它没写的事 —— `data/` 实际是空的（六个文件三个 `.gitkeep`，⇒ 成本在取数不在分析）；cninfo 是 **PUBLIC** 且声明 MIT 而 `src/pdf_parser.py:17` **无条件 `import fitz`（AGPL v3）**，`LICENSE` 版权行仍是 `[Your Name]` 占位符；巨潮 `searchkey` 恒为空且 `stock` 必填；环境重且**验证码是已知故障模式**（**agent 不绕验证码**）。🔴 还算出一件 ROADMAP 没算过的：**非标审计意见是稀有事件，随机抽样在这里不成立** —— 要 30 个非标按 1% 基准率需 ~3,000 公司年 ≈ 7.4–21 GB（⚠️ 那个基准率**是假设值没量过**，量它是 `00-01-PLAN` 的第一个任务）。⇒ 新增 `A-11`（抽样设计）/ `A-12`（「不写新代码」的边界与 SC 第 2 条字面冲突）/ `A-13`（PUBLIC × MIT × AGPL）三条待裁决。**`00-01-PLAN` 是纯测量，不依赖那三条，可以先做。** 同日做完的加练：万华 **25 / 25** 逐字段核对由操作者签署（§D.18，⚠️ 其中 **2 条免检**，`N-48`）；修掉 `by_role` 静默挑选（`N-47`）与 `check_gates` 扫描盲区（`N-42` 第七处）；缝合器第二形态经操作者裁决**不做**，进 X 区 `N-49`（**X 区首次不为空**）。**795 passed**，七道门全 exit 0。🔴 仍要操作者：`A-11` / `A-12` / `A-13` / `N-20` / `L-25` / `N-46` / `N-44`"
+last_updated: "2026-09-02T00:00:00Z"
+last_activity: 2026-09-02
+last_activity_desc: "**起草 Phase 0 计划，并在起草过程中算出一件 ROADMAP 没算过的事**：推荐方向依赖的非标审计意见是**稀有事件**，随机抽样的量级是 GB 级取数加人时，与那句「两三天就能出」不在一个量级 ⇒ 立 `A-11` 交操作者裁。同轮实测发现 cninfo 是 **PUBLIC** 仓库却声明 MIT 而无条件 import AGPL 的 PyMuPDF（`A-13`），以及 Goal 的「不写新代码」与 SC 第 2 条「结论要能用仓库里的命令重跑」**在字面上冲突**（`A-12`）。⚠️ 起草时还撞见 `N-42` 的**第八处**视野缺口：`tests/test_plan_waves.py` 的 `PHASE_DIR` 硬编码到 `01.5-data-ingestion`，于是新增的 Phase 0 PLAN 与它的 ROADMAP 标注**对不对得上完全没被检查**（门禁仍 4 passed，因为它根本没看那个目录）。**今天没修**，记 `UNVERIFIED`"
 progress:
   total_phases: 6
   completed_phases: 1
@@ -44,10 +44,18 @@ progress:
   `01.5-01` … `01.5-05` 与 `01.5-07` 已执行完；`01.5-06` 的 Task 1 / 2 / 3 已完成
 - ✅ **Phase 1.5 已收口（2026-08-31）**：七份 PLAN 全部执行完毕，
   八条 Success Criteria 全部成立（`SC-2` / `SC-8` 由操作者签署）。
-- 下一个动作：🔴 **把三支 `kind` 接进 `pipeline` 的批次产出**（`N-43` 判据 3）。
-  **先回答设计问题再动手** —— `ExtractionRecord` 的 `column_header` / `unit` / `currency`
-  对一个**复选框字段**意味着什么。**编一个值填进去就是 `F-2`。**
-  在接上之前，6 个指标的 `unevaluable` 现状不变。
+- ~~下一个动作：把三支 `kind` 接进 `pipeline`~~ —— **已完成 2026-08-31**（`unevaluable` 12 → 0）
+- **2026-09-02 做完的加练（`C-1` 跨公司泛化，不是新阶段）**：
+  万华 2019 三道障碍全部走完；**25 个字段逐字核对 25 / 25 一致**，由操作者签署（`VERIFICATION.md` §D.18）；
+  抓出并修掉 `by_role` 的静默挑选（`N-47`）与 `check_gates` 的扫描盲区（`N-42` 第七处）。
+  ⚠️ **25/25 里有 2 条是免检的**（干扰项与目标同值，`N-48`）——
+  操作者接受的是「25 条都没对不上」，**不是「25 条都过了检验」**
+- **下一个动作：🔴 Phase 0，且它现在被三条 A 区条目挡着** ——
+  `A-11`（抽样设计：非标是稀有事件，随机抽样不成立）、
+  `A-12`（「不写新代码」的边界与 SC 第 2 条在字面上冲突）、
+  `A-13`（cninfo 是 PUBLIC 且 MIT × 无条件 import AGPL 的 PyMuPDF）。
+  **计划已起草**：`.planning/phases/00-cninfo-empirical/`（`CONTEXT.md` + `00-01-PLAN.md`）。
+  `00-01-PLAN` 是**纯测量**，不依赖那三条裁决，可以先做；其余计划的形态取决于 `A-11` 选哪条路
 - ⚠️ **`SC-2` / `SC-8` 的 `PASS` 带一条不随签署消失的限定**（`VERIFICATION.md` §C.13）：
   核对由执行者执行、操作者审阅接受 —— 代码路径级独立，不是执行者级独立。
 - ⚠️ **`01.5-0X` ≠ `wave X`**：wave 4 = `01.5-04` + `01.5-05`，wave 5 = `01.5-06` + `01.5-07`。
@@ -68,9 +76,9 @@ Task 3 人工检查点由操作者指定复核 SC-2 / SC-3 / SC-4 三条，**复
 | RESEARCH | ✅ 完成 | `docs/agent/RESEARCH.md`、`references/`（6 份，含 3 份 subagent 深读 + 2 份续读） |
 | ARCHITECT | ✅ 完成（Phase 2 架构待补） | `docs/agent/ARCHITECTURE.md` |
 | POC | ✅ POC-01 已执行（PASS，压线） | `docs/agent/POC.md`、`docs/agent/poc-01/` |
-| PLAN | ✅ Phase 1（8 份）；Phase 1.5 未做 | `.planning/phases/01-semantic-layer/` |
+| PLAN | ✅ Phase 1（8 份）、Phase 1.5（7 份，全部执行完）；**Phase 0 已起草 1 份** | `.planning/phases/01-semantic-layer/`、`01.5-data-ingestion/`、`00-cninfo-empirical/` |
 | IMPLEMENT | ✅ Phase 1 全部落地 | `src/semantic_layer/`、`metrics/`、`eval/` |
-| VERIFY | ✅ Phase 1 已收口 | `docs/agent/VERIFICATION.md` §Phase 1 |
+| VERIFY | ✅ Phase 1、Phase 1.5 均已收口 | `docs/agent/VERIFICATION.md` §Phase 1 / §C / §D |
 | REVIEW | ⬜ 未开始 | — |
 
 POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判定门通过。

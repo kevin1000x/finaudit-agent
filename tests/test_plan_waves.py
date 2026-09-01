@@ -120,3 +120,27 @@ def test_plan_字段与文件名一致():
         match = _FRONTMATTER_PLAN_RE.search(text)
         assert match, f"{path.name} 的 frontmatter 里没有 plan:"
         assert int(match.group(1)) == int(path.name.split("-")[1]), path.name
+
+
+def test_STATE的frontmatter是合法yaml():
+    """🔴 **2026-09-02 实测：它此前不是。**
+
+    `.planning/STATE.md` 的 frontmatter 是 GSD 声称要机读的那份状态，
+    而 `last_activity_desc` 的值以 `**` 开头 —— **YAML 会把 `*` 当成 alias 起始**，
+    整段 frontmatter 因此解析失败。**这个状态在 HEAD 上已经存在，没有任何门禁解析过它。**
+
+    ⇒ 一份「机读的状态文件」从来没有被机读过，与 `N-42` 是同一族：
+    **没有人看的东西，坏了和好着在证据上不可区分。**
+
+    ⚠️ 这条红了**不要把 frontmatter 里的强调号删掉了事** ——
+    正确的修法是给值加引号；措辞是内容，引号是语法。
+    """
+    import yaml
+
+    text = (REPO_ROOT / ".planning" / "STATE.md").read_text(encoding="utf-8")
+    assert text.startswith("---"), "STATE.md 开头不是 frontmatter"
+    front = text.split("---")[1]
+    data = yaml.safe_load(front)   # 不合法就在这里抛
+    assert isinstance(data, dict), "frontmatter 解析出来不是映射"
+    for key in ("current_phase", "status", "last_updated"):
+        assert key in data, f"frontmatter 缺 {key}"
