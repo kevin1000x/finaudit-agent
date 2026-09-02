@@ -15,7 +15,7 @@
 - Integer phases (0, 1, 2, 3, 4): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 0: cninfo 实证结论** - 不写新代码，给已有仓库补一条可复现的实证结论
+- [~] **Phase 0: cninfo 实证结论** - 不写新代码，给已有仓库补一条可复现的实证结论　**（2026-09-03 产物已齐：`docs/FINDING-01.md` 一个零结果 + 五阶段可重跑脚本 + README 重排；四条 SC 的证据都在，⚠️ 待操作者签署）**
 - [x] **Phase 1: 语义层 semantic-layer** - 20 个财务指标的机器可读口径定义，本项目唯一别人抄不走的一层　**（2026-08-16 收口，五条 SC 全部 VERIFIED；H1 停止条件按严格读法计 5 未触发，压线）**
 - [ ] **Phase 1.5: 数据接入层 data-ingestion**（INSERTED 2026-08-15）- 年报 PDF 抽取器 + 数值执行，让 20 份口径定义第一次吃到真实数据
 - [ ] **Phase 2: 可信执行层与 Web 演示** - 跑通一次完整问答并产出可复核的证据链
@@ -86,7 +86,7 @@ README 472 行仍无结论节；审计意见仍零命中）。
 **⇒ `A-11` / `A-12` / `A-13` 三条裁决前，本阶段只能做 `00-01-PLAN`（纯测量）。**
 
 Plans:
-- [ ] 00-01-PLAN.md — **Fog 指数 vs 当期经营业绩**（wave 1）：~200 个公司年建样本、
+- [x] 00-01-PLAN.md — **Fog 指数 vs 当期经营业绩**（wave 1）：~200 个公司年建样本、
       跑关系、Fog 与 ROA 各人工核 3 个、写 `docs/FINDING-01.md` 并重排 README 首屏。
       🔴 **最后一步（重排 README）前置于 `A-13`** —— 那一步就是把仓库变成对外的脸。
       ⚠️ 原先那份「四任务可行性 spike」已作废：它是在为换掉的方向做尽调
