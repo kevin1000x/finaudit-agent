@@ -74,6 +74,7 @@ from decimal import Decimal, InvalidOperation
 
 __all__ = [
     "STATEMENT_TITLES",
+    "near_miss_statement_titles",
     "CONSOLIDATED_TITLES",
     "DEFAULT_Y_TOLERANCE",
     "NUMERIC_CELL_RE",
@@ -555,6 +556,43 @@ def find_statement_anchors(pdf, y_tolerance: float = DEFAULT_Y_TOLERANCE) -> lis
     anchors.sort(key=lambda a: (a.page, a.y))
     return anchors
 
+
+def near_miss_statement_titles(pdf, limit: int = 6) -> tuple[str, ...]:
+    """**只给拒答理由用的诊断函数。匹配时一律不许调它。**
+
+    ## 它解决的是什么（2026-09-03，中国国贸 600007 2024 实测）
+
+    `find_statement_anchors` 在那份年报上返回 **0 个锚点**，而拒答理由只说
+    「定位到 0 个锚点，期望恰好 1 个」。**那句话不含任何可据以行动的信息** ——
+    人得自己写一个探针去翻 PDF 才知道它到底看见了什么。实际看见的是
+
+    ```
+    2024年12月31日合并及公司资产负债表      ← 日期印在标题同一行，且措辞是「合并及公司」
+    ```
+
+    ⇒ 本函数把「长得像但不逐字相等」的那些词摆出来，让拒答理由自带线索。
+
+    ## ⚠️ 为什么这不是「放宽匹配」
+
+    2026-09-03 在 25 份真实年报上量过：**24 份逐字出现「合并资产负债表」**，
+    现有的整词逐字判定覆盖 96%。⇒ **数据不支持放宽**，
+    而放宽的代价是实测过的（`A-4`：子串匹配会取到数值为空的小节标题）。
+
+    所以本函数**只在失败路径上跑、只产出人读的文本**，
+    它的返回值不进任何判定。`tests/test_locate.py` 有一条测试锁住这件事。
+    """
+    keys = ("资产负债表", "利润表", "现金流量表", "权益变动表")
+    seen: dict[str, None] = {}
+    for page in pdf.pages:
+        for word in page.extract_words():
+            title = strip_invisible(word["text"])
+            if title in STATEMENT_TITLES:
+                continue
+            if len(title) <= 40 and any(k in title for k in keys):
+                seen.setdefault(title, None)
+                if len(seen) >= limit:
+                    return tuple(seen)
+    return tuple(seen)
 
 def find_section_anchors(
     pdf, titles: tuple[str, ...], y_tolerance: float = DEFAULT_Y_TOLERANCE

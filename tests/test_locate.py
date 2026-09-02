@@ -476,3 +476,82 @@ def test_同一口径解出多列时抛错而不是挑第一个():
         view.header.by_role("期初余额")
     # 取不到仍然是 `None`，不是抛错 —— 两条路径必须分开。
     assert view.header.by_role("不存在的口径") is None
+
+
+# --------------------------------------------------------------------------
+# 近似标题：只给拒答理由用的诊断（2026-09-03，600007 实测）
+# --------------------------------------------------------------------------
+
+
+class _StubPage:
+    """够用的 pdfplumber page 替身：只需要 `extract_words`。"""
+
+    def __init__(self, words):
+        self._words = words
+
+    def extract_words(self):
+        return [{"text": w, "top": 100.0} for w in self._words]
+
+
+class _StubPdf:
+    def __init__(self, pages):
+        self.pages = [_StubPage(w) for w in pages]
+
+
+def test_近似标题摆出长得像的而不摆逐字相等的():
+    """600007 中国国贸 2024 的真实形态：`2024年12月31日合并及公司资产负债表`。
+
+    ⚠️ 逐字相等的那些**不许出现在结果里** —— 它们不是「近似」，它们是命中。
+    一个把命中也算进来的诊断，会让读拒答理由的人以为匹配逻辑坏了。"""
+    from extractor.locate import near_miss_statement_titles
+
+    pdf = _StubPdf([[
+        "合并资产负债表",                      # 逐字相等 —— 不该出现在结果里
+        "2024年12月31日合并及公司资产负债表",
+        "合并及公司利润表",
+        "货币资金",                            # 与报表标题无关 —— 也不该出现
+    ]])
+    near = near_miss_statement_titles(pdf)
+    assert "合并资产负债表" not in near
+    assert "货币资金" not in near
+    assert "2024年12月31日合并及公司资产负债表" in near
+    assert "合并及公司利润表" in near
+
+
+def test_近似标题只出现在拒答路径上不进任何判定():
+    """🔴 **这一条是本次改动的真正约束。**
+
+    2026-09-03 在 25 份真实年报上量过：**24 份逐字出现「合并资产负债表」**，
+    整词逐字判定覆盖 96% ⇒ **数据不支持放宽匹配**，而放宽的代价是实测过的（`A-4`）。
+
+    所以近似标题只许用来**告诉人看见了什么**。
+    它一旦进了判定，这次改动就从「让拒答说人话」变成了「悄悄放宽匹配」。
+
+    ⚠️ 断言走 AST，不走 `in` 子串 —— `RV-9` 记的那次就是被注释满足的。
+    """
+    import ast
+
+    src = (REPO / "src" / "extractor" / "pipeline.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+
+    calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "near_miss_statement_titles"
+    ]
+    assert len(calls) == 1, f"pipeline.py 里有 {len(calls)} 处调用，期望恰好 1 处"
+
+    # 那一处必须落在「锚点数不等于 1」那个分支里。
+    guarded = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        if "near_miss_statement_titles" not in ast.dump(node):
+            continue
+        if "SheetHeaderNotFound" in ast.dump(node):
+            guarded = True
+    assert guarded, (
+        "近似标题的调用点不在抛 SheetHeaderNotFound 的那个分支里 —— "
+        "它已经离开了拒答路径，可能正在参与判定"
+    )

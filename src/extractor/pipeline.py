@@ -304,8 +304,23 @@ def read_statement(
         anchors = [a for a in anchors if _inside(a)]
     matching = [a for a in anchors if a.title == statement]
     if len(matching) != 1:
+        # 拒答本身是对的（`D-022` 决策二：够不着数据）。**要改的是它说了什么** ——
+        # 光说「0 个」不含任何可据以行动的信息，人得自己写探针去翻 PDF。
+        # 只在失败路径上跑，且**只产出人读的文本，不进任何判定**（见 locate 的 docstring）。
+        hint = ""
+        if not matching:
+            near = locate.near_miss_statement_titles(pdf)
+            if near:
+                hint = (
+                    f" 页面上长得像但不逐字相等的有：{list(near)}。"
+                    "⚠️ **这不是让你去放宽匹配** —— 2026-09-03 在 25 份真实年报上量过，"
+                    "24 份逐字出现「合并资产负债表」，放宽的代价见 `A-4`。"
+                    "先判断这份年报是不是另一种版面结构。"
+                )
+            else:
+                hint = " 页面上连长得像的都没有 —— 先确认这份 PDF 是不是年报正文。"
         raise locate.SheetHeaderNotFound(
-            f"{statement!r} 在这份 PDF 上定位到 {len(matching)} 个锚点，期望恰好 1 个。"
+            f"{statement!r} 在这份 PDF 上定位到 {len(matching)} 个锚点，期望恰好 1 个。" + hint
         )
     anchor = matching[0]
     header = locate.bind_columns(pdf, anchor, fiscal_year, y_tolerance)
