@@ -261,7 +261,18 @@ y 容差在 2.0–5.0 之间结果稳定，不敏感。**探测代码在 scratch
 - **判据**：ROADMAP Phase 0 的 Goal 那一行被改写成一句能机械判定越界与否的话，
   或操作者明确说「就按字面，不写任何代码」（那样的话 SC 第 2 条要一起改）。
 
-### A-13 — cninfo 是 PUBLIC 仓库，声明 MIT 而无条件 import AGPL 的 PyMuPDF（2026-09-02 实测）
+### ~~A-13 — cninfo 是 PUBLIC 仓库，声明 MIT 而无条件 import AGPL 的 PyMuPDF~~ → **已处置 2026-09-02**
+
+**操作者选：去掉 `fitz`。** 已做（cninfo `20430bc`，**本地提交，未 push**）：
+删掉 `extract_text_pymupdf` 与顶层 import，`pdf_engine` 取 `pymupdf`/`both` 时**显式告警**
+再退回 pdfplumber（不静默降级）；requirements / setup.py / 四份文档 / 一条测试同步；
+`LICENSE` 的 `[Your Name]` 填成 `kevin1000x`。全仓 `grep fitz` 归零。
+⚠️ **`py_compile` 过了，但测试套件没跑** —— 本机当时还没有那个仓库的环境，记 `UNVERIFIED`。
+⚠️ **一处更正**：原判词说得重了 —— 那个仓库的 README 第 441 行**本来就披露了**
+「PyMuPDF：AGPL v3」。矛盾在组合作品那一层（MIT 的 LICENSE 文件 vs 链接 AGPL），**不是隐瞒**。
+
+以下为处置前的分析，留档：
+
 
 - **归属**：**操作者**。对外可见性 + 许可证，属**不可逆且对外**的一类
 - **阻塞**：不阻塞 `00-01-PLAN`；**阻塞「把 README 改成对外的脸」这个动作本身**

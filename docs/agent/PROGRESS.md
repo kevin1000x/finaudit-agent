@@ -18,8 +18,7 @@
 - **Phase 0（cninfo 实证结论）：计划已起草，未开工。`A-11` / `A-12` 已裁决，只剩 `A-13`**
   —— 方向已换成 **`Fog 指数 vs 当期经营业绩（ROA / 是否亏损）`**（`A-11`，理由是代价差一个量级）；
   边界定为「可新增分析脚本与结论文档，不改既有模块的现有行为」（`A-12`）。
-  🔴 **仍未决的只剩 `A-13`**（cninfo 是 PUBLIC 且 MIT × 无条件 import AGPL 的 PyMuPDF），
-  **它只挡 `00-01-PLAN` 的最后一步（重排 README），前三个任务可以先做**
+  ✅ **`A-13` 已处置**（cninfo `20430bc`：去掉 PyMuPDF，`grep fitz` 归零）⇒ **三条全部裁完，无阻塞**
 - **跨源对照已接通**：24 个字段可比 20 / 不可比 4 / 不一致 0（茅台 2023）。
   ⚠️ 差额全为 0 ⇒ **这批数据无法用来标定阈值**；`DISAGREES` 与 `ROW_ABSENT` 在真实数据上仍是零样本
 - **逐字段人工核对的覆盖**（两家分开计，**分母不同、不要合并**）：
@@ -53,6 +52,37 @@
 
 ## 变更日志
 
+### 2026-09-02（第二十三段）— **`A-13` 处置：cninfo 去掉 PyMuPDF，MIT 那句话现在是真的**
+
+操作者选「去掉 `fitz`」。已做，cninfo `20430bc`（**本地提交，未 push**）。
+
+代价确实小：`fitz` 全仓只出现在 `extract_text_pymupdf` 一个方法里，而 **pdfplumber 本来就是主引擎**。
+删掉方法与顶层 import，`pdf_engine` 取 `pymupdf` / `both` 时**显式告警再退回 pdfplumber**
+—— **不静默降级**：在配置里写了那个引擎的人应当知道那条路径没了。
+同步改掉 requirements / setup.py / 四份文档 / 一条测试，`LICENSE` 的 `[Your Name]` 填成 `kevin1000x`。
+全仓 `grep fitz` 归零。
+
+⚠️ **`py_compile` 过了，测试套件没跑** —— 当时本机还没有那个仓库的环境，记 `UNVERIFIED`。
+
+## 🔴 一处更正：我上一轮说得重了
+
+那个仓库的 `README.md:441` **本来就写着「PyMuPDF：AGPL v3（可选商业许可）」**。
+⇒ **不是隐瞒**，是「声明 MIT 的同时列出了一个 AGPL 依赖」。
+矛盾仍然存在（LICENSE 文件说 MIT，而组合作品链接了 AGPL），**但性质不同**，
+我把它描述成「对别人做了一个没资格做的承诺」时，漏掉了「而且披露过」这半句。
+
+## 顺带
+
+给 cninfo 建了个**最小依赖** venv（pandas / loguru / pdfplumber / jieba / aio* / requests / tqdm / yaml），
+**没装 tabula（要 Java）、camelot、pytesseract（要 Tesseract 二进制）、supabase** ——
+`pdf_parser.py` 对这三者是**惰性 import**，跑 Fog 用不到。`akshare` 与 `supabase` 同样是惰性的。
+
+## 验证
+
+- cninfo：`py_compile` 三个改过的 `.py` 全过；`grep -rn fitz` 零命中
+- 本仓：796 passed，七道门 `&&` 串联全 exit 0
+
+---
 ### 2026-09-02（第二十二段）— **裁掉两条 A 区，并把上一段自己写的计划砍掉一半**
 
 操作者反馈：**进展偏慢，减少过度工程**，并把 `A-11` 交给 agent 自己裁、批准 `A-12`。
