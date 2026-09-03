@@ -50,6 +50,12 @@ def _build_parser() -> argparse.ArgumentParser:
     s.add_argument("--rules", default=None, help="规则文件；省略则用 scan_rules.yaml")
     s.add_argument("--json", action="store_true", dest="as_json")
 
+    # `N-20`：定义对机器可读不等于对人可读。2026-09-03 操作者读随机两份，答读不懂。
+    # 判据要的是**换一种表达形式**，不是补一份说明文档 —— 见 `explain.py`。
+    e = sub.add_parser("explain", help="把一份口径定义讲给人听（N-20 的表达形式）")
+    e.add_argument("metric", help="metric_id 或定义文件路径")
+    e.add_argument("--metrics-dir", default="metrics")
+
     t = sub.add_parser("stats", help="陷阱元规则占比统计（§5.1 监控指标）")
     t.add_argument("paths", nargs="*", help="定义文件路径；省略则统计 --metrics-dir 下全部")
     t.add_argument("--metrics-dir", default="metrics")
@@ -81,6 +87,25 @@ def _cmd_validate(args) -> int:
 
     print(render_json(results) if args.as_json else render_text(results, defs))
     return 1 if any(results.values()) else 0
+
+
+def _cmd_explain(args) -> int:
+    from .explain import render_explanation
+
+    target = Path(args.metric)
+    if not target.exists():
+        target = Path(args.metrics_dir) / f"{args.metric}.yaml"
+    if not target.exists():
+        # 不做模糊匹配：猜错一份定义比找不到更糟 —— 读者会以为自己读的是另一个指标。
+        print(f"找不到定义：{args.metric}（试过 {target}）", file=sys.stderr)
+        return 2
+
+    defn = load_definition(target)
+    if defn.parse_error:
+        print(f"这份定义解析不了，先跑 validate：{defn.parse_error}", file=sys.stderr)
+        return 2
+    print(render_explanation(defn))
+    return 0
 
 
 def _load_row(spec: str) -> dict:
@@ -224,6 +249,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_scan(args)
     if args.command == "stats":
         return _cmd_stats(args)
+    if args.command == "explain":
+        return _cmd_explain(args)
     return 2
 
 
