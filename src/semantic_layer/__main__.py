@@ -111,8 +111,27 @@ def _cmd_explain(args) -> int:
     if defn.parse_error:
         print(f"这份定义解析不了，先跑 validate：{defn.parse_error}", file=sys.stderr)
         return 2
-    print(render_explanation(defn))
+    print(render_explanation(defn, _flag_descriptions(args.metrics_dir)))
     return 0
+
+
+def _flag_descriptions(metrics_dir: Path | str) -> dict:
+    """`metrics/_flags.yaml` 的 `name -> description`。
+
+    有它，可比性标记才能在人读输出里显示成中文而不是 `basis_version_mismatch`。
+    读不到就返回空字典 —— 上游会退回打原名，**不编中文**。
+    """
+    import yaml
+
+    path = Path(metrics_dir) / "_flags.yaml"
+    if not path.is_file():
+        return {}
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return {
+        f["name"]: f["description"]
+        for f in raw.get("flags", [])
+        if isinstance(f, dict) and f.get("name") and f.get("description")
+    }
 
 
 def _load_row(spec: str) -> dict:

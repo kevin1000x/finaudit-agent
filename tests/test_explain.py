@@ -46,7 +46,7 @@ def test_每条拒答条件都出现且带中文理由(defn):
     for cond in defn.undefined_conditions:
         assert cond.reason, "拒答条件缺 reason，视图就只能给表达式"
         assert cond.reason.split("；")[0] in out
-        assert cond.expr in out, "机器判据必须一并留着，否则没法核对两版是否一致"
+        assert cond.expr in out, "表达式必须一并留着（在末尾附录里），否则没法核对两版是否一致"
 
 
 def test_下标引用被解析成原文而不是留一个数字(defn):
@@ -108,3 +108,91 @@ def test_共享注册表不是定义_explain必须拒绝而不是渲染空壳(ca
     good = capsys.readouterr()
     assert ok == 0
     assert "期间费用率" in good.out
+
+
+# ── 2026-09-04：`N-52` 第二轮 ──────────────────────────────────────
+# 操作者读到 `系统实际执行： is.net_profit_attributable_to_parent - notes...`，
+# 原话：「你给财务人看这种技术说辞吗，我辅修计算机肯定看得懂，正常财务呢？」
+# ⇒ 表达式整体下沉到末尾附录，正文只用定义自己写的中文。**一个字都没删。**
+
+APPENDIX_HEAD = "系统实际执行的表达式"
+
+
+def _split(out: str) -> tuple[str, str]:
+    """(正文, 附录)。附录必须存在 —— 它是可复核性的落点（`D-032`）。"""
+    assert APPENDIX_HEAD in out, "附录不见了：两版并存是 D-032 的硬约束"
+    body, _, appendix = out.partition(APPENDIX_HEAD)
+    return body, appendix
+
+
+def test_正文里不出现任何本定义声明过的字段标识符():
+    """🔴 这条是第二轮的理由。
+
+    正文归财务读者，字段 id 归附录。**判据取「本定义 `source_fields` 里
+    有中文行项目名的那些 id」** —— 它们有中文可换，出现在正文就是渲染器的错。
+
+    ⚠️ 故意不查「散文里所有形如 `ns.field` 的东西」：定义作者写「不得使用
+    `bs.total_liabilities`」时，那个字段按定义**不在** `source_fields` 里，
+    没有中文名可换。给它编一个，读者就没法发现禁的到底是哪一个（见 `_prose` docstring）。
+    2026-09-04 实测：**16 / 20 份定义的散文里有这类残留**，如实留着。
+
+    它会红的场景：有人把表达式挪回正文，或让 `_prose` 停止替换。
+    """
+    paths = [q for q in sorted((REPO / "metrics").glob("*.yaml")) if not q.name.startswith("_")]
+    assert len(paths) == 20
+    checked = 0
+    for q in paths:
+        d = load_definition(q)
+        body, _ = _split(render_explanation(d))
+        mapped = [sf.id for sf in d.source_fields if sf.id and sf.line_item]
+        assert mapped, f"{q.stem}：应当有带中文名的字段"
+        for fid in mapped:
+            assert fid not in body, f"{q.stem} 正文里漏出了字段标识符：{fid}"
+            checked += 1
+    # 只跑夹具一份会漏掉 `_prose` 那一半：`period_expense_ratio` 的散文里
+    # 恰好没有可映射的字段 id，于是把 `_prose` 整个拿掉它也不会红。
+    assert checked >= 60, f"覆盖太薄，只查了 {checked} 个字段"
+
+
+def test_公式与判据都不在正文而在附录里一个不少(defn):
+    """下沉 ≠ 删除。删了就没法核对翻译对不对（`D-032` 继承的约束）。"""
+    body, appendix = _split(render_explanation(defn))
+
+    formula = " ".join(str(defn.formula).split())
+    assert formula not in body
+    assert formula in appendix
+
+    for cond in defn.undefined_conditions:
+        if cond.expr:
+            assert cond.expr not in body
+            assert cond.expr in appendix
+
+    for f in defn.flags:
+        if f.trigger:
+            assert f.trigger not in body
+            assert f.trigger in appendix
+
+
+def test_可比性标记在正文里显示中文而拿不到中文时退回原名(defn):
+    """`restated` 对财务读者没有指称；中文来自 `metrics/_flags.yaml`。
+
+    拿不到就退回原名 —— **不编**。
+    """
+    desc = "比较期数值经追溯重述或会计政策变更调整，与原始披露数不一致"
+    body, appendix = _split(render_explanation(defn, {"restated": desc}))
+    assert desc in body
+    assert "· restated" not in body
+    # 附录里两者都要有：读者要能把中文和它实际的标记名对上
+    assert "restated" in appendix
+
+    bare, _ = _split(render_explanation(defn))
+    assert "restated" in bare, "拿不到中文时必须退回原名，不能凭空造一个"
+
+
+def test_prose换不动的原样留着不编(defn):
+    """`_prose` 只用定义自己的词。没有映射就不动它。"""
+    from semantic_layer.explain import _prose
+
+    assert _prose(defn, "禁止取 bs.从来没声明过的字段") == "禁止取 bs.从来没声明过的字段"
+    # schema 键名换成本视图的小节名 —— 读者手上只有这一页
+    assert "undefined_conditions" not in _prose(defn, "按 undefined_conditions 拒答")
