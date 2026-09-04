@@ -13,7 +13,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from .definition import iter_definition_paths, load_definition
+from .definition import is_definition_file, iter_definition_paths, load_definition
 from .report import render_json, render_text
 from .validate import validate_definition
 from .vocabulary import DEFAULT_VOCABULARY_PATH, load_vocabulary
@@ -98,6 +98,13 @@ def _cmd_explain(args) -> int:
     if not target.exists():
         # 不做模糊匹配：猜错一份定义比找不到更糟 —— 读者会以为自己读的是另一个指标。
         print(f"找不到定义：{args.metric}（试过 {target}）", file=sys.stderr)
+        return 2
+    if not is_definition_file(target):
+        # 渲染一份空壳比报错更糟：读者会以为自己读到了一份「什么都没声明」的定义。
+        print(
+            f"{target.name} 是共享注册表，不是指标定义，没有可讲的口径",
+            file=sys.stderr,
+        )
         return 2
 
     defn = load_definition(target)

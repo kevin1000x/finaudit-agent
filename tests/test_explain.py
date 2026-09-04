@@ -52,7 +52,7 @@ def test_每条拒答条件都出现且带中文理由(defn):
 def test_下标引用被解析成原文而不是留一个数字(defn):
     """`report.py` 早就记过这条代价：下标「重排列表会静默指向别处」。
 
-    `由这里执行：undefined_conditions.2` 对旁人是无意义的。
+    `由哪一条把关：undefined_conditions.2` 对旁人是无意义的。
     """
     assert _resolve_ref(defn, "undefined_conditions.2").startswith("拒答条件「")
     assert defn.undefined_conditions[2].reason.split("；")[0] in _resolve_ref(
@@ -81,3 +81,30 @@ def test_二十份定义全部渲染得出来不抛异常():
         assert "这是什么" in out and "什么时候不给答案" in out
         # dataclass 的 repr 漏进输出过一次，锁住它。
         assert "StandardBasis(" not in out
+
+
+def test_共享注册表不是定义_explain必须拒绝而不是渲染空壳(capsys):
+    """`_flags.yaml` 是标记注册表，不是指标定义。
+
+    2026-09-04 实测：`explain _flags` **退出 0**，渲染出一份每节都空的「定义」——
+    名称栏带着 `.yaml` 后缀、版本栏是 `None`、六个小节全空。
+    `definition.iter_definition_paths` 早写明「下划线开头的不是定义」，
+    而 `_cmd_explain` 自己拼路径绕开了那条规则，于是同一个目录两个入口读法不一致。
+
+    这正是本仓反复记的那个形状：**一份看起来像答案、实际什么都没说的输出**。
+
+    它会红的场景：有人再让 `_` 开头的文件走进 explain。
+    反方向一并锁住 —— 「一律返回 2」也能满足前半条断言。
+    """
+    from semantic_layer.__main__ import main
+
+    code = main(["explain", "_flags", "--metrics-dir", str(REPO / "metrics")])
+    err = capsys.readouterr()
+    assert code == 2
+    assert err.out == ""
+    assert "_flags" in err.err
+
+    ok = main(["explain", "period_expense_ratio", "--metrics-dir", str(REPO / "metrics")])
+    good = capsys.readouterr()
+    assert ok == 0
+    assert "期间费用率" in good.out

@@ -206,9 +206,21 @@ def load_definition(path: Path | str) -> MetricDefinition:
     )
 
 
+def is_definition_file(path: Path | str) -> bool:
+    """这份文件是不是一份**指标定义**。
+
+    下划线开头的是共享注册表（`_flags.yaml`），不是定义。
+    2026-09-04 之前这条规则只活在 `iter_definition_paths` 里，
+    而 `explain` 自己拼路径绕开了它 —— 于是同一个目录两个入口读法不一致，
+    `explain _flags` 退 0 并渲染出一份每节都空的「定义」。
+    规则提到这里，是为了让它只有一个落点。
+    """
+    return not Path(path).name.startswith("_")
+
+
 def iter_definition_paths(metrics_dir: Path | str = "metrics") -> list[Path]:
     """metrics/ 下的定义文件。下划线开头的（如 _flags.yaml）不是定义。"""
     directory = Path(metrics_dir)
     if not directory.is_dir():
         return []
-    return sorted(p for p in directory.glob("*.yaml") if not p.name.startswith("_"))
+    return sorted(p for p in directory.glob("*.yaml") if is_definition_file(p))

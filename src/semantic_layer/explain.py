@@ -113,7 +113,7 @@ def _resolve_ref(defn: MetricDefinition, ref: str) -> str:
 
     `report.py` 的 docstring 早就点明了这条代价：下标形式「重排列表会静默
     指向别处」，所以报告里必须带出**被引用条目的原文**，而不是留一个数字。
-    「由这里执行：undefined_conditions.2」对读 YAML 的人尚可，对旁人是无意义的。
+    「由哪一条把关：undefined_conditions.2」对读 YAML 的人尚可，对旁人是无意义的。
 
     解不开就**原样返回**，不编 —— 编一个好看的说法出来，
     读者就没法发现这条引用其实指错了地方。
@@ -151,7 +151,7 @@ def render_explanation(defn: MetricDefinition) -> str:
     if defn.formula:
         # 中文版在上、机器那版在下。**两版都留** ——
         # 只留中文，读的人就没法核对翻译对不对。
-        L.append(f"        机器公式： {' '.join(str(defn.formula).split())}")
+        L.append(f"        系统实际执行： {' '.join(str(defn.formula).split())}")
     note = defn.derivation.get("note") if isinstance(defn.derivation, dict) else None
     if note:
         L.append("")
@@ -167,7 +167,7 @@ def render_explanation(defn: MetricDefinition) -> str:
         reason = _plain(cond.reason) if cond.reason else "（这一条没写理由）"
         L.extend(_wrap(f"· {reason}", indent="    "))
         if cond.expr:
-            L.append(f"        机器判据： {cond.expr}")
+            L.append(f"        系统实际判断： {cond.expr}")
     L.append("")
 
     # ── 陷阱拆成两节 ──
@@ -179,7 +179,7 @@ def render_explanation(defn: MetricDefinition) -> str:
     for p in enforced:
         L.extend(_wrap(f"· {_plain(p.text)}", indent="    "))
         if p.enforced_by:
-            L.append(f"        由这里执行： {_resolve_ref(defn, p.enforced_by)}")
+            L.append(f"        由哪一条把关： {_resolve_ref(defn, p.enforced_by)}")
     L.append("")
 
     L.append(f"{_H_ADVISORY}（{len(advisory)} 条）")
@@ -209,6 +209,6 @@ def render_explanation(defn: MetricDefinition) -> str:
         for f in defn.flags:
             L.extend(_wrap(f"· {f.name}", indent="    "))
             if f.trigger:
-                L.append(f"        机器判据： {f.trigger}")
+                L.append(f"        系统实际判断： {f.trigger}")
 
     return "\n".join(L)
