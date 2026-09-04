@@ -100,9 +100,13 @@ def _install(monkeypatch, routes=None, pdf_body: bytes = PDF_BYTES) -> _Recorder
 # --------------------------------------------------------------------------
 
 
-def test_refusalcode_有九支且_unavailable_语义逐字取自_d022(monkeypatch):
-    """D-022 判据 1 + D-025 判据 1。取值域是 AC-02 的契约，成员数要被锁住。"""
-    assert len(RefusalCode) == 9
+def test_refusalcode_有十支且_unavailable_语义逐字取自_d022(monkeypatch):
+    """D-022 判据 1 + D-025 判据 1 + `D-033`。取值域是 AC-02 的契约，成员数要被锁住。
+
+    2026-09-04 由 9 改 10（`D-033` 的 `INTENT_INCOMPLETE`，请求层）。
+    改这个数之前必须先有决策 —— 这条断言的全部作用就是逼出那一步。
+    """
+    assert len(RefusalCode) == 10
     assert RefusalCode.UNAVAILABLE.value == "口径服务或数据源不可达"
     assert RefusalCode.RECONCILIATION_FAILED.value == "该抽取批次的会计恒等式校验未通过"
 

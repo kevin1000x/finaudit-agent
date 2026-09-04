@@ -49,6 +49,9 @@ class RefusalCode(Enum):
     # 接上真实数据源与真实报表之后会撞上另外两类，没有一支表达得了。
     UNAVAILABLE = "口径服务或数据源不可达"  # D-022 决策一
     RECONCILIATION_FAILED = "该抽取批次的会计恒等式校验未通过"  # D-025
+    # Phase 2 加入。前九支讲的都是「口径或数据有问题」，
+    # 而这一支讲的是**提问本身缺要素** —— 第三类，前九支没有一支表达得了。
+    INTENT_INCOMPLETE = "提问缺少作答所必需的要素（指标 / 主体 / 期间）"  # D-033
 
 
 @dataclass(frozen=True)

@@ -276,11 +276,15 @@ def test_unevaluable_trigger_refuses_rather_than_dropping_flag(tmp_path):
 # --------------------------------------------------------------------------
 
 
-def test_refusal_codes_are_exactly_nine():
+def test_refusal_codes_are_exactly_ten():
     """取值域是 AC-02 的对外契约，成员集合被逐字锁住，改动必须先改决策。
 
     七支 → 九支：D-022 加 `UNAVAILABLE`（数据源不可达），
     D-025 加 `RECONCILIATION_FAILED`（批次勾稽不通过）。
+    九支 → 十支：`D-033` 加 `INTENT_INCOMPLETE`（**提问本身缺要素**）。
+    ⚠️ 第十支与前九支不在同一层：前九支讲口径层或数据层，它讲**请求层**。
+    2026-09-04 加它时这条断言当场红了 —— **那正是它存在的理由**：
+    枚举的大小被锁住，多一支就必须先有一条决策。
 
     ⚠️ **D-022 的「改动面已实测」一节说错了一句**：它写着
     `grep 'len(RefusalCode)|list(RefusalCode)'` 零命中，据此断言
@@ -298,6 +302,7 @@ def test_refusal_codes_are_exactly_nine():
         "CROSS_BASIS_VERSION_COMPARISON",
         "UNAVAILABLE",
         "RECONCILIATION_FAILED",
+        "INTENT_INCOMPLETE",
     }
 
 
