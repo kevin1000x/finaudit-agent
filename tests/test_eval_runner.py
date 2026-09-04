@@ -410,3 +410,98 @@ def test_this_file_does_not_reference_frozen_suite():
             f"测试不得以代码路径形式引用冻结套件（发现 {literal}）——"
             "否则冻结集一变测试就红，人就会有动机去改冻结集"
         )
+
+
+# --------------------------------------------------------------------------
+# Phase 2（`02-01` T4）：系统臂走完整问答路径
+# --------------------------------------------------------------------------
+
+
+def test_四个指标不再是NA而是真的算出来了(suite):
+    """`02-01` T4 要填的正是这四个槽。
+
+    它会红的场景：有人把某个指标改回 `N/A` 字样，或让它在没有可计分题时
+    悄悄报一个 0% / 100%（那两个数都会被读成结论）。
+    """
+    m = run_suite(suite)["metrics"]
+    for name in ("口径正确率", "答案正确率", "证据链完整率"):
+        assert "N/A（需数值执行" not in m[name]
+        assert "Phase 1 不具备" not in m[name]
+    # 复核一致率与引用可定位率**仍然**是 N/A —— 它们分别属于 02-03 与 Phase 3。
+    # 把没做的填成一个数，是评测报告最常见的谎。
+    assert m["复核一致率"].startswith("N/A")
+    assert m["引用可定位率"].startswith("N/A")
+
+
+def test_分母为零时说没有可计分题而不是报百分比():
+    from eval.run import _rate
+
+    assert _rate(0, 0).startswith("N/A")
+    assert _rate(3, 4) == "3/4（75.0%）"
+
+
+def test_运行器不再把标准答案喂给自己(tmp_path):
+    """🔴 完整性断言。
+
+    Phase 1 的系统臂读的是 `expected.target_name` —— 靶子**由题面文件直接交给运行器**，
+    系统并没有读懂题。Phase 2 改成真的解析题面。
+    **`target_name` 必须不再被使用**：把标准答案喂回输入会虚抬分数。
+
+    它会红的场景：有人为了让某道题过，把 `target_name` 当兜底加回去。
+    """
+    import shutil
+
+    import eval.run as runner
+
+    suite = tmp_path / "s"
+    shutil.copytree(SAMPLE, suite)
+    case = suite / "cases" / "S-C2-001.yaml"
+    text = case.read_text(encoding="utf-8")
+    # 题面里没有任何指标名，而 expected 里写着一个真实存在的指标
+    case.write_text(text.replace("target_name: __definitely_not_a_metric__", "target_name: 毛利率"),
+                    encoding="utf-8")
+    _rehash(suite)
+
+    report = runner.run_suite(suite, "C2")
+    got = {r["id"]: r for r in report["results"]}
+    # 题面里没有指标 ⇒ 必须拒答。若运行器偷看了 target_name，它就会去算毛利率。
+    assert got["S-C2-001"]["status"] == PASS
+    assert "METRIC_NOT_DEFINED" in got["S-C2-001"]["detail"]
+
+
+def test_证据链收窄要逐条写进报告而不是静默(suite):
+    """分阶段必填键**不是豁免**，但它确实收窄了检查面 ⇒ 必须在产物里说出来。
+
+    它会红的场景：有人把收窄做成默认行为却不留痕 ——
+    那样报告上的 100% 就没人知道是怎么来的。
+    """
+    report = run_suite(suite)
+    assert "evidence_scope_notes" in report
+    for note in report["evidence_scope_notes"]:
+        assert note["dropped"], "记了一条却没说丢了哪个键"
+        assert note["why"].strip()
+
+
+def test_多份夹具时拒绝替人挑一份(tmp_path):
+    """挑错夹具，整批结论都建立在错的数据上。**不猜。**"""
+    import shutil
+
+    import eval.run as runner
+
+    suite = tmp_path / "s"
+    shutil.copytree(SAMPLE, suite)
+    shutil.copy(suite / "fixtures" / "sample.yaml", suite / "fixtures" / "另一份.yaml")
+    # ⚠️ 用顶层 `pytest.raises`，不要 `import pytest as _pytest`：
+    # 第六道门按名字找可失败点，别名会让它判定「这个测试不能失败」。
+    with pytest.raises(ValueError, match="不替人挑一份"):
+        runner.run_suite(suite, "C2")
+
+
+def _rehash(suite):
+    import hashlib
+
+    lines = []
+    for rel in ("cases/S-C2-001.yaml", "cases/S-C2-002.yaml", "fixtures/sample.yaml"):
+        h = hashlib.sha256((suite / rel).read_bytes()).hexdigest()
+        lines.append(f"{h} *{rel}")
+    (suite / "SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="utf-8")

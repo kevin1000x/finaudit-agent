@@ -73,8 +73,10 @@ def test_近似命中必须拒答而不是静默换一个指标(registry):
     assert isinstance(got, Refusal)
     assert got.code is RefusalCode.METRIC_NOT_DEFINED
     assert "净资产收益率" in got.detail
-    # 把近似项说出来，读者才知道我们为什么没猜
-    assert "资产收益率" in got.detail
+    # 🔴 报出来的必须是**触发碰撞的那条别名**，不是题面里那个子串。
+    # 初版报的是「资产收益率」—— 对读者没用：他要知道的是「我们有的是哪一个」。
+    assert "加权平均净资产收益率" in got.detail
+    assert "roe_weighted_average" in got.detail
     assert got.metric_id is None, "近似命中不得把那个指标记进拒答记录"
 
 

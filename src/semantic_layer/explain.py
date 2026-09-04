@@ -34,7 +34,15 @@ from __future__ import annotations
 
 from .definition import MetricDefinition
 
-__all__ = ["render_explanation"]
+__all__ = [
+    "render_explanation",
+    "appendix_blocks",
+    "render_appendix",
+    # 排版件公开出来，是为了让 `agent.answer` 走**同一段代码** ——
+    # 两处渲染长得一样，不能靠两边各写一份然后指望它们不漂移（`D-032`）。
+    "wrap",
+    "rule",
+]
 
 #: 输出里每一节的标题。**用问句，不用字段名** ——
 #: 读者带着问题来，小节标题应当是他的问题，不是我们的 schema。
@@ -45,8 +53,11 @@ _H_ADVISORY = "仅供参考，不影响计算"
 _H_BASIS = "依据"
 
 
-def _rule(char: str = "─", width: int = 68) -> str:
+def rule(char: str = "─", width: int = 68) -> str:
     return char * width
+
+
+_rule = rule
 
 
 def _plain(text) -> str:
@@ -131,7 +142,7 @@ def _formula_in_chinese(defn: MetricDefinition) -> str | None:
     return text if "." not in text.replace(" ", "") else None
 
 
-def _wrap(text: str, indent: str = "    ", width: int = 64) -> list[str]:
+def wrap(text: str, indent: str = "    ", width: int = 64) -> list[str]:
     """按显示宽度折行。中日韩字符占两格，其余占一格。
 
     不用 `textwrap`：它按字符数算，中文行会短掉将近一半。
@@ -158,6 +169,9 @@ def _wrap(text: str, indent: str = "    ", width: int = 64) -> list[str]:
     if line.strip():
         out.append(indent + line.rstrip())
     return out
+
+
+_wrap = wrap
 
 
 def _resolve_ref(
@@ -224,8 +238,17 @@ def _source_lines(defn: MetricDefinition) -> list[str]:
     return out
 
 
-def _appendix(defn: MetricDefinition, flag_descriptions: dict | None) -> list[str]:
-    """末尾的核对附录：中文说法在上，系统实际执行的那一版在下（`↳`）。
+def appendix_blocks(defn: MetricDefinition, flag_descriptions: dict | None = None):
+    """附录里那些「中文 ↳ 执行版」的成对内容，供 `agent.answer` 并进它自己的附录。
+
+    公开它，是为了让「关掉附录」的调用方**有东西可收** ——
+    否则关掉就等于丢掉，而丢掉就没法核对翻译对不对。
+    """
+    return _appendix_pairs(defn, flag_descriptions)
+
+
+def _appendix_pairs(defn: MetricDefinition, flag_descriptions: dict | None):
+    """附录的内容：`[(小标题, [(中文, 实际执行的那一版), ...]), ...]`。
 
     ⚠️ **它不是补充材料，是可复核性的载体**（`D-032`）——
     只留中文，读的人就没法核对翻译对不对。所以这里一个表达式都不删。
@@ -255,13 +278,25 @@ def _appendix(defn: MetricDefinition, flag_descriptions: dict | None) -> list[st
     if flags:
         blocks.append(("可比性标记", flags))
 
+    return blocks
+
+
+APPENDIX_TITLE = "系统实际执行的表达式"
+APPENDIX_LEAD = (
+    "放在这里，是为了让人能核对上面每一句中文有没有译错 —— 这是本视图可复核性的落点。"
+    "看不懂可以跳过，它不影响读懂上面任何一句。"
+)
+
+
+def render_appendix(blocks) -> list[str]:
+    """把成对内容渲染成附录。`agent.answer` 并进自己的块之后调同一个函数 ——
+    **两处答案的附录长得一样，是因为它们走的是同一段代码。**
+    """
     if not blocks:
         return []
 
-    L = ["", _rule(), "系统实际执行的表达式"]
-    L.extend(_wrap(
-        "放在这里，是为了让人能核对上面每一句中文有没有译错 —— 这是本视图可复核性的落点。"
-        "看不懂可以跳过，它不影响读懂上面任何一句。", indent="  "))
+    L = ["", _rule(), APPENDIX_TITLE]
+    L.extend(_wrap(APPENDIX_LEAD, indent="  "))
     for title, pairs in blocks:
         L.append("")
         L.append(f"  {title}")
@@ -272,12 +307,22 @@ def _appendix(defn: MetricDefinition, flag_descriptions: dict | None) -> list[st
 
 
 def render_explanation(
-    defn: MetricDefinition, flag_descriptions: dict | None = None
+    defn: MetricDefinition,
+    flag_descriptions: dict | None = None,
+    with_appendix: bool = True,
 ) -> str:
     """一份定义 → 一页中文简介。**内容全部来自 `defn`，不新增。**
 
     `flag_descriptions` 是 `metrics/_flags.yaml` 的 `name -> description`，
     可以不给：不给就退回打 flag 的原名，**不编中文**。
+
+    `with_appendix=False` 只输出正文。**它不是「省略模式」** ——
+    调用方（`agent.answer`）要把本函数的正文原样嵌进一份更大的答案里，
+    而那份答案**只能有一个附录、且在最末尾**（`D-032` 收紧条第 2 条）。
+    嵌进去一个带自带附录的段落，等于把附录塞回正文中间，
+    正是 2026-09-04 操作者指出的那个毛病。
+    ⚠️ 关掉附录的调用方**有义务把这些表达式收进它自己的附录** ——
+    两版并存是可复核性的载体，不是本函数的装饰。
     """
     L: list[str] = []
 
@@ -356,5 +401,6 @@ def render_explanation(
             desc = (flag_descriptions or {}).get(f.name)
             L.extend(_wrap(f"· {desc or f.name}", indent="    "))
 
-    L.extend(_appendix(defn, flag_descriptions))
+    if with_appendix:
+        L.extend(render_appendix(_appendix_pairs(defn, flag_descriptions)))
     return "\n".join(L)

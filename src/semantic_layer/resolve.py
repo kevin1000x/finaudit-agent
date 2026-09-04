@@ -43,7 +43,11 @@ class RefusalCode(Enum):
     DEFINITION_NONCONFORMANT = "口径定义本身不合规，不允许被消费"
     UNDEFINED_CONDITION_HIT = "命中已声明的未定义条件"
     UNEVALUABLE_CONDITION = "条件无法对给定数据求值"
-    CROSS_VERSION_COMPARISON = "两期结论由不同版本的口径定义产出"
+    # 2026-09-04（`N-55`）措辞放宽以覆盖**单期**：`agent.gate` 在「请求声明的版本
+    # 与定义当前版本不符」时也用这一支。放宽而不是新增第十一支，理由是
+    # **版本对不上是同一个事实的两种场合**，不是两个事实 ——
+    # `D-028` 禁的是「不同的事实挤进同一个格子」，这里不是那种情形。
+    CROSS_VERSION_COMPARISON = "结论所依据的口径定义版本与请求声明的不一致（含跨期比较时两期版本不同）"
     CROSS_BASIS_VERSION_COMPARISON = "两期所依据的准则版本不同"
     # 以下两支由 Phase 1.5 加入。前七支**全部是「口径或数据本身有问题」**，
     # 接上真实数据源与真实报表之后会撞上另外两类，没有一支表达得了。

@@ -1,5 +1,16 @@
 # 测试专用合成夹具。不来自任何真实来源。
+#
+# 2026-09-04（`02-01` T4）加了一行：系统臂改成**真读题面**之后，
+# `S-C2-002` 要驱动的是「期望拒答、实际作答」这条 FAIL 分支 ——
+# 没有数据的话它会因为「数据源里没有这一行」而拒答，
+# **红是红了，红的原因却不是它要测的那件事**。
 meta:
   fixture_id: sample
   nature: 合成数据
-rows: []
+rows:
+  - stock_code: "900001"
+    fiscal_year: 2023
+    period_type: annual
+    is.operating_revenue_current: 1000
+    is.operating_cost: 700
+    notes.restatement_flag: false

@@ -75,14 +75,6 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _alias_inside(registry: Registry, longer: str) -> str:
-    """`longer` 里那个**真的在别名表里**的部分，用来在拒答理由里点名近似项。"""
-    for alias in sorted(registry.by_alias, key=len, reverse=True):
-        if longer.endswith(alias):
-            return alias
-    return longer
-
-
 def _near_miss(registry: Registry, question: str, alias: str, at: int) -> str | None:
     """命中的 `alias` 是不是另一个指标的名字被截了一段？
 
@@ -99,20 +91,26 @@ def _near_miss(registry: Registry, question: str, alias: str, at: int) -> str | 
             tail = extra[-k:]
             if at >= k and question[at - k : at] == tail:
                 cand = tail + alias
-                if best is None or len(cand) > len(best):
-                    best = cand
+                if best is None or len(cand[0]) > len(best[0]):
+                    # 一并把**触发碰撞的那条别名**带出去。
+                    # 只报 `alias`（题面里那个子串）是没用的：读者要知道的是
+                    # 「我们有的是哪一个」，而那是 `other`，不是 `alias`。
+                    best = (cand, other)
                 break
     return best
 
 
-def _match_alias(registry: Registry, question: str) -> tuple[str | None, str | None]:
-    """(命中的别名, 近似命中的更长说法)。两者不会同时非空。"""
+def _match_alias(registry: Registry, question: str):
+    """(命中的别名, 近似命中) —— 两者不会同时非空。
+
+    近似命中是一个二元组 `(题面里那个更长的说法, 我们真正有的那条别名)`。
+    """
     for alias in sorted(registry.by_alias, key=len, reverse=True):
         at = question.find(alias)
         if at < 0:
             continue
-        longer = _near_miss(registry, question, alias, at)
-        return (None, longer) if longer else (alias, None)
+        near = _near_miss(registry, question, alias, at)
+        return (None, near) if near else (alias, None)
     return None, None
 
 
@@ -126,14 +124,14 @@ def parse_intent(question: str, registry: Registry, ask_model=None):
     q = " ".join(str(question).split())
     digest = _sha256(q)
 
-    alias, longer = _match_alias(registry, q)
-    if longer:
-        near = _alias_inside(registry, longer)
+    alias, near = _match_alias(registry, q)
+    if near:
+        asked, have = near
         return Refusal(
             RefusalCode.METRIC_NOT_DEFINED,
-            f"题面里的「{longer}」在语义层中没有对应的口径定义。"
-            f"最接近的是「{near}」，但两者不是同一个指标 —— "
-            "不替提问者做这个口径判断。",
+            f"题面里的「{asked}」在语义层中没有对应的口径定义。"
+            f"我们有的是「{have}」（{registry.by_alias[have]}）—— "
+            f"它与「{asked}」不是同一个口径，不替提问者做这个判断。",
         )
 
     source = "alias_table"

@@ -377,6 +377,12 @@ DECIMAL_CONVERSION_SITES = {
         "把**公式串**里的数字字面量转成 Decimal。输入是我们自己写的 metrics/*.yaml，"
         "不是任何外部数据源，与 AKShare 无关。"
     ),
+    ("agent/answer.py", "by_field"): (
+        "把**合成夹具**里的数值转成 Decimal，喂给全仓唯一的算术求值器。"
+        "输入是 `eval/frozen-01/fixtures/` 下我们自己写的 YAML，与 AKShare 无关。"
+        "⚠️ 走 str() 不是 repr()：夹具里写的本来就是十进制字面量，"
+        "不是先经过二进制浮点的数 —— 用 repr() 反而会把 YAML 解析出的 float 误差固化进来。"
+    ),
     ("extractor/locate.py", "parse_amount"): (
         "把**PDF 版面文本**里的金额串转成 Decimal（去掉千分位逗号）。"
         "输入是年报原文，与 AKShare 无关。"
