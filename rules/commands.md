@@ -315,6 +315,25 @@ CI 只允许跑验证：不得构建产物、发布、部署，工作流已声�
 
 ## 提交前跑的必须是**整条七道门链**，不是其中几条（2026-08-31，实地踩到）
 
+**这就是那条链**（2026-09-05 补上 —— 此前它只活在交接文件里，
+每次会话都要重新拼一遍，拼漏一条正是本节记的那个事故）：
+
+```bash
+.venv/Scripts/python -m pytest -q   && .venv/Scripts/python -m semantic_layer scan   && .venv/Scripts/python -m semantic_layer validate   && .venv/Scripts/python scripts/check_xrefs.py   && .venv/Scripts/python scripts/check_reading_ledger.py   && .venv/Scripts/python scripts/check_gates.py   && .venv/Scripts/python -m pytest tests/test_plan_waves.py -q
+```
+
+三条配套纪律：
+
+- **不要在任何一道门后面接管道。** `... | tail -30` 之后 `$?` 是 `tail` 的退出码，
+  门红了你也看不见（`F-8`；2026-09-04 自己踩过一次）。要截输出就**重定向到文件再看**。
+- **造回归时先 `export PYTHONDONTWRITEBYTECODE=1`**，否则字节码缓存能让
+  「造回归 → 看红 → 回退」整段失效（`N-41`）。
+- **供应链门禁 `scripts/verify_deps.py` 不串进这条链** —— 它走网络，
+  单独跑；跑不动时如实记「本轮无读数」，不许写成通过（`N-44`）。
+
+⚠️ **耗时不是判据。** 2026-09-05 同一棵树连跑四次：148s / 151s / 304s / 296s，
+最慢的一次是最快的两倍。判据是 `866 passed`（当日读数）与**链路退出码 0**。
+
 `F-8` 立的规矩是「验证与提交一律 `&&` 串联」—— 它管的是**短路**，
 保证「验证失败时后面那条不执行」。**它不管「你跑的是不是全套」。**
 
