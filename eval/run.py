@@ -44,11 +44,12 @@ EXECUTABLE_IN_PHASE_1 = {"C2"}
 # C4（准则检索）与 C5（图谱）确实没有路径 ⇒ 仍然 NOT_RUN。
 EXECUTABLE_IN_PHASE_2 = {"C1", "C2", "C3"}
 
-# EVAL_CASES §5 的四层归因。不允许「未知」。
-LAYER_RETRIEVAL = "检索层"
-LAYER_DEFINITION = "口径层"
-LAYER_COMPUTATION = "计算层"
-LAYER_PRESENTATION = "表达层"
+# `EVAL_CASES` §5 的归因分层。不允许「未知」。
+# 🔴 **2026-09-05 起是五层，且判分函数不再自己写层名**（`D-035` / `02-02` T1）：
+#    层由 `eval/attribution.py` 从**机读状态**算出来 —— `RefusalCode` 封闭枚举、
+#    `Answer.gate` 三态、`metric_id` / `metric_version`，一概不碰 `detail` 的措辞（§5.3）。
+#    判分函数只报「这次为什么判失败」（`FailureKind`），它不知道层。
+from .attribution import LAYERS, FailureKind, attribute, reachable_layers  # noqa: E402
 
 PASS, FAIL, NOT_RUN, VOIDED = "PASS", "FAIL", "NOT_RUN", "VOIDED"
 
@@ -123,6 +124,9 @@ class CaseResult:
     status: str
     detail: str = ""
     layers: list[str] = field(default_factory=list)
+    #: 这次归因**是从哪个机读状态算出来的**。没有它，复核者看到的
+    #: 只是一个层名加一句「相信我」（`EVAL_CASES` §5.3 要的可复核性）。
+    attribution_basis: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -131,15 +135,29 @@ class CaseResult:
             "status": self.status,
             "detail": self.detail,
             "attribution": self.layers,
+            "attribution_basis": self.attribution_basis,
         }
+
+
+def _fail(cid: str, cat: str, detail: str, kind: FailureKind, answer=None) -> CaseResult:
+    """一次失败。**层不在这里写死** —— 交给 `attribute()` 从机读状态算。
+
+    判分函数只知道「比对的是什么对不上」（`kind`）；
+    「那属于哪一层」是归因模块的事，两件事分开才验得了
+    「换一套归因，分数一个字不变」（`EVAL_CASES` §5.1）。
+    """
+    got = attribute(kind, answer)
+    return CaseResult(cid, cat, FAIL, detail, list(got.layers), got.basis)
 
 
 def judge_refusal_case(case: dict, outcome, refusal_cls) -> CaseResult:
     """C2 类判定，严格按 EVAL_CASES §3.2。
 
     拒答且理由码正确 → PASS
-    拒答但理由码不符 → FAIL（口径层）
-    强行给出答案     → FAIL（口径层），**即使数值碰巧正确也算失败**
+    拒答但理由码不符 → FAIL
+    强行给出答案     → FAIL，**即使数值碰巧正确也算失败**
+
+    ⚠️ **本函数不写层名。** 它报 `FailureKind`，层由 `attribution.attribute()` 算。
     """
     cid, cat = case["id"], case["category"]
     want_code = case.get("judging", {}).get("refusal_code") or case.get("expected", {}).get(
@@ -147,19 +165,19 @@ def judge_refusal_case(case: dict, outcome, refusal_cls) -> CaseResult:
     )
 
     if not isinstance(outcome, refusal_cls):
-        return CaseResult(
-            cid, cat, FAIL,
+        return _fail(
+            cid, cat,
             f"期望拒答，实际返回了指标定义 {getattr(outcome, 'metric_id', '?')!r}。"
             "按 §3.2，强行作答即使数值碰巧正确也算失败。",
-            [LAYER_DEFINITION],
+            FailureKind.ANSWERED_BUT_SHOULD_REFUSE,
         )
 
     got_code = outcome.code.name
     if want_code and got_code != want_code:
-        return CaseResult(
-            cid, cat, FAIL,
+        return _fail(
+            cid, cat,
             f"拒答理由码不符：期望 {want_code}，实际 {got_code}",
-            [LAYER_DEFINITION],
+            FailureKind.WRONG_REFUSAL_CODE,
         )
     return CaseResult(cid, cat, PASS, f"正确拒答，理由码 {got_code}")
 
@@ -178,22 +196,25 @@ def judge_answer_case(case: dict, answer) -> "CaseResult":
     want = exp.get("value")
 
     if answer.refused:
-        return CaseResult(
-            cid, cat, FAIL,
+        # 🔴 层由**拒答码**决定，不再一律记口径层（`D-035` ③）：
+        #    `INTENT_INCOMPLETE` 是意图层 —— 题面缺主体 / 多期间，
+        #    与口径无关，闸门之后一步都没走。
+        return _fail(
+            cid, cat,
             f"期望数值 {want}，实际拒答（{answer.refusal['code']}）：{answer.refusal['detail'][:80]}",
-            [LAYER_DEFINITION],
+            FailureKind.REFUSED_BUT_SHOULD_ANSWER, answer,
         )
     if answer.value is None:
-        return CaseResult(cid, cat, FAIL, "既没拒答也没给出数值", [LAYER_COMPUTATION])
+        return _fail(cid, cat, "既没拒答也没给出数值", FailureKind.NO_VALUE_NO_REFUSAL)
 
     if isinstance(want, (dict, list, set, tuple)):
         # `Q-C3-004` 的标准答案是**两期的一个映射**。本路径只产单期标量 ——
         # 如实判 FAIL 并说清楚，**不要在这里 `Decimal(str(dict))` 崩掉**：
         # 崩掉会让整批评测终止，而一道答不了的题不该拖垮另外十九道。
-        return CaseResult(
-            cid, cat, FAIL,
+        return _fail(
+            cid, cat,
             f"标准答案是集合/多期结构（{type(want).__name__}），本路径只产单期标量",
-            [LAYER_COMPUTATION],
+            FailureKind.EXPECTED_NON_SCALAR,
         )
 
     tol = exp.get("tolerance") or {}
@@ -203,25 +224,25 @@ def judge_answer_case(case: dict, answer) -> "CaseResult":
     diff = abs(got - target)
     ok = diff <= abs_tol or (target != 0 and diff / abs(target) <= rel_tol)
     if not ok:
-        return CaseResult(
-            cid, cat, FAIL,
+        return _fail(
+            cid, cat,
             f"数值不在容差内：算出 {got}，标准答案 {target}，差 {diff}",
-            [LAYER_COMPUTATION],
+            FailureKind.VALUE_OUT_OF_TOLERANCE,
         )
 
     want_metric = exp.get("metric_id")
     if want_metric and answer.metric_id != want_metric:
-        return CaseResult(
-            cid, cat, FAIL,
+        return _fail(
+            cid, cat,
             f"数值对了但口径不对：用的是 {answer.metric_id}，应为 {want_metric}",
-            [LAYER_DEFINITION],
+            FailureKind.WRONG_METRIC,
         )
     want_version = exp.get("metric_version")
     if want_version is not None and answer.metric_version != want_version:
-        return CaseResult(
-            cid, cat, FAIL,
+        return _fail(
+            cid, cat,
             f"口径版本不符：用的是 {answer.metric_version}，应为 {want_version}",
-            [LAYER_DEFINITION],
+            FailureKind.WRONG_VERSION,
         )
     return CaseResult(cid, cat, PASS, f"数值 {got} 在容差内，口径与版本均相符")
 
@@ -323,9 +344,41 @@ def run_suite(suite_dir: Path, only_category: str | None = None) -> dict:
         else:
             results.append(judge_answer_case(case, answer))
 
+    # ── T3：`attribution_hint` 的事后对照 ────────────────────────────
+    # 🔴 **判分时不可见**（`EVAL_CASES` §3.1）：本段在**判分循环结束之后**
+    #    才第一次读 `attribution_hint`，`judge_*` 一次都没碰过它
+    #    （`tests/test_attribution.py` 用语法树钉死了这一点）。
+    # ⚠️ **不许把它折成一个准确率数字。** hint 是**出题时预判**的陷阱，
+    #    实际归因是**这一次真实**的失败点 —— 两者不一致不是失败信号。
+    #    折成百分比会立刻被读成「归因准了几成」，那是个不存在的东西。
+    hint_rows = _hint_comparison(cases, results)
+
     return _summarize(
-        suite_dir, results, only_category, answers, evidence_gap_by_case, evidence_notes
+        suite_dir, results, only_category, answers, evidence_gap_by_case, evidence_notes,
+        hint_rows,
     )
+
+
+def _hint_comparison(cases: list, results: list) -> list:
+    """失败题的「实际归因 vs 出题时的 `attribution_hint`」逐条对照。
+
+    只列**失败题** —— 通过的题没有归因，拿 hint 去对一个空集合毫无意义。
+    """
+    by_id = {c["id"]: c for c in cases}
+    rows = []
+    for r in results:
+        if r.status != FAIL:
+            continue
+        hint = (by_id.get(r.case_id) or {}).get("attribution_hint")
+        rows.append(
+            {
+                "case": r.case_id,
+                "actual_layers": list(r.layers),
+                "basis": r.attribution_basis,
+                "hint": " ".join(str(hint).split()) if hint else None,
+            }
+        )
+    return rows
 
 
 def _as_refusal(answer, refusal_cls):
@@ -359,6 +412,7 @@ def _summarize(
     answers: dict | None = None,
     evidence_gap_by_case: dict | None = None,
     evidence_notes: list | None = None,
+    hint_rows: list | None = None,
 ) -> dict:
     voided = [r for r in results if r.status == VOIDED]
     scored = [r for r in results if r.status in (PASS, FAIL)]
@@ -432,6 +486,28 @@ def _summarize(
         },
         # ⚠️ 收窄要**逐条摆出来**，不静默。见 `run_suite` 里那段注释。
         "evidence_scope_notes": list(evidence_notes or []),
+        # `AC-08` 的门（`02-02` T2）：出现一道未归因的失败即不满足。
+        # **保证类标准**，不是统计目标 —— `main()` 据此非零退出并点名。
+        # ⚠️ **`AC-08` 的分母是「失败题」，不是「非通过题」。**
+        #    `NOT_RUN` 是**能力缺口的声明**不是失败；`VOIDED` 按 §2.2 已在分母之外。
+        #    给它们挂层会让那一层的数字虚高 —— 与 §5.0 给 `UNPARSEABLE` 立的是同一条规则。
+        "unattributed_failures": [
+            r.case_id for r in results if r.status == FAIL and not r.layers
+        ],
+        # 事后对照，**不是准确率**。见 `_hint_comparison` 的注释。
+        "attribution_hint_comparison": list(hint_rows or []),
+        # 每一层实际吃到几道失败题。**零产出的层要看得见** ——
+        # 一个定义了却从没被吐出来过的层是 `L-25` 那种死抽象，
+        # 而它藏在「归因覆盖率 100%」后面完全看不出来。
+        "layer_usage": {
+            layer: sum(1 for r in results if r.status == FAIL and layer in r.layers)
+            for layer in LAYERS
+        },
+        # 🔴 **「本批零产出」与「结构上不可达」是两件事。**
+        #    前者是数据（这一次没有这类失败），后者是 `L-25` 那种死抽象
+        #    （当前实现里没有任何一条路能产出它）。混成一句，读的人会以为
+        #    再多跑几批就有了 —— 而不可达的那个再跑一万批也不会有。
+        "unreachable_layers": [ell for ell in LAYERS if ell not in reachable_layers()],
         "results": [r.to_dict() for r in results],
     }
 
@@ -567,6 +643,40 @@ def render(report: dict) -> str:
                 f"  {n['case']:<12} 阶段 {n['stage']}"
                 f"   不适用的键 {'、'.join(n['dropped'])}   {n['why']}"
             )
+    if report.get("attribution_hint_comparison"):
+        lines += [
+            "",
+            "失败题的归因 vs 出题时的 attribution_hint（**事后对照，不是准确率**）：",
+        ]
+        for row in report["attribution_hint_comparison"]:
+            lines.append(f"  {row['case']:<12} 实际 {' + '.join(row['actual_layers'])}"
+                         f"   判据 {row['basis']}")
+            lines.append(f"               出题时预判 {row['hint'] or '（这道题没写 hint）'}")
+        lines.append("  ⚠️ 不一致**不是**失败信号：hint 是出题时预判的陷阱，"
+                     "实际归因是这一次真实的失败点。")
+    if report.get("layer_usage"):
+        zero = [k for k, v in report["layer_usage"].items() if not v]
+        lines += ["", "各层实际吃到的失败题数："]
+        lines.append("  " + "   ".join(f"{k} {v}" for k, v in report["layer_usage"].items()))
+        unreachable = set(report.get("unreachable_layers") or [])
+        empty_but_reachable = [k for k in zero if k not in unreachable]
+        if empty_but_reachable:
+            lines.append(
+                "  · 本批零产出（但结构上产得出来）：" + "、".join(empty_but_reachable)
+            )
+        if unreachable:
+            lines.append(
+                "  ⚠️ **结构上不可达**：" + "、".join(sorted(unreachable))
+                + " —— 当前实现里没有任何一条路能产出它。"
+                "这是 L-25 那种死抽象的形状，再跑一万批也不会有。"
+            )
+    if report["unattributed_failures"]:
+        lines += [
+            "",
+            "🔴 **AC-08 不满足** —— 下列失败题没有归因（「不允许未知」是规则，不是统计目标）：",
+        ]
+        for cid in report["unattributed_failures"]:
+            lines.append(f"  {cid}")
     if report["voided_cases"]:
         lines += ["", "作废题（移出分母，公开列出）："]
         for c in report["voided_cases"]:
@@ -610,6 +720,16 @@ def main(argv=None) -> int:
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n报告已写入 {out_path}")
 
+    if report["unattributed_failures"]:
+        # `AC-08` 是**保证类**标准（`PROJECT_SPEC` §9.1）：一道未归因的失败即不满足。
+        # 用一个**与「有失败题」不同的**退出码 —— 两件事混成同一个 1，
+        # CI 里就分不出「系统答错了」和「评测自己坏了」。
+        print(
+            "AC-08 不满足：以下失败题没有归因 —— "
+            + "、".join(report["unattributed_failures"]),
+            file=sys.stderr,
+        )
+        return 3
     if not report["void_ratio_within_limit"]:
         return 1
     if report["counts"]["failed"]:
