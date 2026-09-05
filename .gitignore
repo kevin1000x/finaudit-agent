@@ -39,3 +39,7 @@ Thumbs.db
 
 # 本地评测输出（评测问题集本身要进版本控制，结果不进）
 eval/runs/
+
+# 子 agent 的独立工作树（`isolation: worktree`）。它们是 gitlink，
+# 一旦被 `git add -A` 暂存就会以「子模块」的形状进库。
+.claude/worktrees/
