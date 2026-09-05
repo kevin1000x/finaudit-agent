@@ -428,7 +428,7 @@ def _summarize(
             "证据链完整率": _rate(*_evidence_hits(evidence_gap_by_case)),
             "复核一致率": "N/A（H2 复核实验在 02-03）",
             "引用可定位率": "N/A（准则检索是 Phase 3 的 L2）",
-            "归因覆盖率": "100%" if all(r.layers for r in scored if r.status == FAIL) else "<100%",
+            "归因覆盖率": _rate(*_attribution_hits(scored)),
         },
         # ⚠️ 收窄要**逐条摆出来**，不静默。见 `run_suite` 里那段注释。
         "evidence_scope_notes": list(evidence_notes or []),
@@ -480,6 +480,22 @@ def _value_hits(results: list) -> tuple:
         total += 1
         hit += r.status == PASS
     return hit, total
+
+
+def _attribution_hits(scored: list) -> tuple:
+    """归因覆盖率 = **失败题**中已归因的占比（`AC-08`，目标 100%）。
+
+    ⚠️ 2026-09-04 修：此前写的是 `"100%" if all(...) else "<100%"`，
+    而 `all()` 对**空**生成器为真 —— 于是一批**零失败**的运行会报「归因覆盖率 100%」。
+    同一个函数里 `_rate()` 在分母为 0 时明写「不许报 0% 也不许报 100%」，
+    这一格却没照走。**「没有失败题」与「失败题全都归了因」是两件事**，
+    而 `100%` 会被读成后者 —— 正是本文件开头第 2 条纪律禁的那种谎。
+
+    由独立复核发现（子 agent，`02-02` 起草过程中），实跑
+    `run_suite(sample_suite, "C4")` 复现：计分分母 0、失败 0，却报 100%。
+    """
+    failed = [r for r in scored if r.status == FAIL]
+    return sum(1 for r in failed if r.layers), len(failed)
 
 
 def _evidence_hits(gap_by_case: dict | None) -> tuple:

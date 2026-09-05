@@ -505,3 +505,34 @@ def _rehash(suite):
         h = hashlib.sha256((suite / rel).read_bytes()).hexdigest()
         lines.append(f"{h} *{rel}")
     (suite / "SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_零失败时归因覆盖率不许报百分之百(tmp_path):
+    """🔴 `all()` 对**空**生成器为真。
+
+    「没有失败题」与「失败题全都归了因」是两件事，而 `100%` 会被读成后者。
+    2026-09-04 由独立复核发现：`--category C4`（样例套件里没有 C4 题）
+    计分分母 0、失败 0，却报「归因覆盖率 100%」。
+
+    它会红的场景：有人把这一格改回 `all(...)` 那种写法。
+    """
+    import shutil
+
+    import eval.run as runner
+
+    suite = tmp_path / "s"
+    shutil.copytree(SAMPLE, suite)
+    report = runner.run_suite(suite, "C4")
+    assert report["counts"]["failed"] == 0
+    assert report["metrics"]["归因覆盖率"].startswith("N/A")
+
+
+def test_有失败题且都归了因时报满分(suite):
+    """反方向：真有失败题、且都带层名时，它必须是满分 ——
+    否则上一条可以被一个「永远报 N/A」的实现满足。
+    """
+    report = run_suite(suite, "C2")
+    failed = [r for r in report["results"] if r["status"] == FAIL]
+    assert failed, "样例套件应当有一条 FAIL，否则这条断言在空转"
+    assert all(r["attribution"] for r in failed)
+    assert report["metrics"]["归因覆盖率"] == f"{len(failed)}/{len(failed)}（100.0%）"

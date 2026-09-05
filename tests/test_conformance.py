@@ -370,3 +370,89 @@ def test_清理确实做过而不是从来就没有缓存():
     assert callable(conftest._purge_src_bytecode)
     # 再跑一次必须返回空列表：第一次已经清干净，且此后不写。
     assert conftest._purge_src_bytecode() == []
+
+
+# --------------------------------------------------------------------------
+# 承重哈希的跨平台可移植性（2026-09-04，独立复核发现）
+# --------------------------------------------------------------------------
+
+
+def _manifests():
+    """仓库里全部 `SHA256SUMS`。**基准是磁盘，不是一张写死的清单** ——
+    写死的话，新增一个冻结目录就不在检查范围里了（`N-42` 的形状）。
+    """
+    import subprocess
+
+    tracked = subprocess.run(
+        ["git", "ls-files", "*SHA256SUMS"],
+        capture_output=True, text=True, encoding="utf-8", cwd=REPO_ROOT,
+    ).stdout.split()
+    return [REPO_ROOT / t for t in tracked]
+
+
+def _manifest_path(line: str) -> str:
+    """一行清单里的**文件路径**。认 `hash *path` 与 `hash  path` 两种格式。
+
+    ⚠️ 只认一种会让另一批清单静默落在检查范围之外 —— 正是这几条门要防的形状。
+    实测：`eval/` 两份用 `*`（sha256sum 二进制模式），
+    `docs/agent/poc-01/SHA256SUMS` 用两个空格（文本模式）。
+    """
+    parts = line.split(None, 1)
+    if len(parts) < 2:
+        return ""
+    rest = parts[1]
+    return rest[1:].strip() if rest.startswith("*") else rest.strip()
+
+
+def test_被哈希覆盖的文件在工作树里不得含CRLF():
+    """🔴 `D-012` 的物理保障要求哈希**跨平台稳定**，而 CRLF 会让它分叉。
+
+    2026-09-04 实地踩到：用 `pathlib.write_text` 在 Windows 上重写
+    `eval/testdata/sample-suite/` 的两份夹具（**文本模式默认写 CRLF**），
+    再按**工作树字节**重算清单 —— 本机 `sha256sum -c` 全 OK、843 passed 全绿，
+    而 `.gitattributes` 是 `* text=auto eol=lf`，**入库与任何新检出都是 LF**：
+
+        S-C2-002.yaml   工作树 114a9586…（清单记的）   入库 9a7829a8…
+        sample.yaml     工作树 b81f8282…（清单记的）   入库 16ffd711…
+
+    ⇒ 那个提交声称的「七道门全 exit 0」**只在那一台机器的工作树上成立**，
+    任何新检出与 Linux CI 上第一道门就是红的。
+    这是 `rules/commands.md` 记的「本地绿 ≠ CI 绿」，这次活在 HEAD 上。
+
+    **只查承重集合**（被某份 `SHA256SUMS` 覆盖的文件），不查全仓 ——
+    全仓 70 个被跟踪文件工作树里含 CRLF，它们的哈希不承重，管它们是噪声。
+
+    它会红的场景：有人在 Windows 上按工作树字节重算任何一份清单。
+    """
+    offenders = []
+    for manifest in _manifests():
+        for line in manifest.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            rel = _manifest_path(line)
+            target = manifest.parent / rel
+            if target.is_file() and b"\r\n" in target.read_bytes():
+                offenders.append(str(target.relative_to(REPO_ROOT)))
+    assert offenders == [], "这些被哈希覆盖的文件含 CRLF，工作树哈希与入库哈希会分叉：" + "; ".join(offenders)
+
+
+def test_每份清单在工作树上自校验通过():
+    """反方向：光「没有 CRLF」不够，记的哈希还得真的对得上。
+
+    没有这一条，上一条可以被一份**内容全错但都是 LF** 的清单满足。
+    """
+    import hashlib
+
+    checked = 0
+    for manifest in _manifests():
+        for line in manifest.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            want = line.split()[0]
+            rel = _manifest_path(line)
+            target = manifest.parent / rel
+            assert target.is_file(), f"{manifest} 记了一个不存在的文件：{rel}"
+            got = hashlib.sha256(target.read_bytes()).hexdigest()
+            assert got == want, f"{target} 哈希不符：清单 {want[:16]}… 实际 {got[:16]}…"
+            checked += 1
+    assert checked >= 26, f"覆盖太薄，只校了 {checked} 个文件（frozen-01 21 + poc-01 5 起）"
