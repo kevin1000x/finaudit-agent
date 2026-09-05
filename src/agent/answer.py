@@ -70,6 +70,7 @@ __all__ = [
     "Answer",
     "answer_question",
     "evidence_gaps",
+    "evidence_stage",
     "render_answer",
     "required_answer_evidence",
 ]
@@ -153,6 +154,19 @@ class FixtureSource:
             return _FixtureCell(RetrievalOutcome.GOT_VALUE, CellState.VALUE_PRESENT, raw)
 
 
+def evidence_stage(answer) -> str:
+    """这条答案该按哪一档必填键来数。
+
+    🔴 **判据是「有没有解析出指标」，不是 `gate` 的取值。**
+    2026-09-04 独立复核发现：`gate="not_reached"` 此前被同时用于两件事 ——
+    「指标没解析出来」与「指标解析出来了但数据源没这一行」。
+    收窄只对第一件成立；第二件里 `metric_definition_version` 是**合法已知**的，
+    反方向检查却会报「这一步不该有版本」⇒ 一个完全正确的 `UNAVAILABLE` 拒答
+    会让 `AC-05` 这条**保证类**门变红。
+    """
+    return "no_metric" if getattr(answer, "metric_id", None) is None else "full"
+
+
 def required_answer_evidence(stage: str) -> tuple:
     """这条答案按它**走到了哪一步**该有哪些键。
 
@@ -168,7 +182,7 @@ def required_answer_evidence(stage: str) -> tuple:
     `evidence_gaps` 要求它此时必须是 `None`，填了值反而报缺口。
     检查没有变松，只是换了方向。
     """
-    if stage == "not_reached":
+    if stage == "no_metric":
         return tuple(k for k in REQUIRED_ANSWER_EVIDENCE if k != "metric_definition_version")
     return REQUIRED_ANSWER_EVIDENCE
 
@@ -302,13 +316,16 @@ def answer_question(question: str, registry: Registry, source=None, ask_model=No
         source = source.at(intent.entity, intent.period)
         base["data_source"] = source.batch_id
 
-    defn = registry.definitions.get(intent.metric_id)
-    if defn is None:
-        return _refused(
-            intent, digest,
-            Refusal(RefusalCode.METRIC_NOT_DEFINED, intent.metric_id + " 不在注册表里"),
-            dict(base), "not_reached",
-        )
+    # 🔴 **走 `registry.resolve()`，不是 `definitions.get()`。**
+    # 只有 `resolve()` 会跑 `validate_definition`（9 条 Requirement）并在不合规时
+    # 返回 `DEFINITION_NONCONFORMANT`；`definitions.get()` 拿到的是**未经校验**的定义。
+    # 2026-09-04 独立复核实测：清空 `common_pitfalls`（⇒ `R8.TOO_FEW_PITFALLS`）之后，
+    # `resolve()` 判「不许被消费」，而这里照样算出了 0.3。
+    # ⚠️ 仓库级 CI（`semantic_layer validate`）挡不住这件事 ——
+    # 它管的是 `metrics/` 里的定义，管不到运行时拿到的那一份。
+    defn = registry.resolve(intent.metric_id)
+    if isinstance(defn, Refusal):
+        return _refused(intent, digest, defn, dict(base), "not_reached")
     base["metric_definition_version"] = defn.version
 
     if source is None or not source.found:
@@ -328,6 +345,11 @@ def answer_question(question: str, registry: Registry, source=None, ask_model=No
     # 否则「授权命名空间」与「字段已声明」这两道就只管条件不管公式，那是个洞。
     trees = [dsl.parse_condition(c.expr).tree for c in defn.undefined_conditions if c.expr]
     trees += [dsl.FieldRef(p) for p in _formula_field_refs(defn)]
+    # 🔴 **可比性标记的 trigger 也要过闸。** `active_flags()` 会 `dsl.evaluate`
+    # 每一条 trigger —— 漏掉它们，闸门声称的「单调前置」在这条分支上不成立。
+    # 2026-09-04 独立复核实测：同一个未声明字段，单独送闸门被拒，
+    # 写进 flag trigger 就被读出来了，标记还会进人读渲染的「可比性标记」一节。
+    trees += [dsl.parse_condition(f.trigger).tree for f in defn.flags if f.trigger]
     for tree in trees:
         blocked = pre_execute(
             GateRequest(

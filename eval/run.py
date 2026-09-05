@@ -243,6 +243,7 @@ def run_suite(suite_dir: Path, only_category: str | None = None) -> dict:
     from agent.answer import (
         answer_question,
         evidence_gaps,
+        evidence_stage,
         required_answer_evidence,
     )
     from agent.answer import FixtureSource
@@ -292,13 +293,14 @@ def run_suite(suite_dir: Path, only_category: str | None = None) -> dict:
         answers[cid] = answer
 
         # 证据链完整率：**用题面自己声明的 `required_evidence`**，不是运行器发明的一套。
-        # ⚠️ 一处如实披露的收窄：题面连指标都没解析出来时，
+        # ⚠️ 一处如实披露的收窄：**题面连指标都没解析出来时**（判据是 `metric_id is None`，
+        #    不是 `gate` 的取值 —— 后者把「没解析出指标」与「数据源没这一行」混成了一件事），
         #    `metric_definition_version` 不适用（没有指标哪来的版本）。
         #    这照搬 `extractor.pipeline.required_evidence_keys` 的先例 ——
         #    照字面数会让 AC-05 这条**保证类**标准变成一个正确实现永远达不到的标准。
         #    **不静默**：收窄逐条记进报告的 `evidence_scope_notes`。
         declared = tuple(case.get("required_evidence") or ())
-        stage = "not_reached" if answer.gate == "not_reached" else "reached"
+        stage = evidence_stage(answer)
         applicable = tuple(k for k in declared if k in required_answer_evidence(stage))
         if set(applicable) != set(declared):
             evidence_notes.append(

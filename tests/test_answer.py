@@ -17,6 +17,7 @@ from agent.answer import (
     FixtureSource,
     answer_question,
     evidence_gaps,
+    evidence_stage,
     render_answer,
     required_answer_evidence,
 )
@@ -39,7 +40,7 @@ def source():
 
 
 def _stage(a: Answer) -> str:
-    return "not_reached" if a.gate == "not_reached" else "reached"
+    return evidence_stage(a)
 
 
 # ── 结构化答案对象 ──────────────────────────────────────────────────
@@ -65,7 +66,20 @@ def test_拒答与作答是同一套字段(registry, source):
     ok = answer_question("华鑫科技（900001）2023 年的毛利率是多少？", registry, source=source)
     bad = answer_question("华鑫科技（900001）2023 年的 EBITDA 是多少？", registry, source=source)
     assert not ok.refused and bad.refused
+    # ⚠️ `set(ok.to_dict()) == set(bad.to_dict())` 是**恒真**的：
+    # `to_dict()` 返回字面量字典，键集由 dataclass 写死。
+    # 2026-09-04 独立复核指出它是本测试里唯一的实质断言 ⇒ 换成会红的那种。
     assert set(ok.to_dict()) == set(bad.to_dict())
+    for rec in (ok, bad):
+        d = rec.to_dict()
+        # ⚠️ `metric_id` / `metric_version` **不在**这张表里：题面里根本没有可认的指标时
+        # 它们为空是**事实**，不是缺字段。把它们要求成非空，等于逼实现去编一个。
+        for key in ("question", "question_sha256", "gate"):
+            assert d[key] not in (None, "", [], {}), f"{key} 在 {'拒答' if rec.refused else '作答'} 路径上是空的"
+        assert set(d["evidence"]) == set(REQUIRED_ANSWER_EVIDENCE)
+        # 出处与执行指纹两条**两条路径上都必须有真值**
+        assert d["evidence"]["data_source"]
+        assert d["evidence"]["execution_hash"]
 
 
 def test_拒答也带执行指纹(registry, source):
@@ -87,9 +101,9 @@ def test_没解析出指标那一步不该有口径版本(registry, source):
     它会红的场景：有人在意图失败的路径上从别处抄一个版本号填进去。
     """
     a = answer_question("这句话里没有任何指标名", registry, source=source)
-    assert a.gate == "not_reached"
+    assert a.metric_id is None
     assert a.evidence["metric_definition_version"] is None
-    keys = required_answer_evidence("not_reached")
+    keys = required_answer_evidence("no_metric")
     assert "metric_definition_version" not in keys
     伪造 = dict(a.evidence, metric_definition_version=2)
     assert evidence_gaps(伪造, keys) != [], "填了不该有的版本却没报缺口"
@@ -159,3 +173,127 @@ def test_合成夹具必须在渲染里被说成合成的(registry, source):
     out = render_answer(a, registry.definitions[a.metric_id])
     assert "合成夹具" in out
     assert "不是任何真实公司的年报" in out
+
+
+# --------------------------------------------------------------------------
+# 独立复核（2026-09-04）发现的三处，逐条锁住
+# --------------------------------------------------------------------------
+
+
+def _mutated(registry, metric_id, **attrs):
+    """复制一份定义并改几个字段，塞回一个浅拷贝的注册表。**不动 metrics/**。"""
+    import copy
+
+    defn = copy.deepcopy(registry.definitions[metric_id])
+    for k, v in attrs.items():
+        setattr(defn, k, v)
+    reg = copy.copy(registry)
+    reg.definitions = dict(registry.definitions)
+    reg.definitions[metric_id] = defn
+    return reg, defn
+
+
+def test_不合规的定义不得被答案路径消费(registry, source):
+    """🔴 R1：闸门的拒答文案写着「口径定义本身不合规，不允许被消费」。
+
+    2026-09-04 实测它做不到：`answer_question` 走
+    `registry.definitions.get()` 直接取定义，**从不调用 `Registry.resolve()`** ——
+    而后者才是跑 `validate_definition`（9 条 Requirement）那一步。
+    闸门的「定义合规」只看 `defn.parse_error`，那是 **YAML 解析层**的错。
+
+    实测：`common_pitfalls` 清空 ⇒ `R8.TOO_FEW_PITFALLS` ⇒
+    `Registry.resolve` 判 `DEFINITION_NONCONFORMANT`，而 `answer_question` 算出 0.3。
+
+    ⚠️ 今天不可利用（`metrics/` 里没有不合规定义，且 validate 是常跑门禁），
+    但那是**仓库级 CI**，不是**运行时 fail-closed** —— 而 `pre_execute`
+    存在的全部理由就是后者。`02-04` 的 Web 壳一旦接受仓库外的定义就会命中。
+
+    它会红的场景：有人把 `registry.resolve` 换回 `definitions.get`。
+    """
+    from semantic_layer.resolve import RefusalCode
+
+    reg, _ = _mutated(registry, "gross_profit_margin", common_pitfalls=[])
+    a = answer_question("华鑫科技（900001）2023 年的毛利率是多少？", reg, source=source)
+    assert a.refused, "不合规的定义被消费了，算出了一个数"
+    assert a.refusal["code"] == RefusalCode.DEFINITION_NONCONFORMANT.name
+
+
+def test_可比性标记的trigger也要过闸门(registry, source, monkeypatch):
+    """🔴 R2：`SC-6` 的实际反例。
+
+    `answer_question` 此前只把 `undefined_conditions` 的树与公式字段送进闸门，
+    而 `active_flags()` 会 `dsl.evaluate` 每一条 flag trigger —— **那些树从未过闸**。
+
+    ⚠️ **这条测试直接验「闸门收到了哪些树」，不走端到端。** 原因是
+    校验器的 `R4.TRIGGER_UNDECLARED_FIELD` 已经在**定义层面**禁止 trigger 引用
+    未声明字段 ⇒ 端到端造不出一个「通过校验但 trigger 越界」的样本，
+    端到端断言会被 `DEFINITION_NONCONFORMANT` 满足，**而那不是这条要证的事**。
+    （闸门仍要覆盖它：仓库级校验不是运行时 fail-closed —— 与 R1 同一条理由。）
+
+    它会红的场景：有人从 `trees` 里去掉 flag trigger 那一段。
+    """
+    import agent.answer as mod
+    from semantic_layer import dsl
+
+    seen = []
+    real = mod.pre_execute
+
+    def 记账(req, *a, **kw):
+        seen.append(req.tree)
+        return real(req, *a, **kw)
+
+    monkeypatch.setattr(mod, "pre_execute", 记账)
+    a = answer_question("华鑫科技（900001）2023 年的毛利率是多少？", registry, source=source)
+    assert not a.refused
+
+    defn = registry.definitions["gross_profit_margin"]
+    triggers = [f.trigger for f in defn.flags if f.trigger]
+    assert triggers, "这份定义应当有带 trigger 的标记，否则本测试在空转"
+    过闸的 = {dsl.parse_condition(t).tree for t in triggers}
+    assert 过闸的 <= set(seen), "有 flag trigger 没过闸门"
+
+
+def test_数据源缺数据时不该被判成证据链缺口(registry, source):
+    """🔴 R3：`AC-05` 是**保证类**（齐全率 <100% 即失败）。
+
+    `gate="not_reached"` 此前被同时用于两件事：「指标没解析出来」与
+    「指标解析出来了但数据源没这一行」。而分阶段必填键的收窄只对第一件成立 ——
+    第二件里 `metric_definition_version` 是**合法已知**的，
+    反方向检查却报「这一步不该有版本，却填了值」。
+
+    ⇒ 一个完全正确的 `UNAVAILABLE` 拒答会让 `AC-05` 这条保证门红，
+    正是 `required_answer_evidence` 的 docstring 自称在避免的那件事。
+
+    它会红的场景：有人把收窄判据改回按 `gate` 取。
+    """
+    a = answer_question("华鑫科技（900001）1999 年的毛利率是多少？", registry, source=source)
+    assert a.refused and a.refusal["code"] == "UNAVAILABLE"
+    assert a.metric_id == "gross_profit_margin"
+    assert a.evidence["metric_definition_version"] is not None
+    assert evidence_gaps(a.evidence, required_answer_evidence(evidence_stage(a))) == []
+
+
+def test_近似命中在多候选时取最长的那个(registry):
+    """🔵→🟡 `_near_miss` 里写的是 `len(cand[0]) > len(best[0])`。
+
+    `cand` 是 str，`cand[0]` 是**首字符**，两边 `len` 恒为 1 ⇒ 比较恒假 ⇒
+    取的是**第一个**候选而不是最长的，结果取决于 `metrics/` 的加载顺序。
+
+    当前别名表里 4 组碰撞每组只有一个候选，所以无可观察差异 ——
+    **这条测试直接测那个取最长的判据**，不依赖别名表恰好有多候选。
+    """
+    from agent.intent import _near_miss
+
+    class 假注册表:
+        by_alias = {
+            "收益率": "m_short",
+            "净资产收益率": "m_mid",
+            "加权平均净资产收益率": "m_long",
+        }
+
+    # 题面里「收益率」前面同时接得上 `净资产` 与 `加权平均净资产`，两个候选都成立
+    got = _near_miss(假注册表(), "公司的加权平均净资产收益率是多少", "收益率", len("公司的加权平均净资产"))
+    assert got is not None
+    asked, have = got
+    assert asked == "加权平均净资产收益率", f"没取最长的那个，取到的是 {asked!r}"
+    assert have == "加权平均净资产收益率"

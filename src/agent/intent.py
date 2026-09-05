@@ -75,10 +75,11 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _near_miss(registry: Registry, question: str, alias: str, at: int) -> str | None:
+def _near_miss(registry: Registry, question: str, alias: str, at: int):
     """命中的 `alias` 是不是另一个指标的名字被截了一段？
 
-    返回题面里那个更长的说法（⇒ 应当拒答）；不是就返回 `None`。
+    返回 `(题面里那个更长的说法, 我们真正有的那条别名)`；不是就返回 `None`。
+    多个候选都成立时取**最长**的那个。
     """
     target = registry.by_alias.get(alias)
     best = None
@@ -91,7 +92,10 @@ def _near_miss(registry: Registry, question: str, alias: str, at: int) -> str | 
             tail = extra[-k:]
             if at >= k and question[at - k : at] == tail:
                 cand = tail + alias
-                if best is None or len(cand[0]) > len(best[0]):
+                # ⚠️ 比的是**候选串本身**的长度。写成 `len(cand[0])` 时
+                # 两边恒为 1（那是首字符），比较恒假 ⇒ 取到的是第一个候选，
+                # 而「第一个」由 `metrics/` 的加载顺序决定，不是任何人的决定。
+                if best is None or len(cand) > len(best[0]):
                     # 一并把**触发碰撞的那条别名**带出去。
                     # 只报 `alias`（题面里那个子串）是没用的：读者要知道的是
                     # 「我们有的是哪一个」，而那是 `other`，不是 `alias`。
