@@ -19,6 +19,16 @@ python -m eval.run --suite frozen-01 --report reports/
 
 （评测命令在 Phase 1 实现前不存在，不要假装跑过。）
 
+```bash
+# H2 复核实验器械（02-03）。第一条出题包，第二条在答卷填完之后算数。
+.venv/Scripts/python -m eval.h2 --suite frozen-01 --seed 20260905
+.venv/Scripts/python -m eval.h2 --suite frozen-01 --sheet docs/agent/h2-01/answer-sheet.yaml
+```
+
+⚠️ **第二条只有真人填完答卷才跑得出结论**：留空即 fail-closed，退出码 1 并逐题点名。
+**执行者不得代填任何一格**（`N-20` 判据：执行者代答无效）。
+⚠️ 出题包之前**不要**读 `docs/agent/h2-01/keymap.json` 或 `02-03-PLAN.md` 的 `<context>` —— 那里写着哪几道是错题。
+
 ---
 
 ## 第五道门：阅读台账（2026-08-23 新增，台账 N-31）

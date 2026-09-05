@@ -12,8 +12,9 @@ last_activity_desc: "**`N-52` 两层都裁了，并且在落地时暴露出一�
 progress:
   total_phases: 6
   completed_phases: 3   # Phase 0 / 1 / 1.5
-  total_plans: 18   # 实数（find .planning/phases -name '*-PLAN.md' | wc -l，2026-09-05 实跑）：8 + 7 + 00-01 + 02-01 + 02-02
-  completed_plans: 18   # 上面 16 份 + `02-01` + `02-02`（四个 task 全部完成，见 02-02-SUMMARY.md）
+  total_plans: 19   # 实数（find .planning/phases -name '*-PLAN.md' | wc -l，2026-09-05 实跑）：8 + 7 + 00-01 + 02-01 + 02-02 + 02-03
+  completed_plans: 18   # 上面 16 份 + `02-01` + `02-02`。**`02-03` 不算**：器械 T1–T3 做完了，
+  # T4 是 checkpoint:human（真人复核），执行者代答无效 ⇒ 这一份未完成
   # ⚠️ `percent` 是手工估计，**不是从上面两组数派生的**（11/14 也不等于 29%）。
   # 不改它，免得给一个看起来是算出来的、实际是拍的数。
   percent: 29
@@ -100,7 +101,7 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 | | |
 |---|---|
 | 指标定义 | **20 / 20** 合规，`advisory_only` 19.0%，未分类 0 |
-| 测试 | **896 passed**（2026-09-05 每改完一轮文档就从头再跑一次，结果次次一致；耗时区间 148–304s —— 非确定性字段，不是判据） |
+| 测试 | **908 passed**（2026-09-05 实跑；耗时区间 148–304s —— 非确定性字段，不是判据） |
 | 门禁 | **7 道**（第七道 `tests/test_plan_waves.py`）：pytest / `semantic_layer scan` / `validate` / `check_xrefs` / `check_reading_ledger`（08-23）/ **`check_gates`**（08-24，门禁的门禁）+ CI `gates.yml`；**供应链 `verify_deps.py` 单独跑，不串进提交链**（它走网络） |
 | 生产代码 | `src/semantic_layer/` **11 模块**；`src/extractor/` **12 模块**；`src/agent/` **4 模块**（09-04 新增：`intent` / `gate` / `answer`） |
 | 映射表 | PDF 侧 5 份 **30 / 30**（相等断言）；AKShare 对照侧 3 份 **24 / 30**（**子集**断言，`C-13`） |
@@ -109,7 +110,7 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 | 系统臂 | 口径 **7/11**、拒答 **4/4**、答案 **5/8**、证据链 **15/15（其中 8 题按收窄键集计）**；C4/C5 共 5 题 `NOT_RUN`（准则检索 / 图谱确实没有路径） |
 | 对照臂 | 裸 LLM 两个模型臂（`deepseek-v4-pro` / `v4-flash`），报告在 `eval/runs/baseline/`（gitignored） |
 | OpenSpec | 3 个变更已归档，`specs/` 9 条 Requirement |
-| 决策 | D-001…**D-036** |
+| 决策 | D-001…**D-037** |
 | 沉淀登记册 | 82 条（2026-09-04 `scripts/backlog_status.py` 实跑）：已落地 63 / **部分落地 3** / BLOCKED 9 / 已关闭 4 / 依据 3 |
 | 外部沉淀 | `references/` **26 份 26,734 行**（cninfo 1451 / harness 14,093 / hello-agents 11,144） |
 

@@ -254,8 +254,15 @@ def load_cases(suite_dir: Path) -> list[dict]:
     return cases
 
 
-def run_suite(suite_dir: Path, only_category: str | None = None) -> dict:
+def run_suite(
+    suite_dir: Path, only_category: str | None = None, collect: dict | None = None
+) -> dict:
     """系统臂。**Phase 2 起走 `src/agent/` 的完整问答路径。**
+
+    `collect` 给进来的话，会填上 `{case_id: Answer}`。
+    ⚠️ 它存在的理由只有一个：`eval/h2.py` 的题包**必须来自产出这份报告的那一次运行**，
+    不是「拿同样的输入再算一遍」。重算在今天是等价的（整条路径确定性），
+    但那是一个会悄悄失效的前提 —— 复核者看的那页和拿来比对的判定必须同源。
 
     ⚠️ 本函数**不 import 任何 LLM 客户端**。意图解析的模型是注入式的，
     这里不注入 ⇒ 整条路径离线跑完（`D-033`）。
@@ -352,6 +359,9 @@ def run_suite(suite_dir: Path, only_category: str | None = None) -> dict:
     #    实际归因是**这一次真实**的失败点 —— 两者不一致不是失败信号。
     #    折成百分比会立刻被读成「归因准了几成」，那是个不存在的东西。
     hint_rows = _hint_comparison(cases, results)
+
+    if collect is not None:
+        collect.update(answers)
 
     return _summarize(
         suite_dir, results, only_category, answers, evidence_gap_by_case, evidence_notes,

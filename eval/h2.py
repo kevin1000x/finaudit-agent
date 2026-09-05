@@ -1,0 +1,414 @@
+"""H2 复核实验的器械（`02-03`，`EVAL_CASES` §4，`AC-06` / `SC-2` / `SC-3`）。
+
+`EVAL_CASES` §4 第一句就写着：**「这是本项目最重要、也最容易被跳过的评测」**。
+本模块做的是让它**能被做**、且做完之后**结论站得住**的三件事：
+
+1. **题包**：复核者手上那一页。正文逐字就是 `agent.answer.render_answer()` 的输出 ——
+   `D-032` 定的就是这条（「`AC-06` 的复核者读的就是这个」）。**不另写一版给复核者的排版**：
+   另写一版就等于测了一个不会上线的东西。
+2. **空白答卷** + 回填后算数。
+3. **`D-037` 的三条强制标注**，缺一条就不给结论。
+
+## 本模块不做的事
+
+**它不复核。** `EVAL_CASES` §4.1 第 2 步要的是「有审计或财务背景的复核者」，
+而 `N-20` 立过同款判据：**执行者代答无效**。器械做完就停。
+
+## 为什么题包必须来自某一次具体运行
+
+复核者看的那一页，和拿来跟他比对的 `PASS`/`FAIL`，**必须同源**。
+所以这里走 `run_suite(..., collect=...)` 拿那一次真实产出的 `Answer`，
+而不是「用同样的输入再算一遍」。今天两者等价（意图解析之后全程确定性），
+但那是一个会悄悄失效的前提。
+
+## 不泄题：探针查什么、以及**刻意不查什么**
+
+见 `leak_probes` 的 docstring。这一段是本模块最容易被「顺手补全」改坏的地方。
+"""
+
+from __future__ import annotations
+
+import json
+import random
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+EVAL_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = EVAL_ROOT.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from .run import FAIL, PASS, load_cases, run_suite  # noqa: E402
+
+__all__ = [
+    "REQUIRED_ANNOTATIONS",
+    "VERDICTS",
+    "Packet",
+    "blank_sheet",
+    "build_packets",
+    "keymap",
+    "leak_probes",
+    "no_leak_problems",
+    "render_packets",
+    "score",
+]
+
+#: 复核者的取值域（`EVAL_CASES` §4.1 第 3 步逐字）。
+VERDICTS = ("对", "错", "无法判断")
+
+#: `D-037` / `EVAL_CASES` §4.1.1 强制要求的标注。**缺一项即视为未按 §4.1 执行**，
+#: 于是 `score()` 拒绝给结论 —— 这不是提醒，是门。
+REQUIRED_ANNOTATIONS = (
+    "sampling",                    # 「普查」，不是「随机抽样」
+    "w",                           # 错题数的实际值
+    "w_ge_5_satisfied",            # `≥5 题答错` 是否满足
+    "resolution_floor_on_wrong",   # 错题子集上的分辨率下限 1/W
+    "limitations",                 # 指向 `02-03-PLAN.md` 那三条限定，不复述
+)
+
+#: §4.2 的三档。**数值一个不动**（`D-037` 只改了「样本怎么取」与「报告说什么」）。
+GATE_PASS, GATE_PARTIAL, GATE_FAIL = 0.80, 0.60, 0.0
+#: §4.3 的反向检验：「无法判断」占比超过它，即使一致率达标也要补齐重测。
+UNDECIDABLE_LIMIT = 0.20
+
+_LIMITATIONS_REF = (
+    ".planning/phases/02-execution-web/02-03-PLAN.md 的 <context> 三条限定"
+    "（只有 5/15 是数字题；错题全是拒答形态；复核者不独立于本项目）"
+)
+
+
+@dataclass(frozen=True)
+class Packet:
+    """复核者拿到的一题。**没有一个字段来自题面的 `expected` / `judging`。**"""
+
+    anon_id: str
+    case_id: str
+    body: str
+
+
+# --------------------------------------------------------------------------
+# 题包
+# --------------------------------------------------------------------------
+
+
+def build_packets(suite_dir: Path, seed: int):
+    """跑一次评测，把**可计分**的每一题做成一个题包。返回 `(packets, report)`。
+
+    **普查，不抽样**（`D-037` / §4.1.1）：`status` 落在 `PASS`/`FAIL` 的题一道不落，
+    挑题的余地在这里就不存在。`NOT_RUN`（C4 准则检索 / C5 图谱）没有答案可复核，
+    进题包等于给复核者一页空白，所以不进。
+
+    `seed` 只决定**定序**。不打乱的话 frozen-01 里 `Q-C2-*` 连着四道全是拒答，
+    读到第三道就能猜出这一段的形状。种子记在 `keymap()` 里，可复现。
+    """
+    from semantic_layer.__main__ import _flag_descriptions
+    from semantic_layer.resolve import Registry
+
+    from agent.answer import render_answer
+
+    answers: dict = {}
+    report = run_suite(suite_dir, None, collect=answers)
+
+    registry = Registry.load(REPO_ROOT / "metrics")
+    flag_desc = _flag_descriptions(REPO_ROOT / "metrics")
+
+    scored = [r["id"] for r in report["results"] if r["status"] in (PASS, FAIL)]
+    missing = [cid for cid in scored if cid not in answers]
+    if missing:
+        # fail-closed：拿不到某一题的答案就整批不出题包。
+        # 少一题而照样发出去，复核者那边看不出来，分母却已经变了。
+        raise ValueError("这些已计分的题没有对应的答案对象：" + "、".join(missing))
+
+    ordered = list(scored)
+    random.Random(seed).shuffle(ordered)
+
+    packets = []
+    for i, cid in enumerate(ordered, start=1):
+        ans = answers[cid]
+        defn = registry.definitions.get(ans.metric_id) if ans.metric_id else None
+        packets.append(
+            Packet(
+                anon_id="H2-%02d" % i,
+                case_id=cid,
+                body=render_answer(ans, defn, flag_desc),
+            )
+        )
+
+    problems = no_leak_problems(packets, report, suite_dir)
+    if problems:
+        # 泄题的题包不许流出去。这道门比「测试红了」更靠前：
+        # 测试守的是代码，这一句守的是**这一次真的要交出去的那份文件**。
+        raise ValueError("题包泄题，拒绝产出：\n  " + "\n  ".join(problems))
+    return packets, report
+
+
+def render_packets(packets) -> str:
+    """复核者拿到的那一份。**除了匿名号与正文，什么都不加。**"""
+    L = [
+        "H2 复核题包",
+        "",
+        "每题限时 5 分钟，只读这一页，判 `对 / 错 / 无法判断`，填进 answer-sheet.yaml。",
+        "「对」= 你认为系统这次给出的结果是对的；拒答也算一种结果，判的是「这次拒答对不对」。",
+        "「无法判断」= 这一页的信息不足以让你下结论 —— 它不是「不确定就选它」，",
+        "它本身是一个被单独统计的读数（`EVAL_CASES` §4.3）。",
+        "",
+    ]
+    for p in packets:
+        L += ["=" * 68, p.anon_id, "=" * 68, "", p.body, ""]
+    return "\n".join(L)
+
+
+def keymap(packets, seed: int) -> dict:
+    """匿名号 → 原编号。**单独一份文件，复核者不拿到。**"""
+    return {
+        "seed": seed,
+        "map": {p.anon_id: p.case_id for p in packets},
+    }
+
+
+# --------------------------------------------------------------------------
+# 不泄题
+# --------------------------------------------------------------------------
+
+
+def leak_probes(case: dict, result: dict) -> list:
+    """这一题**不许出现在题包里**的字符串。
+
+    收的是两类，共同点是：**它们只存在于标准答案或判定输出里，
+    系统自己的答案在任何情况下都产不出它们。**
+
+    1. 题面的 `rationale` / `attribution_hint` —— 自由散文，写着正解和陷阱在哪。
+    2. 本次运行的 `status` / `detail` / `attribution` / `attribution_basis` ——
+       判定的产物。
+
+    ⚠️ **刻意不收 `expected.value` / `expected.metric_id` / `judging.refusal_code`。**
+    两个理由，第二个更要紧：
+
+    - 系统**答对**的时候，它自己的输出就等于这几个值 ⇒ 必然误报。
+    - 更糟的是**命中与否本身就是答案**：一个「因为系统答对了所以变红」的检查，
+      等于把判定结果编码进了门禁，还会诱使人去改题包来消红。
+
+    这几项由 `tests/test_h2.py` 的**哨兵测试**结构性地覆盖：
+    题面里放一串构造上不可能被算出来的哨兵，它出现在题包里就只可能是抄过去的。
+    那条测试连 `expected` / `judging` / `must_not_resolve_to` 一起覆盖，**且没有误报面**。
+    """
+    # ⚠️ `rationale` 在题面里是写在 **`expected:` 底下**的（frozen-01 二十份都是），
+    #    只读顶层会拿到 `None` ⇒ 这条探针整个空转。
+    #    2026-09-05 第一版就是这么写的，靠 `test_不泄题这条检查真的会红` 那条反空转抓出来的。
+    expected = case.get("expected") or {}
+    probes = []
+    for source, key in (
+        (case, "rationale"),
+        (expected, "rationale"),
+        (case, "attribution_hint"),
+        (expected, "attribution_hint"),
+    ):
+        v = source.get(key) if isinstance(source, dict) else None
+        if v and str(v).strip():
+            probes.append(" ".join(str(v).split()))
+    probes.append(result["status"])
+    for key in ("detail", "attribution_basis"):
+        v = result.get(key)
+        if v and str(v).strip():
+            probes.append(str(v))
+    probes.extend(result.get("attribution") or [])
+    return probes
+
+
+def no_leak_problems(packets, report: dict, suite_dir: Path) -> list:
+    """题包里泄了题就逐条报出来。空列表 = 干净。
+
+    ⚠️ `suite_dir` **是必填的，不给默认值。** 早先它是可选的，不给就只查判定侧 ——
+    于是调用方少写一个参数就静默降级成半套检查，而**降级看起来和通过一模一样**。
+    这正是 `N-42` 那个形状：这道门扫的集合 ≠ 它声称在检查的集合。
+    """
+    cases = {c["id"]: c for c in load_cases(suite_dir)}
+    results = {r["id"]: r for r in report["results"]}
+
+    problems = []
+    page = "\n".join(p.body for p in packets)
+    for p in packets:
+        result = results.get(p.case_id)
+        if result is None:
+            problems.append(p.anon_id + "：报告里找不到这一题的判定")
+            continue
+        for probe in leak_probes(cases.get(p.case_id, {}), result):
+            if probe and probe in page:
+                problems.append(
+                    p.anon_id + "（" + p.case_id + "）泄题：题包里出现了 " + repr(probe)
+                )
+    return problems
+
+
+# --------------------------------------------------------------------------
+# 答卷
+# --------------------------------------------------------------------------
+
+
+def blank_sheet(packets) -> str:
+    """空白答卷。**除了匿名号，一个字的提示都没有。**"""
+    L = [
+        "# H2 复核答卷。每题填 verdict，取值域见下；note 可写一句为什么（选填）。",
+        "# 留空 = 没填。**「没填」和「填了无法判断」是两件事**，",
+        "# 混同会让 EVAL_CASES §4.3 那道反向检验失真 —— 所以留空时拒绝算数。",
+        "取值域: [" + ", ".join(VERDICTS) + "]",
+        "verdicts:",
+    ]
+    for p in packets:
+        L += ["  - id: " + p.anon_id, "    verdict:", '    note: ""']
+    return "\n".join(L) + "\n"
+
+
+def score(sheet: dict, report: dict, packets) -> dict:
+    """回填后的答卷 → 一致率 / 无法判断率 / §4.2 判定。
+
+    **fail-closed 两处**：答卷没填完不给结论；`D-037` 的强制标注缺一项不给结论。
+    """
+    results = {r["id"]: r for r in report["results"]}
+    by_anon = {p.anon_id: p for p in packets}
+    filled = {row["id"]: row.get("verdict") for row in (sheet.get("verdicts") or [])}
+
+    problems = []
+    missing = [a for a in by_anon if not str(filled.get(a) or "").strip()]
+    if missing:
+        problems.append("这几题没填：" + "、".join(sorted(missing)))
+    bad = [a for a, v in filled.items() if v and v not in VERDICTS]
+    if bad:
+        problems.append("取值域之外的判定：" + "、".join(sorted(bad)))
+    unknown = [a for a in filled if a not in by_anon]
+    if unknown:
+        problems.append("答卷里有题包之外的编号：" + "、".join(sorted(unknown)))
+
+    n = len(packets)
+    wrong_ids = [p.anon_id for p in packets if results[p.case_id]["status"] == FAIL]
+    w = len(wrong_ids)
+
+    agreed = undecidable = 0
+    wrong_agreed = 0
+    for p in packets:
+        v = filled.get(p.anon_id)
+        if v == "无法判断":
+            undecidable += 1
+            continue
+        want = "对" if results[p.case_id]["status"] == PASS else "错"
+        if v == want:
+            agreed += 1
+            if p.anon_id in wrong_ids:
+                wrong_agreed += 1
+
+    annotations = {
+        # §4.1.1 第 1 条：说法必须与做法一致。这里永远是普查 —— `build_packets` 不抽样。
+        "sampling": "普查",
+        "w": w,
+        # §4.1.1 第 2 条
+        "w_ge_5_satisfied": w >= 5,
+        # §4.1.1 第 3 条：错题子集上一致率的最小刻度
+        "resolution_floor_on_wrong": (
+            "1/%d = %.0f 个百分点" % (w, 100.0 / w) if w else "错题为 0，这一档无从分辨"
+        ),
+        "limitations": _LIMITATIONS_REF,
+    }
+    for key in REQUIRED_ANNOTATIONS:
+        if key not in annotations:
+            problems.append("缺强制标注：" + key)
+
+    rate = agreed / n if n else 0.0
+    undecidable_rate = undecidable / n if n else 0.0
+
+    out = {
+        "n": n,
+        "agreed": agreed,
+        "agreement_rate": rate,
+        "undecidable": undecidable,
+        "undecidable_rate": undecidable_rate,
+        "undecidable_within_limit": undecidable_rate <= UNDECIDABLE_LIMIT,
+        "wrong_subset": {
+            "agreed": wrong_agreed,
+            "total": w,
+            "raw": "%d/%d" % (wrong_agreed, w),
+        },
+        "annotations": annotations,
+        "problems": problems,
+        "conclusion": None,
+    }
+    if problems:
+        return out
+
+    if rate >= GATE_PASS:
+        verdict = "H2 通过"
+    elif rate >= GATE_PARTIAL:
+        # §4.2 附注：`W < 5` 时这一档分不开相邻两档，不许直接读成「部分成立」。
+        verdict = "H2 部分成立"
+        if w < 5:
+            verdict += (
+                "（⚠️ W=%d < 5，§4.2 附注：这一档在此分辨率下分不开相邻两档，"
+                "必须连同错题子集原始计数 %s 一起交操作者判）"
+                % (w, out["wrong_subset"]["raw"])
+            )
+    else:
+        verdict = "H2 不成立 —— 停止，回到 ARCHITECT 重设计证据链，不得进入 Phase 3"
+    out["conclusion"] = verdict
+    return out
+
+
+def render_score(got: dict) -> str:
+    L = ["H2 复核实验结果", ""]
+    if got["conclusion"] is None:
+        L.append("**没有结论。** 下面这些先解决：")
+        L += ["  - " + p for p in got["problems"]]
+        return "\n".join(L)
+    L += [
+        "  一致率        %d/%d（%.1f%%）" % (got["agreed"], got["n"], got["agreement_rate"] * 100),
+        "  无法判断      %d/%d（%.1f%%，上限 %.0f%%，%s）"
+        % (
+            got["undecidable"], got["n"], got["undecidable_rate"] * 100,
+            UNDECIDABLE_LIMIT * 100,
+            "未超限" if got["undecidable_within_limit"] else "**已超限，即使一致率达标也要补齐重测**",
+        ),
+        "  错题子集      %s（原始计数，§4.2 附注强制）" % got["wrong_subset"]["raw"],
+        "",
+        "  判定：" + got["conclusion"],
+        "",
+        "强制标注（`D-037` / `EVAL_CASES` §4.1.1）：",
+    ]
+    for key in REQUIRED_ANNOTATIONS:
+        L.append("  %-26s %s" % (key, got["annotations"][key]))
+    return "\n".join(L)
+
+
+def main(argv=None) -> int:
+    import argparse
+
+    import yaml
+
+    ap = argparse.ArgumentParser(prog="eval.h2", description="H2 复核实验器械")
+    ap.add_argument("--suite", default="frozen-01")
+    ap.add_argument("--seed", type=int, default=20260905)
+    ap.add_argument("--out", default=None, help="题包输出目录，默认 docs/agent/h2-01/")
+    ap.add_argument("--sheet", default=None, help="回填后的答卷；给了就只算数不重出题包")
+    args = ap.parse_args(argv)
+
+    suite_dir = EVAL_ROOT / args.suite
+    out_dir = Path(args.out) if args.out else (REPO_ROOT / "docs" / "agent" / "h2-01")
+
+    packets, report = build_packets(suite_dir, args.seed)
+
+    if args.sheet:
+        sheet = yaml.safe_load(Path(args.sheet).read_text(encoding="utf-8")) or {}
+        got = score(sheet, report, packets)
+        print(render_score(got))
+        return 0 if got["conclusion"] is not None else 1
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "packets.md").write_text(render_packets(packets), encoding="utf-8")
+    (out_dir / "answer-sheet.yaml").write_text(blank_sheet(packets), encoding="utf-8")
+    (out_dir / "keymap.json").write_text(
+        json.dumps(keymap(packets, args.seed), ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    print("题包 %d 题（普查，不抽样）已写入 %s" % (len(packets), out_dir))
+    print("⚠️ keymap.json 是对照表，**复核者不拿到**；复核前也不要读 02-03-PLAN 的 <context>。")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
