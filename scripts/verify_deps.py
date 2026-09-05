@@ -495,17 +495,64 @@ def main() -> int:
     results = [check_package(name, interp_abi, platform_tokens) for name in names]
     results.append(scan_installed_licenses())
     print()
-    verdict = "通过" if all(results) else "不通过"
-    if SKIPPED_CHECKS:
+    verdict, code, notes = summarize(results, SKIPPED_CHECKS)
+    for line in notes:
+        print(line)
+    return code
+
+
+def summarize(results: list, skipped: list) -> tuple:
+    """(判词, 退出码, 要打的行)。**纯函数，好让三条路径都能被测。**
+
+    🔴 **三态，不是两态**（`N-44`，2026-09-05 处置）：
+
+    | 情形 | 判词 | 退出码 |
+    |---|---|---|
+    | 全跑了、全过 | 通过 | 0 |
+    | 有检查判失败 | 不通过 | 1 |
+    | 没有失败，但有检查**根本没跑到** | **未生效** | 0 |
+
+    此前第三种情形打的是「通过」。2026-09-04 同一天、同一份代码上出现过两种结果：
+    真读数 2,974,120（低于门槛）⇒「不通过」；几分钟后 `HTTPError` ⇒「**通过**」、退 0。
+    **抖动偏向放行** —— 一个已经跌破的事实被上游的不稳定洗成了「通过」。
+
+    ⚠️ **退出码仍然不变（未生效 = 0）**，这是有意的，理由写在 `SKIPPED_CHECKS`
+    的注释里：让 pypistats 的一次 429 把门禁变红，会得到一道「红的原因不是它要查的
+    那件事」的门，而长期红着的门等于没有门。
+    ⇒ **改的是判词，不是退出码。**「哑与绿在退出码上不可区分」这一条**仍然成立**，
+    如实记在 `N-44`，没有假装解决。
+
+    ⚠️ 跳到的若是**被 `D-030` 盯着的那种下调过门槛的包**，单独打一行红字 ——
+    那正是「这一次判据没有生效」最要紧的场合。
+    """
+    watched = {
+        f"{name}:下载量" for name in DOWNLOAD_THRESHOLD_OVERRIDES
+    }
+    lines: list = []
+    if not all(results):
+        verdict, code = "不通过", 1
+    elif skipped:
+        verdict, code = "未生效", 0
+    else:
+        verdict, code = "通过", 0
+
+    if skipped:
         # **跳过的检查必须出现在总结行里。** 只看最后一行的人占多数，
         # 而「通过」与「有检查没跑、剩下的通过」是两件事。
-        print(
+        lines.append(
             f"供应链门禁：{verdict}"
-            f"（⚠️ 有 {len(SKIPPED_CHECKS)} 项检查未跑：{', '.join(SKIPPED_CHECKS)}）"
+            f"（⚠️ 有 {len(skipped)} 项检查未跑：{', '.join(skipped)}）"
         )
+        missed = sorted(set(skipped) & watched)
+        if missed:
+            lines.append(
+                "🔴 其中 " + "、".join(missed)
+                + " 是 D-030 盯着的那一项 —— **本次运行没有拿到读数，"
+                "「跌破即红」这条判据这一次根本没有生效**。不许把这一行读成「余量还在」。"
+            )
     else:
-        print(f"供应链门禁：{verdict}")
-    return 0 if all(results) else 1
+        lines.append(f"供应链门禁：{verdict}")
+    return verdict, code, lines
 
 
 if __name__ == "__main__":
