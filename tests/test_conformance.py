@@ -10,7 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from semantic_layer.definition import iter_definition_paths, load_definition
+from semantic_layer.definition import (
+    is_definition_file,
+    iter_definition_paths,
+    load_definition,
+)
 from semantic_layer.validate import validate_definition
 from semantic_layer.vocabulary import load_vocabulary
 
@@ -35,6 +39,49 @@ def _ids(paths):
 
 def test_metrics_directory_is_not_empty():
     assert V2_PATHS, "metrics/ 下没有任何定义文件"
+
+
+def test_metrics的扫描范围没有被子目录绕过():
+    """🔴 `iter_definition_paths` 用的是**非递归** glob（`N-42` 的第 8 处，2026-09-05）。
+
+    `python -m semantic_layer validate` 校验的就是这个集合。
+    谁把一份定义放进 `metrics/sub/foo.yaml`，**它一条 Requirement 都不过，
+    而门禁绿** —— 与 `N-42` 同族：门禁看不见的东西，在证据里与「不存在」不可区分。
+
+    ⚠️ **基准集合必须独立于被检查物**（`rules/pitfalls.md` 第 19 条）：
+    这里用 `rglob` 重新枚举，不拿 `iter_definition_paths` 自己报的数当基准。
+    过滤两侧都用 `definition.is_definition_file()` —— **这是「是不是定义」的唯一权威判据**，
+    在这里另写一个下划线判断，就是 2026-09-04 那个「同一目录两个入口读法不一致」的复发。
+
+    **明确抓不到**：子目录里只放了下划线开头的文件（`metrics/sub/_flags.yaml`）时
+    两侧都排除它，这条不红。共享注册表按固定路径加载，那种文件是散落物不是定义。
+    """
+    flat = iter_definition_paths(METRICS_DIR)
+    deep = sorted(p for p in METRICS_DIR.rglob("*.yaml") if is_definition_file(p))
+    strays = [p.relative_to(METRICS_DIR).as_posix() for p in deep if p not in flat]
+    assert flat == deep, (
+        f"这些定义落在 `metrics/` 的子目录里，`validate` 的非递归 glob 看不见它们："
+        f"{strays}。它们一条 Requirement 都没过。"
+    )
+    assert len(flat) >= 20, f"只扫到 {len(flat)} 份定义，glob 可能被窄化了"
+
+
+def test_子目录里的定义会让上一条红(tmp_path):
+    """负控制：把缺陷造出来，证明上一条真的会红。
+
+    连带证明 `is_definition_file` 在两侧的行为一致 —— 下划线开头的
+    **在根下和在子目录下都不算定义**，所以它不会制造假红。
+    """
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "top.yaml").write_text("metric_id: top", encoding="utf-8")
+    (tmp_path / "sub" / "buried.yaml").write_text("metric_id: buried", encoding="utf-8")
+    (tmp_path / "sub" / "_shared.yaml").write_text("flags: []", encoding="utf-8")
+
+    flat = iter_definition_paths(tmp_path)
+    deep = sorted(p for p in tmp_path.rglob("*.yaml") if is_definition_file(p))
+    assert [p.name for p in flat] == ["top.yaml"]
+    assert [p.name for p in deep] == ["buried.yaml", "top.yaml"]
+    assert flat != deep, "视野缺口没有被这条比较暴露出来"
 
 
 @pytest.mark.parametrize("path", V2_PATHS, ids=_ids(V2_PATHS))

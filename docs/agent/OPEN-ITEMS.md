@@ -984,17 +984,44 @@ T-1 归并时发现**四条已经落地的东西，`references/` 里的标注仍
   ⚠️ **教训比这个 bug 本身值钱**：08-31 那张表是按「枚举方式」分类的，
   于是「文件系统 glob」被整类判成安全。**真正的判据不是「用不用 git」，
   而是「这道门的扫描集合 == 它声称在检查的那个集合」**。
-  ⬜ 剩下两处文件系统 glob（`references/*.md` 非递归、`metrics/*.yaml` 非递归）
-  今天**量过当前值**（27/27、21/21，无子目录）**但没有加锁** —— 记 `UNVERIFIED`。
+  ✅ **剩下两处文件系统 glob 已于 2026-09-05 加锁**（`references/*.md` 非递归、
+  `metrics/*.yaml` 非递归）。此前只**量过当前值**（27/27、20/20 —— ⚠️ 原先写的 `21/21`
+  是把 `_flags.yaml` 也数进去了，定义只有 20 份，在此更正）**而没有锁**。
+  两处都**保持非递归**（`references/` 与 `metrics/` 按约定是扁平的，建子目录是约定变更），
+  改的是「非递归这件事本身被断言住」：
+  - `check_gates.iter_reference_docs()` 从 R5 里提出来单独成函数，
+    锁在 `tests/test_gates.py::test_references的扫描范围没有被子目录绕过`
+  - `metrics` 侧锁在 `tests/test_conformance.py::test_metrics的扫描范围没有被子目录绕过`，
+    两侧过滤都走 `definition.is_definition_file()`（**唯一权威判据，没有另写下划线判断**）
+  - 基准集合是**递归 glob**，独立于被检查物 —— `pitfalls` 第 19 条
+  - 各配一条负控制（在 `tmp_path` 上真的建子目录），证明比较本身会分叉
+  - **明确抓不到**：子目录里只有下划线开头的文件时两侧都排除它，`metrics` 那条不红
+  🔴 **顺带查出一处两道门禁互相不一致**：`check_reading_ledger.py` 用的是
+  `git ls-files 'references/*.md'`，而 **git 的 pathspec `*` 会跨 `/`** ——
+  同一个 `references/子目录/x.md`，第五道门看得见、第六道门 R5 看不见。
+  实测（造回归时同时跑的）：`check_gates.py` exit 0、`semantic_layer validate` exit 0，
+  而 `git ls-files -z --cached --others --exclude-standard 'references/*.md'`
+  命中 `references/子目录/x.md`。⇒ **「两道门都扫 references」这句话此前是错的。**
 
-- ⬜ **第八处，同日起草 Phase 0 时撞见，未修**：`tests/test_plan_waves.py` 的
-  `PHASE_DIR` **硬编码为 `.planning/phases/01.5-data-ingestion`**，
+- ✅ **第八处已于 2026-09-05 修**：`tests/test_plan_waves.py` 的
+  `PHASE_DIR` 曾**硬编码为 `.planning/phases/01.5-data-ingestion`**，
   `glob` 也写死 `01.5-0*-PLAN.md`。⇒ **它锁的是「PLAN frontmatter 与 ROADMAP 标注对得上」，
   而这个不变式对每个阶段都成立，门禁却只看一个阶段。**
-  2026-09-02 新增 `.planning/phases/00-cninfo-empirical/00-01-PLAN.md` 与它在 ROADMAP 的标注，
-  **两者对不对得上完全没有被检查**（该门禁仍 4 passed，因为它根本没看这个目录）。
-  ⚠️ **今天没修**：修它要先决定「每个阶段的 PLAN 都必须在 ROADMAP 里带 `（wave N）` 标注」
-  是不是一条真规则 —— 那是规则问题不是实现问题。记 `UNVERIFIED`，**不记「已确认无」**。
+  **实测的扫描面**：改前 **7 / 17** 份 PLAN，改后 **17 / 17**
+  （Phase 0 的 1 份、Phase 1 的 8 份、Phase 2 的 1 份此前一份都没被检查过）。
+  - 扫描范围现在由 `.planning/phases/` 的**目录列表**决定，不由任何硬编码常量决定；
+    `test_每个阶段目录都进了扫描范围` 与 `test_阶段目录里的PLAN份数与磁盘一致` 单独锁住它
+  - 顺手修掉一个解析缺陷：旧 ROADMAP 正则 `（wave (\d)）` 要求 `）` 紧跟数字，
+    **匹配不到 `02-03` 的 `（wave 3，**H2 判定门**）`**；且 `(.*?)` + `re.S` 会跨条目，
+    某条漏标 wave 时会把**下一条**的 wave 号安到它头上。改成按条目块解析
+  - 新增 `test_phase_字段与所在目录一致`（只看一个目录时它恒真，扩面之后才有意义）
+  ⚠️ **那条待裁决的规则，本轮按「是，但单向」落地**：磁盘上有 PLAN 而 ROADMAP
+  没有 `（wave N）` 标注 ⇒ 红；ROADMAP 有条目而磁盘无文件 ⇒ **只在它已勾选时红**
+  （未勾选 = 还没写，路线图跑在前面是正常用法，当前 `02-02/03/04` 就是）。
+  旧写法 `set(roadmap) == set(plans)` 在只看一个阶段时恰好成立，扩面后会恒红 ——
+  **那时正确的修法是把规则说清楚，不是把 02-02/03/04 从路线图里删掉让它变绿。**
+  🔴 **扩面之后没有发现任何真实的不一致**：17 份 PLAN 的 frontmatter 与 ROADMAP 标注
+  逐个相等，无未标注、无「勾了却没有文件」。⇒ **本次改动买到的是视野，不是修了错数。**
 
 ### N-41 — 字节码缓存能让「造回归 → 看红 → 回退」这个程序整段失效（2026-08-28，实测）
 

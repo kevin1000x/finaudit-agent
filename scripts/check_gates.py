@@ -256,6 +256,9 @@ CI_WORKFLOW = pathlib.Path(".github") / "workflows" / "gates.yml"
 BACKLOG = pathlib.Path("docs") / "agent" / "LANDING-BACKLOG.md"
 REFERENCES_DIR = pathlib.Path("references")
 
+#: R5 读 `references/` 用的 glob。**非递归是有意的**，见 `iter_reference_docs`。
+REFERENCES_GLOB = "*.md"
+
 # 登记册里表示「这条已经做掉了」的状态词。R5 只对这些行生效。
 _LANDED_STATES = ("已落地", "部分落地", "已关闭")
 
@@ -712,6 +715,26 @@ def check_gates_are_wired_into_ci() -> list[str]:
     return problems
 
 
+def iter_reference_docs() -> list[pathlib.Path]:
+    """R5 要读的 `references/` 产物。**扫描范围本身就是判据的一部分。**
+
+    ## 为什么保持非递归，而不是顺手改成 `rglob`
+
+    `references/` 按 `references/README.md` 的约定是**扁平的**：一份产物一个文件。
+    建子目录是一次约定变更，得有人明说为什么 —— 悄悄把 `rglob` 换上去，
+    等于用实现替操作者做了这个决定。
+
+    ⚠️ **但「非递归」必须被锁住，不能只靠这段注释。**
+    2026-09-05 之前它既没有锁也没有说明：有人往 `references/x/y.md` 放一份产物，
+    R5 找不到里面的 `L-nn` 回标，**门禁照样绿**。
+    锁在 `tests/test_gates.py::test_references的扫描范围没有被子目录绕过`：
+    基准是**递归 glob**（独立于本函数，`pitfalls` 第 19 条），
+    两个集合一旦分叉就红，并在报错里说清是哪几份文件落在子目录里。
+    ⇒ 与 `N-42` 同族：门禁看不见的东西，在证据里与「不存在」不可区分。
+    """
+    return sorted((REPO / REFERENCES_DIR).glob(REFERENCES_GLOB))
+
+
 def check_landed_items_are_back_annotated() -> list[str]:
     """R5：登记册里已落地的条目，编号必须在 `references/` 里出现过。
 
@@ -736,7 +759,7 @@ def check_landed_items_are_back_annotated() -> list[str]:
             landed.append(m.group(1))
 
     annotated: set[str] = set()
-    for path in sorted(refs_dir.glob("*.md")):
+    for path in iter_reference_docs():
         annotated.update(re.findall(r"(?<![0-9A-Za-z-])(L-\d+)(?![0-9A-Za-z-])",
                                     path.read_text(encoding="utf-8")))
 
@@ -763,6 +786,10 @@ def main() -> int:
 
     scanned = [p.name for p in iter_test_modules()]
     print(f"扫描 {len(scanned)} 个测试模块，{len(GATES)} 道已登记门禁。")
+    print(
+        f"R5 扫描 {len(iter_reference_docs())} 份 `{REFERENCES_DIR.as_posix()}/{REFERENCES_GLOB}`"
+        f"（**非递归**，子目录会被 tests/test_gates.py 拦下 —— 见 iter_reference_docs）。"
+    )
     print(f"已登记豁免 {len(EXEMPT_TESTS)} 条，间接断言 helper {len(INDIRECT_ASSERT_HELPERS)} 条（均应为 0）。")
     print(f"`{NO_ASSERT_PREFIX}` 声明 {len(declared)} 条 —— **它长起来就等于 R1 在退化**。")
     if NOT_GATES:

@@ -130,6 +130,50 @@ def test_两条pattern匹配到同一个文件时不重复扫(tmp_path, monkeypa
     )
     assert len(cg.iter_test_modules()) == 1
 
+
+def test_references的扫描范围没有被子目录绕过():
+    """🔴 R5 读 `references/` 用的是**非递归** glob（`N-42` 的第 8 处，2026-09-05）。
+
+    非递归本身是有意的（`references/` 按约定是扁平的，见 `cg.iter_reference_docs`），
+    但在这条测试之前它**既没有锁也没有说明**：谁往 `references/x/y.md` 放一份产物，
+    R5 就找不到里面的 `L-nn` 回标，而**门禁照样绿**。
+
+    ⚠️ **基准集合必须独立于被检查物**（`rules/pitfalls.md` 第 19 条）。
+    这里的基准是 `rglob` —— 它不经过 `cg.REFERENCES_GLOB`，
+    所以有人把那个常量改窄时这条会红。**不许拿门禁自己报的数当基准。**
+
+    这条红了的正确处置：要么把那份产物挪回 `references/` 根下，
+    要么明确变更约定并同时改 `REFERENCES_GLOB` 与本条 —— **不要只改一个**。
+    """
+    flat = cg.iter_reference_docs()
+    deep = sorted((cg.REPO / cg.REFERENCES_DIR).rglob("*.md"))
+    strays = [p.relative_to(cg.REPO).as_posix() for p in deep if p not in flat]
+    assert flat == deep, (
+        f"这些 markdown 落在 `{cg.REFERENCES_DIR.as_posix()}/` 的子目录里，"
+        f"R5 的非递归 glob 看不见它们：{strays}"
+    )
+    assert len(flat) >= 27, f"只扫到 {len(flat)} 份 references 产物，glob 可能被窄化了"
+
+
+def test_子目录里的references产物会让上一条红(tmp_path, monkeypatch):
+    """负控制：把缺陷造出来，证明上一条真的会红。
+
+    ⚠️ 造的是**目录结构**，不是断言的输入 —— 直接断言 `[] != [x]` 只能证明
+    Python 的 `!=` 还能用，证明不了 `iter_reference_docs` 漏了那个文件。
+    """
+    monkeypatch.setattr(cg, "REPO", tmp_path)
+    refs = tmp_path / cg.REFERENCES_DIR
+    (refs / "sub").mkdir(parents=True)
+    (refs / "top.md").write_text("L-1", encoding="utf-8")
+    (refs / "sub" / "buried.md").write_text("L-2", encoding="utf-8")
+
+    flat = cg.iter_reference_docs()
+    deep = sorted(refs.rglob("*.md"))
+    assert [p.name for p in flat] == ["top.md"]
+    assert [p.name for p in deep] == ["buried.md", "top.md"]
+    assert flat != deep, "视野缺口没有被这条比较暴露出来"
+
+
 # --------------------------------------------------------------------------
 # R1 —— 每个 test_* 必须能失败
 # --------------------------------------------------------------------------
