@@ -12,7 +12,7 @@ last_activity_desc: "**`N-52` 两层都裁了，并且在落地时暴露出一�
 progress:
   total_phases: 6
   completed_phases: 3   # Phase 0 / 1 / 1.5
-  total_plans: 19   # 实数（find .planning/phases -name '*-PLAN.md' | wc -l，2026-09-05 实跑）：8 + 7 + 00-01 + 02-01 + 02-02 + 02-03
+  total_plans: 20   # 实数（find .planning/phases -name '*-PLAN.md' | wc -l，2026-09-05 实跑）：8 + 7 + 00-01 + 02-01…02-04
   completed_plans: 18   # 上面 16 份 + `02-01` + `02-02`。**`02-03` 不算**：器械 T1–T3 做完了，
   # T4 是 checkpoint:human（真人复核），执行者代答无效 ⇒ 这一份未完成
   # ⚠️ `percent` 是手工估计，**不是从上面两组数派生的**（11/14 也不等于 29%）。
