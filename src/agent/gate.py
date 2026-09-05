@@ -14,7 +14,25 @@
 它守的是前提，不是某个具体缺陷。
 
 ⚠️ **不要以为解析器已经挡住了这些。** 解析器只管**它自己解析出来的**树；
-本模块拿到的树可能是任何人构造的。闸门检查的是**它实际拿到的那棵**。
+本模块拿到的树可能是任何人构造的。闸门检查的是**它实际拿到的那些**。
+
+## 一个请求装的是「这次会被求值的全部树」，不是其中一棵
+
+2026-09-05 独立复核发现：`GateRequest` 此前是单数 `tree`，而 `answer_question`
+送进 `execute()` 的是第一条拒答条件那棵，`run` 求的却是**公式**那棵。
+公式字段当时确实在别处逐棵过了闸，所以**不是**一个能算错数的洞 ——
+但「`execute()` 无条件先过闸门」守的不是被执行的那个东西，
+`ExecutionRecord.referenced_fields` 记的也是另一棵树的字段。
+**这是 `N-42` 的同一个形状：门声称守住的集合 ≠ 它实际扫的集合。**
+⇒ 改成 `trees`（复数），`execute()` 与显式的那次 `pre_execute` 用**同一个请求**。
+
+## 五道检查里有一道今天守不到生产路径
+
+`口径版本匹配` 需要调用方**声明**它要哪一版（`expected_version`）。
+不声明就没有可比对的东西 ⇒ 这道检查在默认路径上不会触发。
+仓库里今天没有会声明它的生产调用方（评测运行器**刻意不传**：
+`expected.metric_version` 是题面的标准答案，喂回输入就是 `target_name` 那个错误）。
+**如实记在 `N-57`**，不写成「五道门都在守着生产路径」。
 
 ## `AC-09` 的负控制做成了常跑的一对
 
@@ -44,11 +62,25 @@ __all__ = ["GateRequest", "GateCheck", "CHECKS", "pre_execute", "ExecutionRecord
 
 @dataclass(frozen=True)
 class GateRequest:
-    """一次执行请求。闸门只看这里面的东西。"""
+    """一次执行请求。闸门只看这里面的东西。
+
+    `trees` 是**复数**，装的是这一次执行**会被求值的全部语法树** ——
+    拒答条件、公式里的字段引用、可比性标记的 trigger，一个都不能落下。
+
+    🔴 2026-09-05 独立复核发现的形状：此前这里是单数 `tree`，
+    而 `answer_question` 送进 `execute()` 的是 `trees[0]`（第一条拒答条件），
+    `run` 求的却是**公式**那棵树。于是「无条件先过闸门」守的不是被执行的那个东西，
+    `ExecutionRecord.referenced_fields` 记的也是另一棵树的字段。
+    公式的字段当时确实在别处过了闸，所以**不是**一个能算错数的洞 ——
+    但那道门声称守住的和它实际守住的不是同一件事（`N-42` 的同一个形状）。
+
+    `expected_version` 是**调用方声明它要哪一版口径**，`None` = 没声明。
+    ⚠️ 见 `_check_version` 的注释：仓库里今天还没有会声明它的生产调用方。
+    """
 
     defn: MetricDefinition
     expected_version: Any
-    tree: Any
+    trees: tuple
     entity: str
     period: int
     question_sha256: str
@@ -82,8 +114,17 @@ def _walk(node):
         yield from _walk(node.right)
 
 
-def _field_refs(node) -> list[str]:
-    return [n.path for n in _walk(node) if isinstance(n, dsl.FieldRef)]
+def _field_refs(trees) -> list[str]:
+    """全部树里引用到的字段路径，**去重保序**。
+
+    留痕要的是「这一次执行碰了哪些字段」——一棵树漏掉，留痕就少记一部分出处。
+    """
+    out: list[str] = []
+    for tree in trees:
+        for n in _walk(tree):
+            if isinstance(n, dsl.FieldRef) and n.path not in out:
+                out.append(n.path)
+    return out
 
 
 def _check_definition_conformant(req: GateRequest):
@@ -98,6 +139,20 @@ def _check_definition_conformant(req: GateRequest):
 
 
 def _check_version(req: GateRequest):
+    """调用方声明的口径版本 vs 定义当前的版本。
+
+    ⚠️ **如实记着这道门今天守不到生产路径。** 2026-09-05 独立复核实测：
+    此前两个调用点都传 `expected_version=defn.version`（拿它自己跟它自己比），
+    于是这道检查在生产上**永远不可能红**——`L-32` 点名的那种形状。
+    现在 `None` 表示「调用方没声明要哪一版」，声明了才比对；
+    `answer_question(..., expected_version=X)` 是那条声明入口。
+    **但仓库里今天还没有会传它的生产调用方**（评测运行器**刻意不传**：
+    `expected.metric_version` 是题面的标准答案，喂回输入就是 `target_name` 那个错误）。
+    ⇒ 它有真实回归（`test_样本3` 与 `test_调用方声明的口径版本对不上就拒答`），
+    但**没有**真实生产触发点，记在 `N-57`。
+    """
+    if req.expected_version is None:
+        return None
     if req.expected_version != req.defn.version:
         return Refusal(
             RefusalCode.CROSS_VERSION_COMPARISON,
@@ -110,7 +165,7 @@ def _check_version(req: GateRequest):
 
 
 def _check_closed_node_set(req: GateRequest):
-    for node in _walk(req.tree):
+    for node in (n for tree in req.trees for n in _walk(tree)):
         if not isinstance(node, _CLOSED_NODES):
             return Refusal(
                 RefusalCode.UNEVALUABLE_CONDITION,
@@ -124,7 +179,7 @@ def _check_closed_node_set(req: GateRequest):
 
 def _check_namespace(req: GateRequest):
     allowed = dsl.ROOT_NAMESPACES | dsl.INTRINSIC_NAMESPACES
-    for path in _field_refs(req.tree):
+    for path in _field_refs(req.trees):
         root = path.split(".", 1)[0]
         if root not in allowed:
             return Refusal(
@@ -143,7 +198,7 @@ def _check_declared(req: GateRequest):
     `INTRINSIC_NAMESPACES` 指的是定义自身的元数据，不指向行数据，**无需声明**。
     """
     declared = {sf.id for sf in req.defn.source_fields if sf.id}
-    for path in _field_refs(req.tree):
+    for path in _field_refs(req.trees):
         root = path.split(".", 1)[0]
         if root in dsl.INTRINSIC_NAMESPACES:
             continue
@@ -225,7 +280,7 @@ def execute(req: GateRequest, run: Callable[[GateRequest], Any]) -> ExecutionRec
         metric_version=req.defn.version,
         entity=req.entity,
         period=req.period,
-        referenced_fields=_field_refs(req.tree),
+        referenced_fields=_field_refs(req.trees),
     )
     if refusal is not None:
         return ExecutionRecord(**base, gate="refused", refusal=refusal.to_dict(), result=None)

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import pathlib
 from pathlib import Path
 
 import pytest
@@ -239,7 +240,7 @@ def test_可比性标记的trigger也要过闸门(registry, source, monkeypatch)
     real = mod.pre_execute
 
     def 记账(req, *a, **kw):
-        seen.append(req.tree)
+        seen.extend(req.trees)
         return real(req, *a, **kw)
 
     monkeypatch.setattr(mod, "pre_execute", 记账)
@@ -251,6 +252,89 @@ def test_可比性标记的trigger也要过闸门(registry, source, monkeypatch)
     assert triggers, "这份定义应当有带 trigger 的标记，否则本测试在空转"
     过闸的 = {dsl.parse_condition(t).tree for t in triggers}
     assert 过闸的 <= set(seen), "有 flag trigger 没过闸门"
+
+
+def test_送进execute的那个请求装着这次会求值的全部树(registry, source, monkeypatch):
+    """🔴 2026-09-05 独立复核：`execute()` 校的树 ≠ `run` 求的树。
+
+    此前 `answer_question` 逐棵送闸门，然后另建一个只装 `trees[0]`
+    （第一条拒答条件）的请求送进 `execute()`，而 `run` 求的是**公式**那棵树。
+    公式字段当时确实在别处过了闸，所以算不出错数 —— 但
+    「`execute()` 无条件先过闸门」守的不是被执行的那个东西，
+    `ExecutionRecord.referenced_fields` 记的也是另一棵树的字段。
+    **门声称守住的和它实际守住的不是同一件事**（`N-42` 的同一个形状）。
+
+    它会红的场景：有人又给 `execute()` 单独造一个请求。
+    """
+    import agent.answer as mod
+    from extractor.formula import field_refs, parse_formula
+
+    got = {}
+    real = mod.execute
+
+    def 记账(req, run):
+        got["req"] = req
+        return real(req, run)
+
+    monkeypatch.setattr(mod, "execute", 记账)
+    a = answer_question("华鑫科技（900001）2023 年的毛利率是多少？", registry, source=source)
+    assert not a.refused
+
+    defn = registry.definitions["gross_profit_margin"]
+    公式字段 = set(field_refs(parse_formula(str(defn.formula))))
+    assert 公式字段, "这份定义的公式没有字段引用，本测试在空转"
+
+    from agent.gate import _field_refs
+
+    过闸的字段 = set(_field_refs(got["req"].trees))
+    assert 公式字段 <= 过闸的字段, (
+        "送进 execute 的请求里没有公式那几个字段：" + str(sorted(公式字段 - 过闸的字段))
+    )
+
+
+def test_留痕里的字段是这次执行真的碰过的那些(registry, source):
+    """`ExecutionRecord.referenced_fields` 是证据链的一部分（`D-003`），
+    少记等于出处不全。这条直接从 `gate` 层验并集，不绕 `answer`。
+    """
+    from agent.gate import GateRequest, execute as gate_execute
+    from semantic_layer import dsl
+
+    defn = registry.definitions["current_ratio"]
+    t1 = dsl.parse_condition("bs.total_current_liabilities_period_end > 0").tree
+    t2 = dsl.FieldRef("bs.total_current_assets")
+    rec = gate_execute(
+        GateRequest(
+            defn=defn, expected_version=None, trees=(t1, t2),
+            entity="900001", period=2023, question_sha256="0" * 64,
+        ),
+        run=lambda _r: 1,
+    )
+    assert rec.gate == "passed"
+    assert set(rec.referenced_fields) == {
+        "bs.total_current_liabilities_period_end",
+        "bs.total_current_assets",
+    }
+
+
+def test_调用方声明的口径版本对不上就拒答(registry, source):
+    """🟡 2026-09-05 独立复核：「口径版本匹配」这道门在生产路径上永远不可能红 ——
+    两个调用点都传 `expected_version=defn.version`，拿它自己跟它自己比。
+
+    现在它是**调用方的声明**：不声明就不比对，声明了就必须对得上。
+    这条测的是那条声明入口（`L-32`：一道你说不出它什么时候会红的门，
+    要么删掉要么给它一条真实回归）。
+    """
+    q = "华鑫科技（900001）2023 年的毛利率是多少？"
+    没声明 = answer_question(q, registry, source=source)
+    assert not 没声明.refused, "不声明版本时不该比对"
+
+    声明错的 = answer_question(q, registry, source=source, expected_version="不存在的版本")
+    assert 声明错的.refused
+    assert 声明错的.refusal["code"] == "CROSS_VERSION_COMPARISON"
+
+    defn = registry.definitions["gross_profit_margin"]
+    声明对的 = answer_question(q, registry, source=source, expected_version=defn.version)
+    assert not 声明对的.refused
 
 
 def test_数据源缺数据时不该被判成证据链缺口(registry, source):
@@ -297,3 +381,51 @@ def test_近似命中在多候选时取最长的那个(registry):
     asked, have = got
     assert asked == "加权平均净资产收益率", f"没取最长的那个，取到的是 {asked!r}"
     assert have == "加权平均净资产收益率"
+
+
+def test_必填证据键取自题面而不是本模块自己的那张表():
+    """🟡 2026-09-05 独立复核：证据链那几条测试的基准全都来自
+    `REQUIRED_ANSWER_EVIDENCE` 本身 —— 用一张表去证它自己，是自证。
+
+    `REQUIRED_ANSWER_EVIDENCE` 的 docstring 明写它「**取自 frozen-01 题面自己
+    声明的 `required_evidence`**，不是本模块发明的」。这条把那句话变成可失败的断言。
+
+    它会红的场景：有人往题面加了第四个必填键而这张表没跟上
+    （那个键于是永远不会被检查）；或有人往这张表塞了一个题面没要求的键。
+    """
+    declared = set()
+    seen = 0
+    for path in sorted(CASES.glob("*.yaml")):
+        case = yaml.safe_load(path.read_text(encoding="utf-8"))
+        keys = case.get("required_evidence") or []
+        if keys:
+            seen += 1
+            declared |= set(keys)
+    assert seen >= 15, f"只有 {seen} 道题声明了 required_evidence，这条断言在空转"
+    assert declared == set(REQUIRED_ANSWER_EVIDENCE), (
+        "题面要求的键集与本模块那张表对不上："
+        f"题面多出 {sorted(declared - set(REQUIRED_ANSWER_EVIDENCE))}，"
+        f"表里多出 {sorted(set(REQUIRED_ANSWER_EVIDENCE) - declared)}"
+    )
+
+
+def test_换一行取数时夹具文件不会被重新读一遍(source, monkeypatch):
+    """🔵 `FixtureSource.at()` 的注释写着「**文件只读一次** —— 出处哈希也就只算一次」。
+
+    2026-09-05 独立复核：那句话当时是假的 —— `at()` 新建一个 `FixtureSource`，
+    构造函数里又 `read_bytes()` 了一遍。两次读之间文件若被改动，
+    `batch_id` 里的哈希会**静默换成另一个值**，而证据链正是靠它指认出处。
+    """
+    reads = []
+    real = pathlib.Path.read_bytes
+
+    def 记账(self):
+        reads.append(self)
+        return real(self)
+
+    monkeypatch.setattr(pathlib.Path, "read_bytes", 记账)
+    before = len(reads)
+    row = source.at("900001", 2023)
+    assert row.found
+    assert len(reads) == before, f"at() 又读了 {len(reads) - before} 次文件"
+    assert row.sha256 == source.sha256

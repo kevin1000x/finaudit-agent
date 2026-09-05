@@ -38,14 +38,19 @@ def defn():
 
 
 def _req(defn, tree=None, **kw):
+    """一次请求。`tree=` 是单棵树的便利写法，落到 `trees=(tree,)`。
+
+    ⚠️ 闸门吃的是 **`trees`（复数）** —— 它检查的必须是这一次执行
+    **会被求值的全部树**，不是其中一棵。
+    """
     base = dict(
         defn=defn,
         expected_version=defn.version,
         # 默认那棵树必须是**这份定义真的声明过**的字段 —— 否则夹具自己就违规，
         # 于是每一条负控制都会被「字段未声明」那道检查接住，假红。
-        tree=tree if tree is not None else dsl.parse_condition(
+        trees=(tree if tree is not None else dsl.parse_condition(
             "bs.total_current_liabilities_period_end > 0"
-        ).tree,
+        ).tree,),
         entity="600519",
         period=2023,
         question_sha256="0" * 64,
@@ -173,12 +178,19 @@ def test_样本5_语法树里混进封闭节点集之外的东西(defn):
 
 
 def test_定义自己声明的条件全部过闸(defn):
-    """闸门不能把正常的东西也拦下来 —— 那样它就只是个 `return False`。"""
+    """闸门不能把正常的东西也拦下来 —— 那样它就只是个 `return False`。
+
+    ⚠️ **带反空转护栏。** 这条循环体可能一次都不进（某天有人把 `expr` 清空，
+    或改了 schema 让 `cond.expr` 恒为空），那时它会**绿着**却什么都没验。
+    """
+    checked = 0
     for cond in defn.undefined_conditions:
         if not cond.expr:
             continue
+        checked += 1
         req = _req(defn, tree=dsl.parse_condition(cond.expr).tree)
         assert pre_execute(req) is None, f"闸门拦下了定义自己的条件：{cond.expr}"
+    assert checked >= 2, f"这份定义只有 {checked} 条可求值条件，这条断言在空转"
 
 
 # ── 「唯一入口且无条件先过闸门」的结构断言 ────────────────────────────
@@ -235,3 +247,38 @@ def test_模块里没有第二个会调用_run_的公开函数():
         )
     }
     assert callers == {"execute"}
+
+
+def test_生产代码里没有任何地方给_pre_execute_传_checks():
+    """`execute()` 不接受 `checks` 只堵住了一条路 —— **`pre_execute` 本身是公开的**。
+
+    🟡 2026-09-05 独立复核指出：`SC-6` 要的是「不存在任何配置或插件路径能绕过它」，
+    而生产代码直接调 `pre_execute(req, checks=少一道)` 就绕过去了，此前没有任何东西拦。
+
+    ⇒ 走语法树扫 `src/` 与 `eval/`：这两处**一次都不许**给它传 `checks`。
+    `tests/` 不在扫描范围内 —— `AC-09` 的负控制正是靠这个参数做的。
+
+    ⚠️ 判据是「这道门的扫描集合 == 它声称在检查的集合」（`N-42`）：
+    扫的是 `src/**/*.py` 与 `eval/**/*.py` 全部，不是点名几个文件。
+    """
+    scanned = sorted((REPO / "src").rglob("*.py")) + sorted((REPO / "eval").rglob("*.py"))
+    assert len(scanned) >= 10, f"只扫到 {len(scanned)} 个文件，这条断言在空转"
+
+    调用点 = 0
+    offenders = []
+    for path in scanned:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            name = fn.id if isinstance(fn, ast.Name) else (
+                fn.attr if isinstance(fn, ast.Attribute) else None
+            )
+            if name != "pre_execute":
+                continue
+            调用点 += 1
+            if any(k.arg == "checks" for k in node.keywords) or len(node.args) > 1:
+                offenders.append(f"{path.relative_to(REPO).as_posix()}:{node.lineno}")
+    assert 调用点 >= 1, "生产代码里一次都没调用 pre_execute —— 这条断言在空转"
+    assert offenders == [], "生产代码里抽掉了闸门的某道检查：" + "; ".join(offenders)

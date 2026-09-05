@@ -344,14 +344,12 @@ def _as_refusal(answer, refusal_cls):
     )
 
 
-def _target_from_question(case: dict) -> str:
-    """C2 题的靶子指标名。
-
-    题面是自然语言，此处不做 NLU —— 靶子由题面文件显式给出（`expected.target_name`），
-    没给就退回用 id 里的线索，取不到时返回一个必然打不中的串。
-    在 Phase 1 这是刻意的：本阶段考的是「口径未定义时是否拒答」，不是「能否理解中文」。
-    """
-    return case.get("target_name", "") or "__NO_TARGET_DECLARED__"
+# 🔴 `_target_from_question` 已删除（2026-09-05）。
+# 它读的是 `expected.target_name` —— **把标准答案喂回系统输入**。
+# Phase 2 起系统臂真的解析题面，这个函数在那次改动里就没有调用点了，
+# 但**留着**等于在运行器里搁一把上了膛的枪：任何人想让某道题过，
+# 手边就有一个现成的兜底。`tests/test_eval_runner.py` 有一条测试钉死
+# 「运行器不许偷看 target_name」，这里把它可能被偷看的入口一并去掉。
 
 
 def _summarize(
@@ -427,7 +425,7 @@ def _summarize(
             "口径正确率": _rate(*_definition_hits(answers, results)),
             "拒答准确率": c2_gate["accuracy"],
             "答案正确率": _rate(*_value_hits(results)),
-            "证据链完整率": _rate(*_evidence_hits(evidence_gap_by_case)),
+            "证据链完整率": _evidence_metric(evidence_gap_by_case, evidence_notes),
             "复核一致率": "N/A（H2 复核实验在 02-03）",
             "引用可定位率": "N/A（准则检索是 Phase 3 的 L2）",
             "归因覆盖率": _rate(*_attribution_hits(scored)),
@@ -507,6 +505,25 @@ def _evidence_hits(gap_by_case: dict | None) -> tuple:
     return sum(1 for g in gap_by_case.values() if not g), len(gap_by_case)
 
 
+def _evidence_metric(gap_by_case: dict | None, notes: list | None) -> str:
+    """证据链完整率这一格的文字。**收窄的题数与分数写在同一格里。**
+
+    🟡 2026-09-05 独立复核指出：`15/15（100.0%）` 这个读数底下，
+    有 8 题走的是**收窄后**的键集（题面连指标都没解析出来 ⇒
+    `metric_definition_version` 不适用）。收窄本身逐条记进了
+    `evidence_scope_notes`，但**那个字段只在 JSON 里，`render()` 不打印它** ——
+    于是人读报告里只剩一个满分。
+
+    ⚠️ 分子分母不因此改变（收窄不是豁免，见 `required_answer_evidence`），
+    改变的是**这个数字旁边有没有写清它是怎么数出来的**。
+    """
+    base = _rate(*_evidence_hits(gap_by_case))
+    n = len(notes or [])
+    if not n:
+        return base
+    return f"{base}；其中 {n} 题按收窄后的键集计（见 evidence_scope_notes）"
+
+
 # --------------------------------------------------------------------------
 # 渲染与入口
 # --------------------------------------------------------------------------
@@ -541,6 +558,15 @@ def render(report: dict) -> str:
     ]
     for k, v in report["metrics"].items():
         lines.append(f"  {k:<12} {v}")
+    if report.get("evidence_scope_notes"):
+        # ⚠️ 收窄必须出现在**人读报告**里。只写进 JSON 等于没写：
+        #    读报告的人看到的是 `15/15（100.0%）`，看不到它是怎么数出来的。
+        lines += ["", "证据链键集收窄（逐条，不静默）："]
+        for n in report["evidence_scope_notes"]:
+            lines.append(
+                f"  {n['case']:<12} 阶段 {n['stage']}"
+                f"   不适用的键 {'、'.join(n['dropped'])}   {n['why']}"
+            )
     if report["voided_cases"]:
         lines += ["", "作废题（移出分母，公开列出）："]
         for c in report["voided_cases"]:

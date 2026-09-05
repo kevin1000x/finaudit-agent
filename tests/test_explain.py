@@ -154,6 +154,51 @@ def test_正文里不出现任何本定义声明过的字段标识符():
     assert checked >= 60, f"覆盖太薄，只查了 {checked} 个字段"
 
 
+def test_正文里剩下的字段标识符有多少_这个数被钉住():
+    """🟡 2026-09-05 独立复核：模块 docstring 的硬约束第 3 条写着
+    「**正文里不出现字段标识符**」—— 这句话**不成立**。
+
+    上面那条测试守的是更窄、也是真正成立的那句：**本定义声明过、有中文可换的**
+    字段 id 不出现在正文。剩下的那一类（定义作者写「禁止取 X」，而 X 按定义
+    不在 `source_fields` 里 ⇒ 没有中文名可换）**确实还在正文里**。
+
+    ⇒ 把这个数钉住。它有两个方向都要能红：
+    · **变大** = 有人让 `_prose` 少替换了，或新写的定义又往散文里塞字段 id
+    · **变小** = 好事，但文档里那几个数字要跟着改（`N-35` 已经在同一处发生过三次）
+
+    ⚠️ 这不是「先射箭后画靶」：靶子是**残留必须全部属于换不动的那一类**，
+    由本函数逐条 assert；数字只是让文档里的说法有一个会自己报警的锚。
+    真正的修法在**定义文件的散文里**，不在渲染器 —— 记 `N-58`。
+    """
+    import re
+
+    from semantic_layer import dsl
+
+    ns = sorted(dsl.ROOT_NAMESPACES | dsl.INTRINSIC_NAMESPACES)
+    pat = re.compile(r"(?:" + "|".join(ns) + r")\.[a-z0-9_]+")
+
+    paths = [q for q in sorted((REPO / "metrics").glob("*.yaml")) if not q.name.startswith("_")]
+    assert len(paths) == 20
+    有残留的定义, 残留次数 = 0, 0
+    for q in paths:
+        d = load_definition(q)
+        body, _ = _split(render_explanation(d))
+        hits = pat.findall(body)
+        if not hits:
+            continue
+        有残留的定义 += 1
+        残留次数 += len(hits)
+        declared = {sf.id for sf in d.source_fields if sf.id and sf.line_item}
+        assert not (set(hits) & declared), (
+            f"{q.stem}：残留里混进了本定义声明过、本可换中文的字段："
+            f"{sorted(set(hits) & declared)}"
+        )
+    assert (有残留的定义, 残留次数) == (9, 13), (
+        f"实测 {有残留的定义} 份定义 / {残留次数} 处残留，"
+        "与 explain.py docstring、D-032、PROGRESS 里写的数字对不上 —— 两边一起改"
+    )
+
+
 def test_公式与判据都不在正文而在附录里一个不少(defn):
     """下沉 ≠ 删除。删了就没法核对翻译对不对（`D-032` 继承的约束）。"""
     body, appendix = _split(render_explanation(defn))

@@ -104,11 +104,15 @@ class _FixtureCell:
 class FixtureSource:
     """一份合成夹具里的一行。接上 `evaluate_formula`，不改那个求值器。"""
 
-    def __init__(self, path, stock_code=None, fiscal_year=None):
+    def __init__(self, path, stock_code=None, fiscal_year=None, _raw=None):
         import yaml
 
         self.path = Path(path)
-        raw_bytes = self.path.read_bytes()
+        # `_raw` 只由 `at()` 传：换一行取数时**沿用已经读进来的那份字节**。
+        # 再读一次的代价不是性能，是**出处哈希会静默换成另一个值** ——
+        # 两次读之间文件若被改动，`batch_id` 指的就不是同一份夹具了。
+        raw_bytes = self.path.read_bytes() if _raw is None else _raw
+        self._raw = raw_bytes
         self.sha256 = hashlib.sha256(raw_bytes).hexdigest()
         data = yaml.safe_load(raw_bytes.decode("utf-8")) or {}
         self.fixture_id = (data.get("meta") or {}).get("fixture_id") or self.path.stem
@@ -125,8 +129,13 @@ class FixtureSource:
         self.found = bool(rows)
 
     def at(self, stock_code, fiscal_year) -> "FixtureSource":
-        """同一份夹具，换一行。**文件只读一次** —— 出处哈希也就只算一次。"""
-        return FixtureSource(self.path, stock_code, fiscal_year)
+        """同一份夹具，换一行。**沿用同一份字节**，不重新读盘。
+
+        2026-09-05 修：此前这里新建一个 `FixtureSource`，构造函数又读了一遍文件 ——
+        注释写的「文件只读一次」当时是假的，且两次读之间文件被改动的话，
+        证据链里那个出处哈希会**静默**换成另一个值。
+        """
+        return FixtureSource(self.path, stock_code, fiscal_year, _raw=self._raw)
 
     @property
     def batch_id(self) -> str:
@@ -294,10 +303,21 @@ def _formula_field_refs(defn: MetricDefinition) -> tuple:
     return field_refs(parse_formula(str(defn.formula)))
 
 
-def answer_question(question: str, registry: Registry, source=None, ask_model=None) -> Answer:
+def answer_question(
+    question: str,
+    registry: Registry,
+    source=None,
+    ask_model=None,
+    expected_version=None,
+) -> Answer:
     """题面 → `Answer`。**每一步的失败都落成拒答，不抛异常**（`D-022`）。
 
     ⚠️ 计算只可能发生在 `gate.execute()` 里 —— 那是全仓唯一的执行入口。
+
+    `expected_version` 是调用方**声明它要哪一版口径**；`None` = 不声明、不比对。
+    声明了而定义已经不是那一版 ⇒ 拒答，不拿另一版的口径作答。
+    ⚠️ **评测运行器刻意不传它**：`expected.metric_version` 是题面的标准答案，
+    喂回输入就是 `target_name` 那个错误（`N-57` 记着这道门今天没有生产触发点）。
     """
     digest = _sha256_text(" ".join(str(question).split()))
     base = {
@@ -350,15 +370,21 @@ def answer_question(question: str, registry: Registry, source=None, ask_model=No
     # 2026-09-04 独立复核实测：同一个未声明字段，单独送闸门被拒，
     # 写进 flag trigger 就被读出来了，标记还会进人读渲染的「可比性标记」一节。
     trees += [dsl.parse_condition(f.trigger).tree for f in defn.flags if f.trigger]
-    for tree in trees:
-        blocked = pre_execute(
-            GateRequest(
-                defn=defn, expected_version=defn.version, tree=tree,
-                entity=intent.entity, period=intent.period, question_sha256=digest,
-            )
-        )
-        if blocked is not None:
-            return _refused(intent, digest, blocked, dict(base), "refused")
+
+    # 🔴 **一个 `GateRequest`，装这一次会被求值的全部树。**
+    #    2026-09-05 独立复核发现：此前这里逐棵送闸门，而下面送进 `execute()` 的是
+    #    `trees[0]`，`run` 求的却是公式那棵 —— 闸门守的和被执行的不是同一个东西，
+    #    留痕里的 `referenced_fields` 也只记了第一棵树的字段。
+    #    合成一个请求之后，`execute()` 里那次无条件的 `pre_execute` 校的正是这一套。
+    req = GateRequest(
+        defn=defn, expected_version=expected_version, trees=tuple(trees),
+        entity=intent.entity, period=intent.period, question_sha256=digest,
+    )
+    # ⚠️ 这一次显式过闸**不是多余的**：它必须排在 `evaluate_refusal` 之前。
+    #    引用了未授权字段的条件，连「求值一下看看」都不许发生。
+    blocked = pre_execute(req)
+    if blocked is not None:
+        return _refused(intent, digest, blocked, dict(base), "refused")
 
     # ── 口径层：这份定义自己声明的拒答条件 ────────────────────────
     hit = evaluate_refusal(defn, source.row)
@@ -367,14 +393,8 @@ def answer_question(question: str, registry: Registry, source=None, ask_model=No
 
     # ── 计算：唯一入口，无条件先过闸门 ────────────────────────────
     tree = parse_formula(str(defn.formula))
-    record = execute(
-        GateRequest(
-            defn=defn, expected_version=defn.version,
-            tree=trees[0] if trees else dsl.Literal(True),
-            entity=intent.entity, period=intent.period, question_sha256=digest,
-        ),
-        run=lambda _req: evaluate_formula(tree, source),
-    )
+    # **同一个 `req`** —— `execute()` 会再无条件过一遍闸门，校的就是上面那一套树。
+    record = execute(req, run=lambda _req: evaluate_formula(tree, source))
     value = record.result
     if isinstance(value, Refusal):
         return _refused(intent, digest, value, dict(base), "passed")
