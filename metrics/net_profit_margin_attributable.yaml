@@ -73,7 +73,7 @@ undefined_conditions:
 common_pitfalls:
   - text: >
       分子必须是「归属于母公司所有者的净利润」，不是利润表底部的「净利润」——
-      后者含少数股东损益。本定义的 source_fields 不声明 is.net_profit。
+      后者含少数股东损益。本定义的取数出处不声明利润表底部的「净利润」。
     enforced_by: source_fields.id
 
   - text: >

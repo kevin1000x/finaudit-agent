@@ -67,7 +67,7 @@ period_semantics: 时点
 derivation:
   allow_from_components: false
   note: >
-    分母固定取所有者权益合计，**不取** bs.equity_attributable_to_parent（归母权益）。
+    分母固定取所有者权益合计，**不取**归属于母公司所有者权益合计（归母权益）。
     禁止用「所有者权益合计 − 归母权益」倒推少数股东权益：报表已单独列示该项，
     倒推会在其他权益工具归属划分存在差异时静默产生偏差。
 
@@ -106,7 +106,7 @@ common_pitfalls:
   - text: >
       **少数股东权益（时点）与少数股东损益（时段）不是一回事。**
       前者出自资产负债表，后者出自利润表。混用会得到一个量纲都不对的比率。
-      本定义的 source_fields 只声明 bs.minority_interests。
+      本定义的取数出处只声明资产负债表的「少数股东权益」，没有任何来自利润表的少数股东损益。
     enforced_by: source_fields.id
 
   - text: >

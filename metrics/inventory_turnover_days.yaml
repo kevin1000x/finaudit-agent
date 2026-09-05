@@ -66,7 +66,7 @@ common_pitfalls:
   - text: >
       **分子用营业成本，不用营业收入。** 存货按成本计价，用含毛利的收入作分母
       会系统性低估周转天数，且数值仍然「看起来正常」。
-      本定义的 source_fields 不声明 is.operating_revenue_current。
+      本定义的取数出处只声明利润表的「营业成本」，不声明「营业收入」。
     enforced_by: source_fields.id
 
   - text: >

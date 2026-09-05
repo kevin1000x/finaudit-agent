@@ -47,7 +47,7 @@ period_semantics: 时段
 derivation:
   allow_from_components: false
   note: >
-    分母固定取归母净利润，**不取** is.net_profit（含少数股东损益）。
+    分母固定取归母净利润，**不取**利润表底部含少数股东损益的「净利润」。
     禁止由「净利润 − 少数股东损益」倒推归母净利润。
     禁止用扣非归母净利润替代分母——那是另一个口径的净现比，两者不可混比。
     禁止由现金流入流出小计倒推经营活动现金流量净额。
@@ -85,7 +85,7 @@ common_pitfalls:
 
   - text: >
       分母必须是归母净利润，不得用含少数股东损益的净利润。
-      本定义的 source_fields 不声明 is.net_profit。
+      本定义的取数出处不声明利润表底部的「净利润」。
     enforced_by: source_fields.id
 
   - text: >

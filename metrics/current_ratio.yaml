@@ -39,9 +39,9 @@ period_semantics: 时点
 derivation:
   allow_from_components: false
   note: >
-    分母固定取流动负债合计的**期末余额**，禁止取 bs.total_current_liabilities_period_begin
-    （期初余额）。两者在报表上并列，混用会让比率对应到错误的时点。
-    亦禁止用 bs.total_liabilities（负债合计）替代分母——负债合计含非流动负债，
+    分母固定取流动负债合计的**期末余额**，禁止取期初余额。
+    两者在报表上并列，混用会让比率对应到错误的时点。
+    亦禁止用负债合计替代分母——负债合计含非流动负债，
     与流动资产不配比，这是 POC-01 两位回答者都主动排除的陷阱。
     禁止由流动资产各明细项相加倒推流动资产合计。
 

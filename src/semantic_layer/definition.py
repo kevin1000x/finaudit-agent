@@ -25,6 +25,10 @@ __all__ = [
     "MetricDefinition",
     "load_definition",
     "iter_definition_paths",
+    "is_definition_file",
+    "PROSE_PATHS",
+    "semantic_payload",
+    "fingerprint",
 ]
 
 SIGN_CONVENTIONS = frozenset({"收益记正_损失记负", "绝对值列报"})
@@ -224,3 +228,62 @@ def iter_definition_paths(metrics_dir: Path | str = "metrics") -> list[Path]:
     if not directory.is_dir():
         return []
     return sorted(p for p in directory.glob("*.yaml") if is_definition_file(p))
+
+# --------------------------------------------------------------------------
+# 口径指纹（`D-034`）
+# --------------------------------------------------------------------------
+
+#: 定义文件里**纯粹给人读**的三处散文。改这三处**不算改口径**，`version` 不动。
+#: 判据不是「读起来像不像散文」，而是**这三条精确路径**——
+#: 靠感觉划线，下一个人就会把 `formula` 也划进来。
+#:
+#: ⚠️ 用**路径**不用键名：某天有人加一个语义上要紧、恰好也叫 `text` 的键，
+#: 按键名剔除会把它一起放掉，而这份指纹就是用来防这件事的。
+PROSE_PATHS: frozenset = frozenset({
+    "derivation.note",
+    "common_pitfalls[].text",
+    "undefined_conditions[].reason",
+})
+
+
+def _strip_prose(node, path: str = ""):
+    """按 `PROSE_PATHS` 剔除散文，其余原样保留。**默认保留** ——
+    新加的键会自动进指纹，要放它出去必须显式往 `PROSE_PATHS` 里写一行。
+    """
+    if isinstance(node, dict):
+        out = {}
+        for key, value in node.items():
+            child = f"{path}.{key}" if path else key
+            if child in PROSE_PATHS:
+                continue
+            out[key] = _strip_prose(value, child)
+        return out
+    if isinstance(node, list):
+        return [_strip_prose(v, path + "[]") for v in node]
+    return node
+
+
+def semantic_payload(path: Path | str) -> dict:
+    """一份定义里**除散文之外的全部内容**。
+
+    这是 `D-034` 那条线的机器判据：改动只碰散文 ⇒ 本函数的返回值逐字节不变。
+    """
+    import yaml
+
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    return _strip_prose(raw)
+
+
+def fingerprint(path: Path | str) -> str:
+    """口径指纹 = 语义载荷的 SHA-256（规范化 JSON，键排序、非 ASCII 不转义）。
+
+    ⚠️ **它不替代人的判断**，它只保证「我只改了措辞」这句话是可核的：
+    指纹变了而 `version` 没变 ⇒ `tests/test_definition_fingerprint.py` 红。
+    """
+    import hashlib
+    import json
+
+    blob = json.dumps(
+        semantic_payload(path), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()

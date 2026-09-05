@@ -43,8 +43,7 @@ period_semantics: 时段
 derivation:
   allow_from_components: false
   note: >
-    禁止取 is.operating_revenue_prior_as_originally_reported（上年年报当时原始披露的营业收入）
-    作为比较基数。存在追溯重述或会计政策变更时，两者不一致，用原始披露值会把重述影响
+    禁止取上年年报当时原始披露的营业收入作为比较基数。存在追溯重述或会计政策变更时，两者不一致，用原始披露值会把重述影响
     错算成经营增长。比较基数只能是本期报表列示的上期比较金额。
     亦禁止由营业总收入减去其他业务相关项目倒推营业收入。
 

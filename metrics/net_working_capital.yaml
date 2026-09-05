@@ -44,7 +44,7 @@ period_semantics: 时点
 derivation:
   allow_from_components: false
   note: >
-    两项均固定取**期末余额**，禁止取 bs.total_current_liabilities_period_begin。
+    两项均固定取**期末余额**，禁止取期初余额。
     禁止由流动资产或流动负债的明细项相加倒推合计。
     本指标是绝对额，其数值随列报单位（元 / 万元 / 千元）变化，
     单位必须随结果一并携带，不得脱离单位引用。

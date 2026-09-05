@@ -134,9 +134,17 @@ def test_正文里不出现任何本定义声明过的字段标识符():
     ⚠️ 故意不查「散文里所有形如 `ns.field` 的东西」：定义作者写「不得使用
     `bs.total_liabilities`」时，那个字段按定义**不在** `source_fields` 里，
     没有中文名可换。给它编一个，读者就没法发现禁的到底是哪一个（见 `_prose` docstring）。
-    2026-09-04 实测：**16 / 20 份定义的散文里有这类残留**，如实留着。
 
-    它会红的场景：有人把表达式挪回正文，或让 `_prose` 停止替换。
+    🔴 **2026-09-05 起这条在当前语料上是「预防性」的，不再是「证明性」的。**
+    `N-58` 按 (b) 落地之后，20 份定义的散文里**一个字段 id 都不剩**（实测 0 处）——
+    于是把 `_prose` 的字段替换整个拿掉，这条**照样绿**。
+    实测过：改散文之前拿掉它这条会红，改之后不会。
+
+    ⇒ **它现在守的是「将来有人往散文里写字段 id」**，不是「`_prose` 会不会替换」。
+    后者由 `test_prose确实会把声明过的字段id换成中文` 独立守着 ——
+    那条不依赖语料恰好含不含字段 id。
+    **不许把这条读成「`_prose` 工作正常」的证据**（`L-32` 的同一条道理：
+    一个说不出它什么时候会红的断言，要么删掉，要么另给它一条真会红的）。
     """
     paths = [q for q in sorted((REPO / "metrics").glob("*.yaml")) if not q.name.startswith("_")]
     assert len(paths) == 20
@@ -162,13 +170,16 @@ def test_正文里剩下的字段标识符有多少_这个数被钉住():
     字段 id 不出现在正文。剩下的那一类（定义作者写「禁止取 X」，而 X 按定义
     不在 `source_fields` 里 ⇒ 没有中文名可换）**确实还在正文里**。
 
-    ⇒ 把这个数钉住。它有两个方向都要能红：
-    · **变大** = 有人让 `_prose` 少替换了，或新写的定义又往散文里塞字段 id
-    · **变小** = 好事，但文档里那几个数字要跟着改（`N-35` 已经在同一处发生过三次）
+    **2026-09-05：操作者裁 `N-58` 选 (b)，9 份定义的散文改写完毕，残留归零。**
+    改的只有给人读的散文，`version` / `formula` / `expr` / `trigger` / `source_fields[].id`
+    一个字节没动（`D-034` 划的那条线，有 `test_definition_fingerprint.py` 机械守着）。
 
-    ⚠️ 这不是「先射箭后画靶」：靶子是**残留必须全部属于换不动的那一类**，
-    由本函数逐条 assert；数字只是让文档里的说法有一个会自己报警的锚。
-    真正的修法在**定义文件的散文里**，不在渲染器 —— 记 `N-58`。
+    ⇒ 这个数继续钉着，两个方向都要能红：
+    · **变大** = 有人往散文里塞回了字段 id，或让 `_prose` 少替换了
+    · **变小** = 已经到 0，不可能再小；真变了说明这条断言自己坏了
+
+    ⚠️ 残留不为零时**必须**全部属于「换不动」那一类（定义刻意不声明、没有中文名），
+    由下面的循环逐条 assert。数字只是让文档里的说法有一个会自己报警的锚（`N-35`）。
     """
     import re
 
@@ -193,10 +204,51 @@ def test_正文里剩下的字段标识符有多少_这个数被钉住():
             f"{q.stem}：残留里混进了本定义声明过、本可换中文的字段："
             f"{sorted(set(hits) & declared)}"
         )
-    assert (有残留的定义, 残留次数) == (9, 13), (
+    assert (有残留的定义, 残留次数) == (0, 0), (
         f"实测 {有残留的定义} 份定义 / {残留次数} 处残留，"
-        "与 explain.py docstring、D-032、PROGRESS 里写的数字对不上 —— 两边一起改"
+        "与 explain.py docstring、D-032 的 N-58 收口节、PROGRESS 里写的 0 对不上 —— "
+        "要么把散文里的字段 id 换成中文，要么三处数字一起改"
     )
+
+
+def test_prose确实会把声明过的字段id换成中文(tmp_path):
+    """🔴 这条**不依赖 20 份语料恰好含不含字段 id**。
+
+    `N-58` (b) 落地后，真实语料里一个字段 id 都不剩 ⇒ 语料级那条扫描
+    变成了预防性的守门人，**证明不了 `_prose` 还在工作**。
+    这条自己造一份含字段 id 的散文，直接验渲染器的契约。
+
+    它会红的场景：有人拿掉 `_prose` 的字段替换那一半，
+    或让 `render_explanation` 不再对散文调 `_prose`
+    （走的是渲染出口，不是单元调用）。
+    """
+    fid = "bs.total_current_assets"
+    src = (REPO / "metrics" / "current_ratio.yaml").read_text(encoding="utf-8")
+    assert fid in src, "夹具定义没有这个字段，这条会空转"
+
+    # 往第一条陷阱的散文里塞一个**本定义声明过**的字段 id。
+    # 逐行改，不用带转义的字面量 —— 反斜杠经过多层会被吃掉（`N-38`）。
+    out = []
+    injected = False
+    for i, line in enumerate(src.split(chr(10))):
+        out.append(line)
+        if not injected and line.strip() == "- text: >" and "common_pitfalls" in chr(10).join(src.split(chr(10))[:i]):
+            out.append("      禁止把 " + fid + " 当成流动负债。")
+            injected = True
+    assert injected, "没找到可注入的陷阱条目，这条会空转"
+
+    q = tmp_path / "current_ratio.yaml"
+    with open(q, "w", encoding="utf-8", newline=chr(10)) as fh:
+        fh.write(chr(10).join(out))
+
+    d = load_definition(q)
+    assert any(fid in p.text for p in d.common_pitfalls), "注入没进到定义里，这条会空转"
+
+    body, appendix = _split(render_explanation(d))
+    assert fid not in body, "正文里漏出了声明过的字段标识符"
+    assert "「流动资产合计」" in body, "没换成定义自己写的中文行项目名"
+    # 下沉 != 删除：机器那一版仍然在附录里
+    assert fid in appendix
 
 
 def test_公式与判据都不在正文而在附录里一个不少(defn):

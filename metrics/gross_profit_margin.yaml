@@ -43,7 +43,7 @@ derivation:
   note: >
     禁止由已披露的毛利额倒推本指标的分子。毛利额在不同公司的口径不一致
     （是否扣除税金及附加、是否含运输费重分类），倒推会引入无法追溯的差异。
-    亦禁止用 is.total_operating_revenue_current（营业总收入）替代分母：
+    亦禁止用营业总收入替代分母：
     营业总收入含利息收入等不与营业成本配比的项目，相除得到的不是毛利率。
 
 standard_basis:
@@ -78,7 +78,7 @@ undefined_conditions:
 common_pitfalls:
   - text: >
       分母固定取「营业收入」，不取「营业总收入」。后者含利息收入等不与营业成本配比的项目。
-      本定义的 source_fields 不声明 is.total_operating_revenue_current。
+      本定义的取数出处只声明利润表的「营业收入」一行，不声明「营业总收入」。
     enforced_by: source_fields.id
 
   - text: >

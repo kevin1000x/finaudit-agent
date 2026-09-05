@@ -42,8 +42,8 @@ period_semantics: 时段
 derivation:
   allow_from_components: false
   note: >
-    **禁止倒推。** 不得用 is.net_profit_attributable_to_parent 除以
-    bs.equity_attributable_to_parent（期末归母净资产），也不得除以期初期末简单平均值。
+    **禁止倒推。** 不得用归母净利润除以期末归母净资产，
+    也不得除以期初期末简单平均值。
     前者得到的是全面摊薄净资产收益率，后者是简单平均口径，两者都不是加权平均。
     加权平均要求按净资产各次增减变动的**月份权数**加权，年度报表不提供这些权数，
     因此在数据层面本指标不可复算，只能取披露值。未披露即拒答。
