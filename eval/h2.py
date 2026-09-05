@@ -376,6 +376,42 @@ def render_score(got: dict) -> str:
     return "\n".join(L)
 
 
+#: 进 `SHA256SUMS` 的产物。**答卷不在其中** —— 它就是要被复核者改的，
+#: 冻它等于让清单在实验开始的那一刻必然变红。
+FROZEN_ARTIFACTS = ("packets.md", "keymap.json")
+
+
+def _write(path: Path, text: str) -> None:
+    """写盘一律 **LF**。
+
+    🔴 不是洁癖：`.gitattributes` 强制 LF 入库，而 Windows 上 `write_text` 默认写 CRLF
+    ⇒ 工作树字节 ≠ git blob 字节。2026-09-05 上午刚因为这个把一份清单做成了
+    「只在本机成立」（见第三十三段）；同一天下午生成题包时 git 又warn了一次。
+    这里把它按死在出口上。
+    """
+    with open(path, "w", encoding="utf-8", newline=chr(10)) as fh:
+        fh.write(text)
+
+
+def _manifest(out_dir: Path, names) -> str:
+    """题包与对照表的哈希清单。
+
+    它证明的是**这两份文件自生成之后没被改过**；「生成于复核之前」由 git 历史证明。
+    两件事分开说 —— 清单证不了时间，历史证不了内容完整性。
+
+    ⚠️ `tests/test_conformance.py` 的 `_manifests()` 按 `git ls-files *SHA256SUMS` 发现清单
+    ⇒ 这份一旦入库就**自动**落进那两道守卫（不得含 CRLF / 工作树上自校验通过），
+    不需要在任何地方登记。
+    """
+    import hashlib
+
+    lines = []
+    for name in names:
+        digest = hashlib.sha256((out_dir / name).read_bytes()).hexdigest()
+        lines.append(digest + " *" + name)
+    return chr(10).join(lines) + chr(10)
+
+
 def main(argv=None) -> int:
     import argparse
 
@@ -400,11 +436,13 @@ def main(argv=None) -> int:
         return 0 if got["conclusion"] is not None else 1
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "packets.md").write_text(render_packets(packets), encoding="utf-8")
-    (out_dir / "answer-sheet.yaml").write_text(blank_sheet(packets), encoding="utf-8")
-    (out_dir / "keymap.json").write_text(
-        json.dumps(keymap(packets, args.seed), ensure_ascii=False, indent=2), encoding="utf-8"
+    _write(out_dir / "packets.md", render_packets(packets))
+    _write(out_dir / "answer-sheet.yaml", blank_sheet(packets))
+    _write(
+        out_dir / "keymap.json",
+        json.dumps(keymap(packets, args.seed), ensure_ascii=False, indent=2) + chr(10),
     )
+    _write(out_dir / "SHA256SUMS", _manifest(out_dir, FROZEN_ARTIFACTS))
     print("题包 %d 题（普查，不抽样）已写入 %s" % (len(packets), out_dir))
     print("⚠️ keymap.json 是对照表，**复核者不拿到**；复核前也不要读 02-03-PLAN 的 <context>。")
     return 0
