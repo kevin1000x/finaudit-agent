@@ -420,3 +420,132 @@ def test_没有这家公司时不许报出别家公司的年报出处():
         assert leaked not in str(src), f"data_source 泄漏了别家公司的出处：{leaked}"
     # 而且要说清「查了哪几份、都没有」，不是空着
     assert "都没有" in str(src)
+
+
+# ── 鉴权：`N-63` 裁 (a) 之后，这个服务会有一个公网 URL ────────────────────
+
+
+def test_外面够得着的监听必须要令牌():
+    """**红的时候是什么样**：部署时忘了配令牌，服务照常起来、完全敞开，
+    而且没有任何一处会响 —— 直到有人发现它。
+
+    判据是「外面够不够得着」，不是「有没有设令牌」。
+    「设了才检查」是个静默失败的设计，失败方向要选吵的那个。
+    """
+    from service.api import needs_token
+
+    for loopback in ("127.0.0.1", "::1", "localhost"):
+        assert needs_token(loopback) is False, f"{loopback} 只有本机能连，不该逼着配令牌"
+    for reachable in ("0.0.0.0", "::", "audit.example.com", "10.x.x.x（示例）"):
+        assert needs_token(reachable) is True, f"{reachable} 网络上够得着，必须要令牌"
+
+
+def test_令牌比对不许用普通字符串相等():
+    """`==` 在第一个不同的字节上就返回，耗时随「猜对了几个字符」变化，
+    可以被用来逐字节把令牌试出来。⇒ 必须走 `hmac.compare_digest`。
+
+    这条用语法树查，不查行为 —— 计时攻击测不出来，但**写法**看得见。
+    """
+    import ast
+
+    tree = ast.parse((SERVICE / "api.py").read_text(encoding="utf-8"))
+    fn = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "authorized"
+    )
+    calls = [
+        n.func.attr for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+    ]
+    assert "compare_digest" in calls, "令牌比对必须用 hmac.compare_digest"
+
+
+def test_令牌对不上一律不放行():
+    from service.api import authorized
+
+    tok = "s3cret-token"
+    assert authorized("Bearer " + tok, tok) is True
+    for bad in (
+        None, "", "Bearer", "Bearer ", "Bearer wrong", tok,          # 少了 Bearer 前缀
+        "bearer " + tok,                                              # 大小写不对
+        "Bearer " + tok + "x", "Bearer x" + tok, 12345, ["Bearer", tok],
+    ):
+        assert authorized(bad, tok) is False, f"这个不该放行：{bad!r}"
+
+
+def test_不需要令牌时任何头都放行():
+    """回环监听不配令牌是允许的（开发用）。此时不该反过来把本机也挡住。"""
+    from service.api import authorized
+
+    for h in (None, "", "Bearer whatever"):
+        assert authorized(h, "") is True
+
+
+def test_运行器不打访问日志():
+    """问题字符串是**用户输入**。打进访问日志就等于开始留存它，
+    而「把存储全部清空不丢任何东西」是 `D-021` 豁免三的第二条判据。
+    """
+    import ast
+
+    tree = ast.parse((SERVICE / "api.py").read_text(encoding="utf-8"))
+    fn = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "log_message"
+    )
+    # ⚠️ 这里**不能**写成「只准 Pass 或 Expr」—— `print(...)` 也是一个 `ast.Expr`，
+    # 那样写出来的断言注入一句 print 照样是绿的（2026-09-07 造回归当场发现，`L-32`）。
+    # ⇒ 只准 `pass` 与文档字符串；出现任何会执行的语句即红。
+    live = [
+        ast.dump(n)[:80]
+        for n in fn.body
+        if not isinstance(n, ast.Pass)
+        and not (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant))
+    ]
+    assert live == [], "log_message 里有真的会执行的语句：" + str(live)
+
+
+# ── 镜像里拷的东西必须覆盖服务真正会读的东西（`N-42` 的形状） ──────────────
+
+DOCKERFILE = REPO_ROOT / "Dockerfile"
+
+
+def _copied_paths():
+    """Dockerfile 里 `COPY <src> ...` 的第一个参数，去掉尾斜杠。"""
+    out = []
+    for line in DOCKERFILE.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if s.upper().startswith("COPY "):
+            out.append(s.split()[1].rstrip("/"))
+    return out
+
+
+def test_镜像拷的目录覆盖了服务真正会读的数据源():
+    """**红的时候是什么样**：谁往 `SOURCE_DIRS` 加了一个新目录，
+    本地跑得好好的；镜像里没有那个目录，**线上悄悄少一半覆盖面** ——
+    而 `/coverage` 会如实报出「少的那个数」，没有一处报错。
+
+    这道门扫的集合必须等于它声称在检查的集合：
+    直接从 `SOURCE_DIRS` 推，不手写一份清单。
+    """
+    copied = _copied_paths()
+    assert "src" in copied and "metrics" in copied, f"代码与口径定义都得拷：{copied}"
+    for _, directory in cov.SOURCE_DIRS:
+        rel = directory.relative_to(REPO_ROOT).as_posix()
+        assert any(rel == c or rel.startswith(c + "/") for c in copied), (
+            f"数据源 {rel} 不在镜像里 —— 线上会少这一部分覆盖面，而且不会报错。"
+            f" Dockerfile 现在拷的是：{copied}"
+        )
+
+
+def test_镜像不许把年报PDF带出去():
+    """`.gitignore` 挡住了 PDF 进版本控制；**镜像是另一条同样会把文件带出去的路**。
+
+    镜像会被推到仓库，而 `data/raw/` 是几百 MB 的年报原文 ——
+    何况服务根本不解析 PDF（抽取是离线那一步的事，`N-61`）。
+    """
+    copied = _copied_paths()
+    assert "." not in copied, "不许 `COPY . ` —— 那会把 data/raw/ 一起带进去"
+    for c in copied:
+        assert not c.startswith("data/raw"), f"Dockerfile 拷了年报 PDF：{c}"
+    ignored = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8")
+    assert "data/raw/" in ignored, ".dockerignore 得挡住 data/raw/"

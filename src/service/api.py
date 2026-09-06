@@ -21,6 +21,8 @@ HTTP 那一层由部署方给 —— 理由见包的 docstring。
 
 from __future__ import annotations
 
+import hmac
+import os
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -35,7 +37,51 @@ from semantic_layer.resolve import Registry  # noqa: E402
 
 from . import coverage as cov  # noqa: E402
 
-__all__ = ["MAX_QUESTION_BYTES", "answer_endpoint", "coverage_endpoint", "serve"]
+__all__ = [
+    "MAX_QUESTION_BYTES",
+    "TOKEN_ENV",
+    "answer_endpoint",
+    "authorized",
+    "coverage_endpoint",
+    "needs_token",
+    "serve",
+]
+
+#: 令牌从环境变量读，**不进仓库**。cninfo 那边的 Pages Function 已经在发
+#: `Authorization: Bearer <AUDIT_API_TOKEN>`，这里读的就是它对面那一半。
+TOKEN_ENV = "FINAUDIT_API_TOKEN"
+
+
+def needs_token(host: str) -> bool:
+    """这次监听要不要令牌。**判据只有一句：外面够得着吗。**
+
+    绑在回环地址上 = 只有本机能连 ⇒ 开发用，不要令牌。
+    绑在别的地址上 = 网络上够得着 ⇒ **必须**有令牌。
+
+    ## 为什么用「绑在哪」判，而不是「有没有设令牌」
+
+    「设了就检查、没设就放行」是个**静默失败**的设计：部署时忘了配环境变量，
+    服务照常起来，而且完全敞开 —— 没有任何一处会响。
+    按监听地址判则相反：忘了配令牌，服务**起不来**并说明原因。
+    **失败方向要选吵的那个。**
+    """
+    return host not in ("127.0.0.1", "::1", "localhost")
+
+
+def authorized(header_value, token) -> bool:
+    """`Authorization` 头对不对。
+
+    ⚠️ **用 `hmac.compare_digest` 而不是 `==`**：字符串相等在第一个不同的字节上就返回，
+    比较耗时随「猜对了几个字符」变化，可以被用来逐字节试出令牌。
+    """
+    if not token:
+        return True  # 不需要令牌的那种监听，上游已经判过（`needs_token`）
+    if not isinstance(header_value, str):
+        return False
+    prefix = "Bearer "
+    if not header_value.startswith(prefix):
+        return False
+    return hmac.compare_digest(header_value[len(prefix):], str(token))
 
 #: 问题字符串的上限。**不是安全边界，是礼貌边界** ——
 #: 意图解析对超长输入不会崩，只会拒答；这条只是不让一次请求拖着几 MB 的正文走。
@@ -183,17 +229,40 @@ def coverage_endpoint() -> tuple:
 
 
 # --------------------------------------------------------------------------
-# 本地运行器：**stdlib，零依赖**
+# 运行器：**stdlib，零依赖**
 # --------------------------------------------------------------------------
 #
-# 它是给开发与手工验证用的。生产那一层由部署方给（`02-04` T4 未定），
-# 把 HTTP 框架焊死在这里等于替那个决策先做了选择。
+# `N-63` 裁定 (a)：找一个**按请求触发、能缩到零**的地方跑它。
+# 那类平台（Cloud Run / Fly Machines / Render 之流）要的只有两件事 ——
+# 监听 `$PORT`、绑 `0.0.0.0`。所以这个 stdlib 运行器就够用，
+# **不需要为了上线引进一个 Web 框架**（服务端依赖闭包实测只有 PyYAML 一个）。
+#
+# ⚠️ 它是单线程的。这对本项目成立，因为一次请求就是读几个 YAML 加一次十进制算术；
+# 但**这句话哪天不成立了，就该换运行器，而不是往这里加线程池** ——
+# 加线程池等于开始在这一层维护并发状态，而无状态是 `D-021` 豁免三的前提。
 
 
-def serve(host: str = "127.0.0.1", port: int = 8100):  # pragma: no cover - 手工用
-    """起一个本地服务。`python -m service.api` 就是它。"""
+def serve(host: str | None = None, port: int | None = None):  # pragma: no cover - 手工用
+    """起服务。`python -m service.api` 就是它。
+
+    `host` / `port` 不给时从环境读（`HOST` / `PORT`）—— 缩到零的托管平台
+    是靠 `$PORT` 告诉你监听哪里的。
+    """
     import json
     from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    host = host if host is not None else os.environ.get("HOST", "127.0.0.1")
+    port = port if port is not None else int(os.environ.get("PORT", "8100"))
+    token = os.environ.get(TOKEN_ENV) or ""
+
+    # 🔴 **外面够得着就必须有令牌，否则拒绝启动。**
+    # 这里刻意不是「没设令牌就放行」—— 那样部署时忘了配环境变量，
+    # 服务会照常起来并且完全敞开，没有任何一处会响。
+    if needs_token(host) and not token:
+        raise SystemExit(
+            "拒绝启动：监听 " + host + " 是网络上够得着的地址，但没有设 " + TOKEN_ENV + "。\n"
+            "要么设一个令牌，要么绑回环地址（127.0.0.1）只给本机用。"
+        )
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, status: int, body: dict):
@@ -204,13 +273,28 @@ def serve(host: str = "127.0.0.1", port: int = 8100):  # pragma: no cover - 手�
             self.end_headers()
             self.wfile.write(raw)
 
+        def _ok(self) -> bool:
+            """鉴权。**失败给 401，不给 200 + 拒答。**
+
+            拒答是「你问的这个我答不了」，是业务结果；
+            认证失败是「我不知道你是谁」，连业务都还没开始。两件事不混。
+            """
+            if authorized(self.headers.get("Authorization"), token):
+                return True
+            self._send(401, {"detail": "缺少或不正确的 Authorization: Bearer 令牌"})
+            return False
+
         def do_GET(self):
+            if not self._ok():
+                return
             if self.path.rstrip("/").endswith("/coverage"):
                 self._send(*coverage_endpoint())
             else:
                 self._send(404, {"detail": "只有 GET /coverage 与 POST /answer"})
 
         def do_POST(self):
+            if not self._ok():
+                return
             length = int(self.headers.get("Content-Length") or 0)
             raw = self.rfile.read(length) if length else b""
             try:
@@ -221,6 +305,8 @@ def serve(host: str = "127.0.0.1", port: int = 8100):  # pragma: no cover - 手�
             self._send(*answer_endpoint(payload))
 
         def log_message(self, *args):
+            # 不打访问日志。**问题字符串是用户输入**，打进日志就等于开始留存它，
+            # 而「把存储清空不丢任何东西」是 `D-021` 豁免三的第二条判据。
             pass
 
     HTTPServer((host, port), Handler).serve_forever()
