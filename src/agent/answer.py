@@ -101,6 +101,34 @@ class _FixtureCell:
     value: Any
 
 
+def _as_number(value):
+    """真实年报数据行里，**数字是带引号的字符串**，这里把它变回数。
+
+    ## 为什么文件里要加引号
+
+    `272699660092.25` 不加引号，`yaml.safe_load` 读成 float，
+    14 位以上有效数字被悄悄改掉。而这两家公司的每一个数都是 14 位以上。
+    ⇒ 文件里用文本保精度，**读进来的时候转成 `Decimal`**，不经过 float。
+
+    ## 为什么非转不可（2026-09-06 实跑撞出来的）
+
+    `evaluate_refusal(defn, source.row)` 拿的是**原始行**，不走 `by_field`。
+    口径里的拒答条件会拿字段值跟数字比大小，字符串比不了 ——
+    第一次拿真实数据问「600519 2023 年的资产负债率」当场
+    `TypeError: '<=' not supported between instances of 'str' and 'int'`。
+
+    ⚠️ **只对 `kind: real` 生效。** 合成夹具的值本来就是数，一个字节都不动 ——
+    frozen-01 的基线哈希不能因为这个改动而变（`D-012`）。
+    """
+    if not isinstance(value, str):
+        return value
+    try:
+        return Decimal(value)
+    except Exception:
+        # 真的是文本（比如企业合并类型那种枚举），原样交出去。
+        return value
+
+
 class FixtureSource:
     """一份合成夹具里的一行。接上 `evaluate_formula`，不改那个求值器。"""
 
@@ -115,7 +143,18 @@ class FixtureSource:
         self._raw = raw_bytes
         self.sha256 = hashlib.sha256(raw_bytes).hexdigest()
         data = yaml.safe_load(raw_bytes.decode("utf-8")) or {}
-        self.fixture_id = (data.get("meta") or {}).get("fixture_id") or self.path.stem
+        meta = data.get("meta") or {}
+        self.fixture_id = meta.get("fixture_id") or self.path.stem
+        # `kind: real` 是真实年报抽取结果（`extractor export` 的产物，见 `N-61`）。
+        # 🔴 **默认是合成**：认不出来就当合成处理。
+        # 两个方向的错不是一回事 —— 把真实数据说成合成，代价是保守；
+        # 把合成数据说成真实，是这个项目最不能犯的错（`D-010`）。
+        # 还要求 `source_pdf_sha256` 在场且是 64 位十六进制：光写一个 `kind: real`
+        # 不足以自称年报原文，得给得出那份 PDF 的指纹。
+        pdf_sha = str(meta.get("source_pdf_sha256") or "")
+        self.is_real = meta.get("kind") == "real" and len(pdf_sha) == 64
+        self.source_pdf_sha256 = pdf_sha if self.is_real else None
+        self.short_name = meta.get("short_name") if self.is_real else None
         self.stock_code = None if stock_code is None else str(stock_code)
         self.fiscal_year = None if fiscal_year is None else int(fiscal_year)
         rows = [
@@ -126,6 +165,8 @@ class FixtureSource:
             and int(r.get("fiscal_year", -1)) == self.fiscal_year
         ]
         self.row: dict = dict(rows[0]) if rows else {}
+        if self.is_real:
+            self.row = {k: _as_number(v) for k, v in self.row.items()}
         self.found = bool(rows)
 
     def at(self, stock_code, fiscal_year) -> "FixtureSource":
@@ -139,7 +180,29 @@ class FixtureSource:
 
     @property
     def batch_id(self) -> str:
-        """出处标识。**说清它是合成夹具** —— 把合成数据说成真实数据比数据本身更严重。"""
+        """出处标识。**说清它是合成夹具** —— 把合成数据说成真实数据比数据本身更严重。
+
+        真实年报走另一条字面：`annual-report:` 开头，并把**年报 PDF 的指纹**摆出来。
+        复核者拿这一行能做的事是「去巨潮下同一份年报，算 SHA-256，对得上」——
+        那是这条证据链里唯一一处能脱离本仓库独立验证的锚点。
+        """
+        if self.is_real:
+            # 人读的那一半写在前面：**复核者要先知道这是哪一家哪一年的年报**，
+            # 再看指纹。倒过来的话前 40 个字全是十六进制。
+            if self.stock_code is None:
+                # 还没走到「取哪一行」这一步，说清是哪一份文件就够了，不编一个行号。
+                head = "annual-report:" + self.fixture_id
+            else:
+                who = (self.short_name + " ") if self.short_name else ""
+                head = (
+                    "annual-report:" + who + self.stock_code
+                    + " · " + str(self.fiscal_year) + " 年年度报告"
+                )
+            return (
+                head
+                + "（年报 PDF SHA-256 " + str(self.source_pdf_sha256)[:16] + "…"
+                + "；抽取结果文件 SHA-256 " + self.sha256[:16] + "…）"
+            )
         head = "fixture:" + self.fixture_id + "@" + self.sha256[:12]
         if self.stock_code is None:
             # 还没走到「取哪一行」这一步。**说清是哪一份夹具就够了**，不编一个行号。
@@ -637,6 +700,17 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
     if src and str(src).startswith("fixture:"):
         # 说清它是**合成夹具** —— 把合成数据说成真实数据，比数据本身更严重（`D-010`）
         L.extend(wrap("· 合成夹具（虚构公司与数值），不是任何真实公司的年报"))
+    elif src and str(src).startswith("annual-report:"):
+        # 真实年报：**把可独立核验的那个锚点摆出来**。复核者不必信任本仓库 ——
+        # 去巨潮下同一份年报算 SHA-256，对得上就说明读的是同一份文件。
+        L.extend(wrap("· 巨潮资讯网年报原文（公开数据）"))
+        L.extend(wrap("· " + str(src)[len("annual-report:"):]))
+        L.extend(
+            wrap(
+                "· ⚠️ 只导出了**人工逐字段核对过**的字段；没核对过的字段不在这份数据里，"
+                "问到它们会得到「没有这个数」而不是一个数"
+            )
+        )
     elif src:
         L.extend(wrap("· " + str(src)))
     else:

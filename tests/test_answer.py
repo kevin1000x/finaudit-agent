@@ -576,3 +576,70 @@ def test_没有输入时不留一个空标题(registry, source):
     page = render_answer(a, None, None)
     assert "这个数是拿哪几个数算出来的" not in page
     assert "凭什么说满足了这一条" not in page
+
+
+# ── 真实年报数据源：`kind: real`（`N-61`） ─────────────────────────────────
+
+
+def _src(tmp_path, meta_lines, row_lines='    bs.total_assets: "272699660092.25"\n'):
+    p = tmp_path / "s.yaml"
+    p.write_text(
+        "meta:\n" + meta_lines + 'rows:\n  - stock_code: "600519"\n    fiscal_year: 2023\n' + row_lines,
+        encoding="utf-8",
+    )
+    from agent.answer import FixtureSource
+
+    return FixtureSource(p).at("600519", 2023)
+
+
+REAL_META = (
+    "  fixture_id: annual-report-600519-2023\n"
+    "  kind: real\n"
+    "  short_name: 贵州茅台\n"
+    '  source_pdf_sha256: "' + "a" * 64 + '"\n'
+)
+
+
+def test_真实年报的出处不说自己是合成夹具(tmp_path):
+    """**红的时候是什么样**：真实年报的证据页上印着「合成夹具（虚构公司与数值）」，
+    复核者据此认定这个答案不指向任何真实公司 —— 一个正确答案被读成了演示数据。
+    """
+    s = _src(tmp_path, REAL_META)
+    assert s.is_real is True
+    assert s.batch_id.startswith("annual-report:")
+    assert "贵州茅台" in s.batch_id and "600519" in s.batch_id
+    # 可独立核验的那个锚点必须在里面：拿它去巨潮下同一份年报算哈希能对上
+    assert "a" * 16 in s.batch_id
+
+
+def test_没有PDF指纹就不算真实年报(tmp_path):
+    """自称不算数。缺了指纹，「年报原文」这句话就没有任何人能验。"""
+    s = _src(tmp_path, "  fixture_id: 半真\n  kind: real\n")
+    assert s.is_real is False
+    assert s.batch_id.startswith("fixture:")
+
+
+def test_真实数据里带引号的数字会变回数(tmp_path):
+    """文件里加引号是为了保精度（不加会被 YAML 读成 float）；
+    但**拒答条件拿的是原始行**，字符串跟数字比大小会当场 `TypeError` ——
+    2026-09-06 第一次拿真实数据提问就是这么崩的。
+    """
+    from decimal import Decimal
+
+    s = _src(tmp_path, REAL_META)
+    assert s.row["bs.total_assets"] == Decimal("272699660092.25")
+    # 精度必须逐位保住：过一趟 float 的话末位会变
+    assert str(s.row["bs.total_assets"]) == "272699660092.25"
+
+
+def test_合成夹具的取值一个字节都没被改动(tmp_path):
+    """`_as_number` 只对 `kind: real` 生效。
+
+    frozen-01 的基线哈希建立在合成夹具的取值上（`D-012`），
+    这条守住「加真实数据这件事没有顺手动到冻结物」。
+    """
+    s = _src(tmp_path, "  fixture_id: synthetic-x\n", "    bs.total_assets: 8000000000\n")
+    assert s.is_real is False
+    assert s.row["bs.total_assets"] == 8000000000
+    assert isinstance(s.row["bs.total_assets"], int)
+    assert s.batch_id.startswith("fixture:synthetic-x@")

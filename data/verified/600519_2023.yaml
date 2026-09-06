@@ -1,0 +1,68 @@
+# 贵州茅台 600519 · 2023 年年度报告 —— **人工逐字段核对过的清单**
+#
+# 🔴 这份文件是**准入清单，不是抽取结果**。
+#
+# `extractor export` 只导出这里列出的字段，且**取值对不上就整份拒绝导出**。
+# 理由写在 `N-61`：抽取质量在没逐字段核对过的字段上是未知的，
+# 而产品一旦对外输出没人验过的数，「可审计」这个卖点当场赔光。
+#
+# ⚠️ 这里的取值**抄自签署过的核对记录，不是抄自抽取器**。
+# 抄错的后果是导出失败（两边对不上），**不是**导出一个错的数 —— 失败方向是安全的。
+#
+# 效力限定（`VERIFICATION.md` §C.13，不随签署消失）：
+# 读数路径独立于抽取器（走 `pdfplumber` 原始版面文本，不经 locate/mapping），
+# 但**执行者不独立于抽取器的产出方**。这是这份证据「是什么」，不是它「够不够」。
+
+meta:
+  stock_code: "600519"
+  fiscal_year: 2023
+  short_name: 贵州茅台
+  full_name: 贵州茅台酒股份有限公司
+  source_pdf: data/raw/600519_2023.pdf
+  source_pdf_sha256: 2125ff97a452ea79b0d784e2432f7d224b6aecc330b644b593477d69e22f4ed1
+  signed_off: 2026-08-31 操作者签署 `SC-2` = PASS（29 / 29 ≥ 24）
+  # 核对记录所在小节。`tests/test_export.py` 会验这些标题真的存在于 VERIFICATION.md。
+  verification_sections:
+    - D.16
+    - D.17
+  # 第二重独立约束：24 个字段与 AKShare 逐字段对照，20 可比 / 0 不一致
+  # （`docs/agent/phase-01.5/COMPUTED-VALUES.md` §5.1）。
+  # 4 个「不可比」是 AKShare 侧缺值，不是不一致 —— 见该节 §5.2。
+  cross_checked_against: AKShare（COMPUTED-VALUES.md §5.1，20 可比 / 0 不一致）
+
+# 取值一律**加引号**：不加引号 YAML 会把它读成 float，14 位以上有效数字会被悄悄改掉。
+# 布尔与集合按原类型写 —— `Decimal()` 解不了的，取数层原样交出去，那是对的。
+fields:
+  bs.accounts_receivable: "60373410.41"
+  bs.inventory: "46435185061.53"
+  bs.total_current_assets: "225172517821.28"
+  bs.total_assets: "272699660092.25"
+  # 下面四个是「行在、格子空」（EMPTY_CELL），不是「行不在」。见 `SC-3` 的三态分界。
+  bs.short_term_borrowings: "0.00"
+  bs.trading_financial_liabilities: "0.00"
+  bs.long_term_borrowings: "0.00"
+  bs.bonds_payable: "0.00"
+  bs.accounts_payable: "3093091103.67"
+  bs.non_current_liabilities_due_within_one_year: "57054879.48"
+  bs.lease_liabilities: "266636234.04"
+  bs.total_current_liabilities_period_end: "48697611501.20"
+  bs.total_liabilities: "49043190797.43"
+  bs.minority_interests: "7987897687.39"
+  bs.total_equity: "223656469294.82"
+  is.operating_revenue_current: "147693604994.14"
+  is.operating_revenue_prior_as_presented: "124099843771.99"
+  # `营业成本` vs `二、营业总成本`（46,960,889,468.54）差约 4 倍且标签前缀包含 —— §D.17 辨析 1
+  is.operating_cost: "11867273851.78"
+  is.selling_expense: "4648613585.82"
+  is.administrative_expense: "9729389252.31"
+  # 负值；减号是 ASCII U+002D，§D.17 现场用 unicodedata 确认过，不是全角 －
+  is.financial_expense: "-1789503701.48"
+  is.net_profit: "77521476277.80"
+  is.net_profit_attributable_to_parent: "74734071550.75"
+  cfs.net_cash_flow_from_operating_activities: "66593247721.09"
+  cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets: "2619755888.79"
+  # ∅ 空集 = 本期无企业合并（`D-028` 取消了 `无` 这个哨兵值，空集本身就是一个正确的值）
+  notes.business_combination_type: []
+  # p121 子项 5「其他原因的合并范围变动」= √适用（定制营销公司 2023-12-18 清算注销）
+  notes.consolidation_scope_change: true
+  notes.restatement_flag: true

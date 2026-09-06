@@ -293,3 +293,84 @@ def test_多份数据源时按哪一份有这一行来取(tmp_path, monkeypatch)
         assert old["answer"]["refused"] is False
     finally:
         cov.coverage.cache_clear()
+
+
+# ── 「真实 / 合成」这条线：贴错标签比数据本身更严重（`D-010`） ──────────────
+
+
+def _dir_with(tmp_path, name, body):
+    d = tmp_path / name
+    d.mkdir()
+    (d / "x.yaml").write_text(body, encoding="utf-8")
+    return d
+
+
+ROW = 'rows:\n  - stock_code: "900888"\n    fiscal_year: 2024\n'
+
+
+def test_落在真实目录里但没有kind标记的按合成算(tmp_path, monkeypatch):
+    """**红的时候是什么样**：谁往 `data/extracted/` 里放了一份合成文件，
+    它就被当成年报原文对外展示 —— 而页面上不会有任何一处露馅。
+
+    `nature` 以文件自己的 `meta.kind` 为准，目录只是「去哪儿找」。
+    这是 `N-42` 的形状：一道门扫的集合必须等于它声称在检查的集合。
+    """
+    d = _dir_with(tmp_path, "extracted", "meta:\n  fixture_id: 冒充的\n" + ROW)
+    monkeypatch.setattr(cov, "SOURCE_DIRS", (("real", d),), raising=True)
+    cov.coverage.cache_clear()
+    try:
+        assert [r.nature for r in cov.coverage()] == ["synthetic"]
+        assert cov.summary()["counts"] == {"real": 0, "synthetic": 1, "total": 1}
+    finally:
+        cov.coverage.cache_clear()
+
+
+def test_自称real但PDF指纹不合格的也按合成算(tmp_path, monkeypatch):
+    """光写一句 `kind: real` 不够 —— 得给得出那份年报 PDF 的 SHA-256。
+
+    指纹是这条证据链里**唯一能脱离本仓库独立验证**的锚点：
+    去巨潮下同一份年报算一遍，对得上才说明读的是同一份文件。
+    """
+    d = _dir_with(
+        tmp_path, "extracted", 'meta:\n  fixture_id: 半真\n  kind: real\n  source_pdf_sha256: "太短"\n' + ROW
+    )
+    monkeypatch.setattr(cov, "SOURCE_DIRS", (("real", d),), raising=True)
+    cov.coverage.cache_clear()
+    try:
+        assert [r.nature for r in cov.coverage()] == ["synthetic"]
+    finally:
+        cov.coverage.cache_clear()
+
+
+def test_一份文件判成合成不会连累后面的文件(tmp_path, monkeypatch):
+    """**红的时候是什么样**：判定写成了覆盖循环变量，
+    第一份文件是合成的，后面所有真实数据就都被标成合成 —— 悄无声息地少报覆盖面。
+    """
+    d = tmp_path / "extracted"
+    d.mkdir()
+    (d / "a-合成.yaml").write_text("meta:\n  fixture_id: a\n" + ROW, encoding="utf-8")
+    (d / "b-真实.yaml").write_text(
+        "meta:\n  fixture_id: b\n  kind: real\n  short_name: 某公司\n"
+        '  source_pdf_sha256: "' + "a" * 64 + '"\n'
+        'rows:\n  - stock_code: "900999"\n    fiscal_year: 2024\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cov, "SOURCE_DIRS", (("real", d),), raising=True)
+    cov.coverage.cache_clear()
+    try:
+        assert cov.summary()["counts"] == {"real": 1, "synthetic": 1, "total": 2}
+    finally:
+        cov.coverage.cache_clear()
+
+
+def test_合成夹具的公司简称不显示(tmp_path, monkeypatch):
+    """合成夹具里的「公司名」是虚构的。把它当公司名显示出去，
+    等于请人去搜一家不存在的公司 —— 而页面上它和真实公司长得一模一样。
+    """
+    d = _dir_with(tmp_path, "extracted", "meta:\n  fixture_id: x\n  short_name: 华鑫科技\n" + ROW)
+    monkeypatch.setattr(cov, "SOURCE_DIRS", (("real", d),), raising=True)
+    cov.coverage.cache_clear()
+    try:
+        assert cov.coverage()[0].short_name == ""
+    finally:
+        cov.coverage.cache_clear()

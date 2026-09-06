@@ -51,6 +51,9 @@ class Row:
     fixture_id: str
     stock_code: str
     fiscal_year: int
+    #: 公司简称。**只有真实年报才有** —— 合成夹具的「公司名」是虚构的，
+    #: 把它显示成公司名等于请人去搜一家不存在的公司。默认空串。
+    short_name: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -58,6 +61,7 @@ class Row:
             "fixture_id": self.fixture_id,
             "stock_code": self.stock_code,
             "fiscal_year": self.fiscal_year,
+            "short_name": self.short_name,
         }
 
 
@@ -66,6 +70,12 @@ def _scan(nature: str, directory: Path) -> list:
 
     读不动的文件**跳过并不报错**：覆盖面少列一行是保守方向，
     而抛异常会让整个 `/coverage` 挂掉 —— 那反而让人看不到还剩什么能用。
+
+    🔴 **`nature` 以文件自己的 `meta.kind` 为准，不以它落在哪个目录为准。**
+    传进来的 `nature` 只是这个目录的**声称**。二者不一致时取保守的那个：
+    「合成」。这是 `N-42` 那个形状 —— 一道门扫的集合必须等于它声称在检查的集合；
+    按目录贴标签的话，往 `data/extracted/` 里放一份合成文件就会被标成真实数据，
+    而那正是这个项目最不能犯的错（`D-010`）。
     """
     import yaml
 
@@ -77,13 +87,22 @@ def _scan(nature: str, directory: Path) -> list:
             data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except Exception:
             continue
-        fixture_id = (data.get("meta") or {}).get("fixture_id") or path.stem
+        meta = data.get("meta") or {}
+        fixture_id = meta.get("fixture_id") or path.stem
+        # 自称真实还要给得出 PDF 指纹（64 位十六进制）—— 与 `FixtureSource` 同一条判据。
+        claims_real = meta.get("kind") == "real" and len(str(meta.get("source_pdf_sha256") or "")) == 64
+        # ⚠️ 写成局部变量，**不要覆盖 `nature` 这个参数** ——
+        # 覆盖了的话第一份文件的判定会漏给后面所有文件。
+        this = "real" if (nature == "real" and claims_real) else "synthetic"
+        # 简称只在真实数据上取。合成夹具里的「华鑫科技」是虚构的，
+        # 显示成公司名等于请人去搜一家不存在的公司 —— 而它在页面上和真公司长得一样。
+        name = str(meta.get("short_name") or "") if this == "real" else ""
         for row in data.get("rows") or []:
             code, year = row.get("stock_code"), row.get("fiscal_year")
             if code is None or year is None:
                 continue
             try:
-                out.append(Row(nature, str(fixture_id), str(code), int(year)))
+                out.append(Row(this, str(fixture_id), str(code), int(year), name))
             except (TypeError, ValueError):
                 continue
     return out

@@ -387,6 +387,19 @@ DECIMAL_CONVERSION_SITES = {
         "把**PDF 版面文本**里的金额串转成 Decimal（去掉千分位逗号）。"
         "输入是年报原文，与 AKShare 无关。"
     ),
+    ("agent/answer.py", "_as_number"): (
+        "把**真实年报抽取结果**（`data/extracted/*.yaml`，`kind: real`）里带引号的"
+        "数值串转回 Decimal。输入是 `extractor export` 的产物，源头是年报 PDF，与 AKShare 无关。"
+        "⚠️ 文件里之所以加引号，正是为了**不经过 float** —— "
+        "14 位以上有效数字被 YAML 读成 float 会悄悄变掉。所以这里 str() 拿到的"
+        "本来就是十进制字面量，不存在 repr() 要还原的二进制误差。"
+    ),
+    ("extractor/export.py", "_comparable"): (
+        "只用来**比较**：把「人工核对清单里写的」与「抽取器给的」化到同一种可比形式，"
+        "好让 `48697611501.20` 与 `48697611501.2` 判成同一个数。"
+        "⚠️ 它的返回值**不进任何产物**，只用于相等判定 —— "
+        "两侧输入分别是我们自己写的 YAML 清单与抽取记录，与 AKShare 无关。"
+    ),
 }
 
 

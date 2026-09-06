@@ -26,6 +26,7 @@ from .crosscheck import (
     load_reference_payload,
     references_from_payload,
 )
+from . import export as export_mod
 from .download import UnknownStockCode, fetch_annual_report
 from .formula import compute_metrics
 from .mapping import load_pdf_mapping
@@ -106,6 +107,25 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     x.add_argument("--json", action="store_true", dest="as_json")
+
+    p = sub.add_parser(
+        "export",
+        help="把抽取结果落盘给服务读。**只导出人工核对过的字段**（N-61）",
+    )
+    p.add_argument(
+        "--stock",
+        default=None,
+        help="不给则导出 `data/verified/` 里全部有核对清单的公司-年份",
+    )
+    p.add_argument("--year", default=None, type=int)
+    p.add_argument("--pdf", default=None, help="不给则用清单 `meta.source_pdf` 记的那份")
+    p.add_argument(
+        "--out",
+        default=None,
+        metavar="DIR",
+        help="产物目录，默认 `data/extracted/`",
+    )
+    p.add_argument("--json", action="store_true", dest="as_json")
 
     return parser
 
@@ -377,6 +397,59 @@ def _cmd_crosscheck(args) -> int:
     return 0
 
 
+def _cmd_export(args) -> int:
+    """把抽取结果落盘给服务读（`N-61`）。
+
+    **退出码沿用本模块的约定，但这里 `2` 的含义要说清**：导出被拒不是「拒答」。
+    `ExportRejected` 全是「清单与抽取器对不上」这一类 —— 那是**配置/回归缺陷**
+    （`D-022` 决策二的那一档），不是「系统正确地答不出来」。⇒ 归 `2`，不归 `3`。
+    """
+    pairs = (
+        [(args.stock, args.year)]
+        if args.stock is not None and args.year is not None
+        else export_mod.verified_pairs()
+    )
+    if not pairs:
+        print("`data/verified/` 里一份核对清单都没有 —— 没有可导出的公司。", file=sys.stderr)
+        return 2
+
+    written = []
+    for code, year in pairs:
+        try:
+            payload = export_mod.export_one(code, year, pdf_path=args.pdf)
+        except export_mod.ExportRejected as exc:
+            print(f"拒绝导出 {code}/{year}：{exc}", file=sys.stderr)
+            return 2
+        path = export_mod.write_export(payload, out_dir=args.out)
+        written.append((code, year, path, payload))
+
+    if args.as_json:
+        print(
+            json.dumps(
+                [
+                    {
+                        "stock_code": c,
+                        "fiscal_year": y,
+                        "path": str(p),
+                        "fields": len(d["row"]) - 2,
+                        "dropped": d["dropped"],
+                    }
+                    for c, y, p, d in written
+                ],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        for c, y, p, d in written:
+            n = len(d["row"]) - 2
+            print(f"{c}/{y} → {p}（{n} 个字段）")
+            # **丢了哪些必须打出来。** 不打，「产品答不了这道题」就成了一件没人知道的事。
+            if d["dropped"]:
+                print("  未核对因而未导出：" + "、".join(d["dropped"]))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "fetch":
@@ -387,6 +460,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_compute(args)
     if args.command == "crosscheck":
         return _cmd_crosscheck(args)
+    if args.command == "export":
+        return _cmd_export(args)
     raise AssertionError(f"未接线的子命令：{args.command!r}")
 
 
