@@ -490,7 +490,12 @@ def _summarize(
             "拒答准确率": c2_gate["accuracy"],
             "答案正确率": _rate(*_value_hits(results)),
             "证据链完整率": _evidence_metric(evidence_gap_by_case, evidence_notes),
-            "复核一致率": "N/A（H2 复核实验在 02-03）",
+            # ⚠️ 这一格**不由本运行器产出**，也不许在这里硬写一个数 ——
+            #    H2 是人做的实验，数在 `docs/agent/VERIFICATION.md` §F，
+            #    由 `python -m eval.h2 --sheet …` 算出。
+            #    （2026-09-06 之前这里写的是「H2 复核实验在 02-03」，
+            #      而那时 02-03 已经做完且判定**不成立** —— 一个会过期的字符串。）
+            "复核一致率": "不由本运行器产出：见 VERIFICATION.md §F（`python -m eval.h2 --sheet …`）",
             "引用可定位率": "N/A（准则检索是 Phase 3 的 L2）",
             "归因覆盖率": _rate(*_attribution_hits(scored)),
         },

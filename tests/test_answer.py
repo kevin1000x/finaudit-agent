@@ -14,6 +14,8 @@ import yaml
 
 from agent.answer import (
     REQUIRED_ANSWER_EVIDENCE,
+    _formula_field_refs,
+    _walk_tree,
     Answer,
     FixtureSource,
     answer_question,
@@ -429,3 +431,148 @@ def test_换一行取数时夹具文件不会被重新读一遍(source, monkeypa
     assert row.found
     assert len(reads) == before, f"at() 又读了 {len(reads) - before} 次文件"
     assert row.sha256 == source.sha256
+
+
+# ── `D-038`：H2 第一轮量出来的三个证据缺口 ──────────────────────────────
+
+
+def test_G1_算出来的数必须给出它的输入(registry, source):
+    """🔴 H2 第一轮**全部 5 道计算题**判「无法判断」，理由逐字是：
+
+    「有定义、有公式、有最终数字，但没有实际参与计算的原始字段值……
+      执行哈希能标识一次执行，不能代替计算输入。」
+
+    而那份数据**当时就在代码里** —— `answer_question` 把 `inputs` 喂进了
+    `execution_hash`，从未渲染。**「算进哈希」与「给人看」是两件事。**
+
+    它会红的场景：有人把这一节从 `render_answer` 拿掉，或不再填 `Answer.inputs`。
+    """
+    a = answer_question("华鑫科技（900001）2023 年的期间费用率是多少？", registry, source=source)
+    assert not a.refused
+    defn = registry.definitions["period_expense_ratio"]
+
+    公式字段 = set(_formula_field_refs(defn))
+    assert 公式字段, "这份定义的公式没有字段引用，本测试在空转"
+    assert set(a.inputs) == 公式字段, "输入集合与公式引用的字段对不上"
+
+    page = render_answer(a, defn, None)
+    assert "这个数是拿哪几个数算出来的" in page
+    # ⚠️ 夹具对象本身是**未定位**的（`source.row` 是空的）——
+    #    `answer_question` 内部走 `source.at(主体, 期间)` 才拿到那一行。
+    #    直接读 `source.row` 会得到一片 `None`，那是在验一个不存在的东西。
+    row = source.at("900001", 2023).row
+    for path in 公式字段:
+        raw = row.get(path)
+        assert raw is not None, f"夹具里没有 {path}，本条在空转"
+        assert str(raw) in page, f"{path} 的取值 {raw} 没出现在页面上"
+
+
+def test_G1_复核者能拿页面上的数重算一遍(registry, source):
+    """判据不是「有没有这一节」，是「拿它能不能把答案重算出来」。
+
+    期间费用率 =（销售 + 管理 + 财务）/ 营业收入。这条把它当场算一遍。
+    """
+    from decimal import Decimal
+
+    a = answer_question("华鑫科技（900001）2023 年的期间费用率是多少？", registry, source=source)
+    vals = {k: Decimal(str(v)) for k, v in a.inputs.items() if str(v).replace(".", "").isdigit()}
+    assert len(vals) == 4, f"四个输入没都拿到数：{a.inputs}"
+    分子 = sum(v for k, v in vals.items() if "revenue" not in k)
+    分母 = next(v for k, v in vals.items() if "revenue" in k)
+    assert 分子 / 分母 == a.value, "页面上给的输入算不出页面上给的答案"
+
+
+def test_G2_拒答条件成立时给出那一条引用的字段取值(registry, source):
+    """🔴 H2-06 / H2-12：「只知道系统触发了拒答条件，不能确认它触发得对」。
+
+    它会红的场景：有人不再填 `inputs`，或改成拿 `detail` 的措辞去反查是哪一条
+    （`condition_index` 才是判据 —— 措辞会变，序号不会）。
+    """
+    a = answer_question("新元（900004）2023 年的营业收入同比增长率是多少？", registry, source=source)
+    assert a.refused
+    assert a.refusal["code"] == "UNDEFINED_CONDITION_HIT"
+    assert a.inputs, "触发了拒答条件，却没给出那一条引用的字段取值"
+
+    defn = registry.definitions[a.metric_id]
+    idx = a.refusal.get("condition_index")
+    assert idx is not None, "拒答没记是第几条 —— 那就无从知道该摆哪些字段"
+    from semantic_layer import dsl
+
+    expr = defn.undefined_conditions[idx].expr
+    引用的 = {n.path for n in _walk_tree(dsl.parse_condition(expr).tree)
+              if isinstance(n, dsl.FieldRef)}
+    assert set(a.inputs) == 引用的, "摆出来的字段不是触发那一条引用的那些"
+
+    page = render_answer(a, defn, None)
+    assert "凭什么说满足了这一条" in page
+
+
+def test_G2_缺失与零必须在页面上分得开():
+    """「行不存在」「格子是空的」「就是 0」在这里会被读成同一件事，
+    而它们在财务上完全不同 —— `A-2` 当年就是栽在这个区分上。
+    """
+    from agent.answer import _shown
+
+    assert _shown(None) != _shown(0)
+    assert "缺失" in _shown(None)
+    assert _shown(0) == "0"
+    assert _shown("") == "（空值）"
+    assert _shown(False) == "否" and _shown(True) == "是"
+
+
+def test_G3_说没有这个指标时必须给出当时的指标清单(registry, source):
+    """🔴 H2 第一轮 **6 道**题判「无法判断」：
+
+    「系统称某指标没定义，但页面没给当时语义层的指标·别名清单或可验证快照，
+      因此无法独立证明 `METRIC_NOT_DEFINED` 是正确判定。」
+    """
+    a = answer_question("新元（900004）2023 年的净资产收益率是多少？", registry, source=source)
+    assert a.refused and a.refusal["code"] == "METRIC_NOT_DEFINED"
+    snap = a.registry_snapshot
+    assert snap, "说了「没有这个指标」，却拿不出当时的清单"
+    assert snap["metric_count"] == len(registry.definitions)
+    assert set(snap["names"]) == {str(x) for x in registry.by_alias}
+
+    page = render_answer(a, None, None)
+    assert "我们当时有哪些指标" in page
+    # 题面问的那个词**确实不在表里**，而它的近邻在 —— 两件事都要能在页面上核到
+    assert "净资产收益率" not in snap["names"]
+    assert "加权平均净资产收益率" in snap["names"]
+    assert "加权平均净资产收益率" in page
+
+
+def test_G3_快照的指纹跟着名字表走(registry):
+    """指纹证明的是「这一页列出的就是当时那份表」。它跟着表变，否则就是个装饰。"""
+    from agent.answer import registry_snapshot
+
+    a = registry_snapshot(registry)
+    b = registry_snapshot(registry)
+    assert a["sha256"] == b["sha256"], "同一份注册表两次快照指纹不同"
+
+    class 假注册表:
+        definitions = dict(registry.definitions)
+        by_alias = dict(registry.by_alias, 新加的一个别名="gross_profit_margin")
+
+    assert registry_snapshot(假注册表())["sha256"] != a["sha256"], "表变了指纹没变"
+
+
+def test_G3_题面缺主体时不摆指标清单(registry, source):
+    """**证据要相关，不是要多。**
+
+    `INTENT_INCOMPLETE`（缺主体 / 缺期间）与「有哪些指标」无关，
+    摆 94 行清单只会让复核者在 5 分钟里翻一页跟结论无关的东西。
+    `AC-05` 的已知盲区正是「抓不到证据不相关」—— 这条替它守一小块。
+    """
+    a = answer_question("华鑫科技 2023 年的毛利率是多少？", registry, source=source)
+    assert a.refused and a.refusal["code"] == "INTENT_INCOMPLETE"
+    assert a.registry_snapshot is None
+    assert "我们当时有哪些指标" not in render_answer(a, None, None)
+
+
+def test_没有输入时不留一个空标题(registry, source):
+    """空标题比没有标题更糟：读者以为这里本该有东西，然后去找为什么没有。"""
+    a = answer_question("新元（900004）2023 年的净资产收益率是多少？", registry, source=source)
+    assert a.inputs == {}
+    page = render_answer(a, None, None)
+    assert "这个数是拿哪几个数算出来的" not in page
+    assert "凭什么说满足了这一条" not in page

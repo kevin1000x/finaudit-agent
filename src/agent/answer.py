@@ -225,7 +225,21 @@ def evidence_gaps(payload: dict, keys: tuple = REQUIRED_ANSWER_EVIDENCE) -> list
 
 @dataclass(frozen=True)
 class Answer:
-    """一次问答的完整产物。**拒答与作答是同一套字段。**"""
+    """一次问答的完整产物。**拒答与作答是同一套字段。**
+
+    ## `inputs` 与 `registry_snapshot` 是 `D-038` 加的，不是装饰
+
+    2026-09-06 的 H2 第一轮判定**不成立**：一致率 13.3%、无法判断 86.7%、判「对」0 题。
+    13 道「无法判断」的理由全部同形 —— **页面说了系统做了什么，没说它拿什么做的**。
+    复核者的原话把判据说死了：**「执行哈希能标识一次执行，不能代替计算输入。」**
+
+    - `inputs`：这次执行**真正读到的字段取值**。算数时是公式的输入（`G1`）；
+      因为某条拒答条件成立而拒答时，是**那一条**引用的字段的取值（`G2`）。
+      ⚠️ `G1` 的数据此前**早就算出来了** —— `execution_hash` 里就有 ——
+      但只进了哈希、从未渲染。**「算进哈希」与「给人看」是两件事。**
+    - `registry_snapshot`：说「没有这个指标」时，当时语义层里到底有哪些
+      指标与别名（`G3`）。没有它，`METRIC_NOT_DEFINED` 是一句不可证伪的断言。
+    """
 
     question: str
     question_sha256: str
@@ -239,6 +253,10 @@ class Answer:
     deferred_flags: list = field(default_factory=list)
     evidence: dict = field(default_factory=dict)
     gate: str = "not_reached"
+    #: `D-038 G1` / `G2`：字段路径 → 这次真正读到的取值（字符串化，`None` 表示缺失）
+    inputs: dict = field(default_factory=dict)
+    #: `D-038 G3`：`{"metric_count", "names", "sha256"}`，只在「说没有这个指标」时带
+    registry_snapshot: Any = None
 
     @property
     def refused(self) -> bool:
@@ -259,10 +277,80 @@ class Answer:
             "deferred_flags": list(self.deferred_flags),
             "evidence": dict(self.evidence),
             "gate": self.gate,
+            "inputs": dict(self.inputs),
+            "registry_snapshot": (
+                dict(self.registry_snapshot) if self.registry_snapshot else None
+            ),
         }
 
 
-def _refused(intent_or_q, digest, refusal, evidence: dict, gate: str) -> Answer:
+def registry_snapshot(registry: Registry) -> dict:
+    """当时语义层里有哪些指标与别名（`D-038 G3`）。
+
+    没有它，`METRIC_NOT_DEFINED` 是一句**不可证伪**的断言 ——
+    H2 第一轮 15 题里有 6 题栽在这上面（复核者：「无法独立证明它是正确判定」）。
+
+    `sha256` 哈希的是那份**排好序的名字表**，所以两次快照能直接比对；
+    它证明的是「这一页列出的就是当时那份表」，**不**证明那份表是对的。
+    """
+    names = sorted(str(a) for a in registry.by_alias)
+    return {
+        "metric_count": len(registry.definitions),
+        "names": names,
+        "sha256": _sha256_text(json.dumps(names, ensure_ascii=False)),
+    }
+
+
+def _condition_inputs(defn: MetricDefinition, refusal, row: dict) -> dict:
+    """触发了拒答的**那一条**条件引用了哪些字段、它们当时是什么值（`D-038 G2`）。
+
+    判据是 `Refusal.condition_index` —— 定义作者写的第几条，`evaluate_refusal`
+    逐条按序求值时记下来的，**不靠拿 `detail` 的措辞去反查**。
+
+    拿不到条件（`condition_index` 为空，或越界）就返回空 ——
+    **不猜是哪一条**：猜错会让读者去核一条根本没触发的条件。
+    """
+    index = getattr(refusal, "condition_index", None)
+    if index is None or not (0 <= index < len(defn.undefined_conditions)):
+        return {}
+    expr = defn.undefined_conditions[index].expr
+    if not expr:
+        return {}
+    try:
+        tree = dsl.parse_condition(expr).tree
+    except Exception:
+        return {}
+    paths = sorted({n.path for n in _walk_tree(tree) if isinstance(n, dsl.FieldRef)})
+    return {p: _shown(row.get(p)) for p in paths}
+
+
+def _walk_tree(node):
+    """遍历 dsl 树。与 `gate._walk` 同形，但这里只用来找 `FieldRef`，不做检查。"""
+    yield node
+    for attr in ("operand", "left", "right"):
+        child = getattr(node, attr, None)
+        if child is not None and not isinstance(child, (str, int, float, bool)):
+            yield from _walk_tree(child)
+
+
+def _shown(value) -> str:
+    """把一个取值渲染成**复核者能对着年报核**的样子。
+
+    🔴 三种「没有」必须分开写死，不许都显示成空白：
+    `None`（这一行根本没取到）/ `0`（取到了，就是零）/ 空串。
+    H2 第一轮 H2-06 与 H2-12 栽的正是这里 ——
+    「只知道它触发了，不知道触发得对」。
+    """
+    if value is None:
+        return "（缺失：数据源里没有这一行）"
+    if isinstance(value, bool):
+        return "是" if value else "否"
+    text = str(value)
+    return text if text.strip() else "（空值）"
+
+
+def _refused(intent_or_q, digest, refusal, evidence: dict, gate: str,
+             inputs=None, snapshot=None) -> Answer:
     """拒答也留**同一套**字段。少记字段是最容易犯的，而拒答最需要能复核。
 
     ⚠️ **拒答也有 `execution_hash`。** 拒答是**正常业务结果**不是降级（`D-003`），
@@ -294,6 +382,8 @@ def _refused(intent_or_q, digest, refusal, evidence: dict, gate: str) -> Answer:
         refusal=refusal.to_dict(),
         evidence=evidence,
         gate=gate,
+        inputs=dict(inputs or {}),
+        registry_snapshot=snapshot,
     )
 
 
@@ -328,7 +418,19 @@ def answer_question(
 
     intent = parse_intent(question, registry, ask_model=ask_model)
     if isinstance(intent, Refusal):
-        return _refused(question, digest, intent, dict(base), "not_reached")
+        # `D-038 G3`：说「**没有这个指标**」的时候，必须一并交出当时那份指标清单 ——
+        # 否则这是一句不可证伪的断言。H2 第一轮 6 道题栽在这里（`VERIFICATION.md` §F）。
+        #
+        # ⚠️ **只挂在 `METRIC_NOT_DEFINED` 上，不挂在 `INTENT_INCOMPLETE` 上。**
+        #    后者说的是「题面缺主体/期间」，那时 94 行指标清单与结论无关，
+        #    摆出来只会让复核者在 5 分钟里翻一页跟他要判的事没关系的东西。
+        #    **证据要相关，不是要多**（`AC-05` 的已知盲区正是「抓不到证据不相关」）。
+        snapshot = (
+            registry_snapshot(registry)
+            if intent.code is RefusalCode.METRIC_NOT_DEFINED
+            else None
+        )
+        return _refused(question, digest, intent, dict(base), "not_reached", snapshot=snapshot)
 
     # 意图解析成功之后才知道取哪一行。**夹具文件只读一次**（`source.at`），
     # 所以在此之前 `data_source` 已经能说清「是哪一份夹具」—— 不留空。
@@ -389,7 +491,13 @@ def answer_question(
     # ── 口径层：这份定义自己声明的拒答条件 ────────────────────────
     hit = evaluate_refusal(defn, source.row)
     if isinstance(hit, Refusal):
-        return _refused(intent, digest, hit, dict(base), "passed")
+        # `D-038 G2`：把**触发了的那一条**引用的字段连同取值一起交出去。
+        # 只报「触发了」而不报「凭什么触发」，复核者只能确认它触发过，
+        # 确认不了它**触发得对** —— H2 第一轮 H2-06 / H2-12 就是这么卡住的。
+        return _refused(
+            intent, digest, hit, dict(base), "passed",
+            inputs=_condition_inputs(defn, hit, source.row),
+        )
 
     # ── 计算：唯一入口，无条件先过闸门 ────────────────────────────
     tree = parse_formula(str(defn.formula))
@@ -402,6 +510,13 @@ def answer_question(
     flags = active_flags(defn, source.row)
     if isinstance(flags, Refusal):
         return _refused(intent, digest, flags, dict(base), "passed")
+
+    # `D-038 G1`：公式真正读到的那几个数。
+    # 🔴 **这份东西此前就在这里**，但只被喂进了下面那个哈希，从未渲染出来。
+    #    H2 第一轮 5 道计算题**全部**判「无法判断」，理由逐字是：
+    #    「执行哈希能标识一次执行，不能代替计算输入」。
+    #    ⇒ 现在它是 `Answer` 的字段，`render_answer` 会把它印在正文里。
+    inputs = {p: _shown(source.row.get(p)) for p in sorted(_formula_field_refs(defn))}
 
     evidence = dict(base)
     evidence["execution_hash"] = _sha256_text(
@@ -429,6 +544,7 @@ def answer_question(
         deferred_flags=sorted(comparison_scoped_flags(defn)),
         evidence=evidence,
         gate="passed",
+        inputs=inputs,
     )
 
 
@@ -452,6 +568,29 @@ _A_ANSWER = "答案"
 _A_REFUSED = "为什么不给答案"
 _A_WHERE = "这个数是从哪儿来的"
 _A_BASIS = "用的是哪个口径"
+#: `D-038 G1` —— 算数时读到的那几个数
+_A_INPUTS = "这个数是拿哪几个数算出来的"
+#: `D-038 G2` —— 拒答条件成立时，凭什么说它成立
+_A_WHY_HIT = "凭什么说满足了这一条"
+#: `D-038 G3` —— 说「没有这个指标」时，当时有哪些
+_A_REGISTRY = "我们当时有哪些指标"
+
+
+def _input_lines(defn, inputs: dict) -> list:
+    """`字段 → 取值` 渲染成给财务读者看的一行行。
+
+    中文名来自 `source_fields[].line_item`（定义自己写的），
+    **换不动就原样留着 id，不编** —— 与 `explain._prose` 同一条规矩。
+    """
+    names = {}
+    for sf in getattr(defn, "source_fields", []) or []:
+        if sf.id and sf.line_item:
+            names[sf.id] = str(sf.line_item).split("——")[0].split("(")[0].strip()
+    out: list = []
+    for path in sorted(inputs):
+        label = names.get(path, path)
+        out.extend(wrap("· " + label + "　" + str(inputs[path]), indent="    "))
+    return out
 
 
 def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = None) -> str:
@@ -465,10 +604,22 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
         L.append(_A_REFUSED)
         L.extend(wrap("· " + str(answer.refusal.get("detail") or "（没有给出理由）")))
         L.append("")
+        # `D-038 G2`：拒答条件成立时，把那一条引用的字段连同取值摆出来。
+        # 只说「触发了」，读者确认不了「触发得对」。
+        if answer.inputs:
+            L.append(_A_WHY_HIT)
+            L.extend(_input_lines(defn, answer.inputs))
+            L.append("")
     else:
         L.append(_A_ANSWER)
         L.extend(wrap(str(answer.value)))
         L.append("")
+        # `D-038 G1`：算出来的数必须能被人拿这几个输入重算一遍。
+        # 🔴 这一节是 H2 第一轮 5 道计算题全判「无法判断」直接换来的。
+        if answer.inputs:
+            L.append(_A_INPUTS)
+            L.extend(_input_lines(defn, answer.inputs))
+            L.append("")
 
     # 可比性标记：`D-031` —— 一个没人看得见的标记等于没有标记
     if answer.flags or answer.deferred_flags:
@@ -503,9 +654,44 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
         #    关掉它自带的附录 —— 附录只能有一个，在最末尾。
         L.append(render_explanation(defn, flag_descriptions, with_appendix=False))
 
+    # `D-038 G3`：说「没有这个指标」时，把当时那份清单摆出来。
+    # 不摆，`METRIC_NOT_DEFINED` 就是一句不可证伪的断言。
+    snap = answer.registry_snapshot
+    if snap:
+        names = [str(n) for n in (snap.get("names") or [])]
+        # 正文只列**中文叫法** —— 复核者要核的是「我说的那个词在不在里面」，
+        # 而他脑子里那个词是中文。英文标识符是同一批东西的另一种写法，
+        # 放附录（`D-032`：中文在正文，标识符在附录）。
+        cjk = [n for n in names if any(ord(c) > 0x2E80 for c in n)]
+        L.append(_A_REGISTRY)
+        L.extend(
+            wrap(
+                "· 当时语义层里有 " + str(snap.get("metric_count")) + " 个指标定义，"
+                "连同别名共 " + str(len(names)) + " 个可用的叫法，其中中文说法 "
+                + str(len(cjk)) + " 个，全列在下面 ——"
+                "可以直接核「你问的那个到底在不在里面」。"
+                "英文标识符那一份在末尾附录。",
+                indent="    ",
+            )
+        )
+        for name in cjk:
+            L.extend(wrap("· " + name, indent="      "))
+        L.append("")
+
     blocks: list = []
     if defn is not None:
         blocks.extend(appendix_blocks(defn, flag_descriptions))
+    if answer.inputs:
+        # 正文给的是中文行项目名，附录给字段标识符 —— 同一条 `D-032` 规矩。
+        blocks.append(
+            ("这次读到的字段取值", [(k, str(v)) for k, v in sorted(answer.inputs.items())])
+        )
+    if snap:
+        # 附录给**完整**清单（含英文标识符）与它的指纹 ——
+        # 正文那份只列了中文，附录这份才是「可以逐条对」的那份。
+        pairs = [("这份清单的指纹", str(snap.get("sha256")))]
+        pairs += [("可用的叫法", str(n)) for n in (snap.get("names") or [])]
+        blocks.append(("指标清单快照", pairs))
     blocks.append(("这次执行", _execution_pairs(answer)))
     L.extend(render_appendix(blocks))
     return "\n".join(L)
