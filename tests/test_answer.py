@@ -643,3 +643,25 @@ def test_合成夹具的取值一个字节都没被改动(tmp_path):
     assert s.row["bs.total_assets"] == 8000000000
     assert isinstance(s.row["bs.total_assets"], int)
     assert s.batch_id.startswith("fixture:synthetic-x@")
+
+
+def test_真实年报文件里没有这一行时不许报出它的公司名与指纹(tmp_path):
+    """与 `test_service.py` 那条同一个缺陷的**另一道防线**。
+
+    `_Sources` 那一层已经不会退回「第一份」了；这一条守的是
+    `FixtureSource` 自己 —— 只有一份真实数据源时，同样不许把
+    「这份文件是谁」与「提问问的是谁」拼成一条出处。
+    """
+    from agent.answer import FixtureSource
+
+    p = tmp_path / "s.yaml"
+    p.write_text(
+        "meta:\n" + REAL_META + 'rows:\n  - stock_code: "600519"\n    fiscal_year: 2023\n'
+        '    bs.total_assets: "1"\n',
+        encoding="utf-8",
+    )
+    miss = FixtureSource(p).at("000651", 2023)
+    assert miss.found is False
+    assert "贵州茅台" not in miss.batch_id
+    assert "a" * 16 not in miss.batch_id, "别家年报的 PDF 指纹不许出现"
+    assert "没有 000651/2023 这一行" in miss.batch_id

@@ -59,6 +59,33 @@ def _source(path_str: str):
     return FixtureSource(Path(path_str))
 
 
+class _NoRow:
+    """「哪一份都没有这一行」时的取数位。
+
+    它存在的唯一理由是**别去冒充一份真实年报**。上游拿到它会正常走到
+    `UNAVAILABLE` 拒答（`D-003`：拒答是正确输出），而证据页上的出处一栏
+    说的是「查过这几份，都没有这一行」—— 一句能被核对的实话。
+    """
+
+    def __init__(self, sources, stock_code, fiscal_year):
+        self._sources = sources
+        self.stock_code = None if stock_code is None else str(stock_code)
+        self.fiscal_year = fiscal_year
+        self.row: dict = {}
+        self.found = False
+
+    @property
+    def batch_id(self) -> str:
+        names = "、".join(s.fixture_id for s in self._sources) or "（一份都没有）"
+        return (
+            "查过的数据源：" + names
+            + "；都没有 " + str(self.stock_code) + "/" + str(self.fiscal_year) + " 这一行"
+        )
+
+    def by_field(self, path):  # pragma: no cover - 没有行就不会取到字段
+        return None
+
+
 class _Sources:
     """把若干份数据源接成 `answer_question` 认得的那一个。
 
@@ -86,14 +113,21 @@ class _Sources:
         return "sources:" + "+".join(s.batch_id for s in self._sources)
 
     def at(self, stock_code, fiscal_year):
-        """哪一份有这一行就用哪一份。**都没有就返回第一份的空位**——
-        那样上游拿到的是一个正常的 `UNAVAILABLE` 拒答，而不是 `None` 引发的异常。
+        """哪一份有这一行就用哪一份。
+
+        🔴 **都没有的时候不许退回「第一份」。** 那份文件是某一家真实公司的年报，
+        退回它意味着证据页会印出**那家公司的名字与它的 PDF 指纹**，
+        而提问问的是另一家 —— 拼出来就是一条伪造的出处。
+        2026-09-06 浏览器实跑撞到过：问 000651，页面答「万华化学 000651 ·
+        2023 年年度报告（年报 PDF SHA-256 87411c60…）」。
+
+        ⇒ 都没有就返回一个**说清「查了哪几份、都没有」**的空位。
         """
         for s in self._sources:
             got = s.at(stock_code, fiscal_year)
             if got.found:
                 return got
-        return self._sources[0].at(stock_code, fiscal_year)
+        return _NoRow(self._sources, stock_code, fiscal_year)
 
     def by_field(self, path):  # pragma: no cover - 未定位时不会被取数
         return None

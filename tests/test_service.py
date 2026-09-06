@@ -374,3 +374,49 @@ def test_合成夹具的公司简称不显示(tmp_path, monkeypatch):
         assert cov.coverage()[0].short_name == ""
     finally:
         cov.coverage.cache_clear()
+
+
+# ── 给人看的字符串里不许有 Markdown（浏览器实跑撞出来的） ──────────────────
+
+
+def test_端点返回的文案里不许出现Markdown强调号():
+    """**红的时候是什么样**：证据页是纯文本、网页把它当纯文本渲染，
+    于是 `**我们没有**` 连着星号一起印在用户眼前。
+
+    2026-09-06 在浏览器里第一次看真实答案时撞到的：那句
+    「只导出了**人工逐字段核对过**的字段」在页面上带着四个星号。
+    源头是写的人（我）默认这段文字会被 Markdown 渲染 —— 它不会。
+    """
+    import re
+
+    bad = []
+    for text in (
+        cov.summary()["notice"],
+        cov.why_not("000001", 2023),
+        cov.why_not("900001", 1999),
+    ):
+        if re.search(r"\*\*", text):
+            bad.append(text)
+    _, body = answer_endpoint({"question": "600519 2023 年的资产负债率是多少"})
+    if "**" in body["page"]:
+        bad.append("render_answer 的正文")
+    assert bad == [], f"这些给人看的文案里带着 Markdown 强调号：{bad}"
+
+
+def test_没有这家公司时不许报出别家公司的年报出处():
+    """🔴 **红的时候是什么样**：问「000651 2023 年的资产负债率」，证据页答
+    「万华化学 000651 · 2023 年年度报告（年报 PDF SHA-256 87411c60…）」——
+    公司名与指纹来自数据源文件，代码与年份来自提问，拼成一条**伪造的出处**。
+
+    2026-09-06 在浏览器里实跑撞到的。它比答错一个数严重得多：
+    这条产品线卖的就是「出处可独立核验」，而这里的出处是编的。
+    """
+    _, body = answer_endpoint({"question": "000651 2023 年的资产负债率是多少"})
+    page, src = body["page"], body["answer"]["evidence"]["data_source"]
+    assert body["answer"]["refusal"]["code"] == "UNAVAILABLE"
+    # 别家公司的名字、别家年报的指纹，一个都不许出现
+    for leaked in ("万华化学", "贵州茅台", "87411c60", "2125ff97"):
+        assert leaked not in page, f"证据页泄漏了别家公司的出处：{leaked}"
+        assert leaked not in str(src), f"data_source 泄漏了别家公司的出处：{leaked}"
+    # 而且要说清「查了哪几份、都没有」，不是空着
+    assert "都没有" in str(src)

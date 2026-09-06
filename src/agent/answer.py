@@ -187,6 +187,24 @@ class FixtureSource:
         那是这条证据链里唯一一处能脱离本仓库独立验证的锚点。
         """
         if self.is_real:
+            # 🔴 **这一行没取到时，绝不能报出这份文件的公司名与 PDF 指纹。**
+            #
+            # 2026-09-06 浏览器实跑撞到的真事：问「000651 2023 年的资产负债率」，
+            # 证据页印出「万华化学 000651 · 2023 年年度报告（年报 PDF SHA-256
+            # 87411c60…）」—— 公司名和指纹来自**这份文件**，代码与年份来自**提问**，
+            # 拼在一起成了一条**伪造的出处**：我们没有这家公司，页面却给了它一份年报。
+            #
+            # 这比答错一个数严重得多 —— 它把「可独立核验的锚点」这个卖点变成了假的。
+            if self.stock_code is not None and not self.found:
+                return (
+                    "annual-report:"
+                    + self.fixture_id
+                    + " 里没有 "
+                    + self.stock_code
+                    + "/"
+                    + str(self.fiscal_year)
+                    + " 这一行"
+                )
             # 人读的那一半写在前面：**复核者要先知道这是哪一家哪一年的年报**，
             # 再看指纹。倒过来的话前 40 个字全是十六进制。
             if self.stock_code is None:
@@ -707,7 +725,7 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
         L.extend(wrap("· " + str(src)[len("annual-report:"):]))
         L.extend(
             wrap(
-                "· ⚠️ 只导出了**人工逐字段核对过**的字段；没核对过的字段不在这份数据里，"
+                "· ⚠️ 只导出了「人工逐字段核对过」的字段；没核对过的字段不在这份数据里，"
                 "问到它们会得到「没有这个数」而不是一个数"
             )
         )
