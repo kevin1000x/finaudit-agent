@@ -15,7 +15,7 @@
 | D-002 | 语义层先于 Agent | Accepted | Phase 1 |
 | D-003 | 证据链是第一类产物，不是日志 | Accepted | 整个项目 |
 | D-004 | 与 `data secret` 机制复用、资产隔离 | Accepted | 整个项目 |
-| D-005 | 主仓暂不开源；姊妹仓只放语义层与评测集 | Accepted | 至 Phase 4 |
+| D-005 | 主仓暂不开源；姊妹仓只放语义层与评测集 | Accepted（2026-09-07 修订一：演示服务放公开 Space，主仓仍私有） | 至 Phase 4 |
 | D-006 | 界面是交付形式不是卖点（2026-08-15 交付形态改为 Web 为主） | Accepted | Phase 2 |
 | D-007 | 图谱必须由「非图不可的问题」驱动 | Accepted | Phase 3 |
 | D-008 | 投入以 changelog 记录，**不设时间预算上限** | Accepted（2026-08-10 修订） | 整个项目 |
@@ -136,6 +136,55 @@ harness 把审计字段**从「零读者 ⇒ 可删」这条通用清理规则�
   3. 一页脱敏评测报告
 - 同时：**语义层定义文件 + 评测问题集**可在 Phase 1 结束时单独开源为姊妹仓库，两者均不含实现代码与未公开结论。
 - 理由：不开源在审计/金融方向是加分而非减分，但"完全无法展示"是硬伤，必须用替代物补上。
+
+### 修订一（2026-09-07）：**演示服务放进一个公开 Space；主仓不动**
+
+- 状态：Accepted（操作者裁定，2026-09-07：「可以公开，主要安全，不要暴漏 token 或者 key 就行」）
+
+**先更正 `D-040` 修订一里的一句话。** 那里写着「Space 的构建源就是它的仓库内容，
+**建成 public 等于把主仓提前公开**」—— **后半句不成立**。Space 仓库的内容
+等于 `Dockerfile` 的 `COPY` 清单，不等于主仓：
+
+| 会公开（Space 仓库） | 行数 | | 不公开（只在 GitHub 私有主仓） | 行数 |
+|---|---|---|---|---|
+| `src/` | 11904 | | `docs/`（架构 / 台账 / PROGRESS / VERIFICATION） | 15057 |
+| `metrics/` | 2212 | | `tests/` | 15148 |
+| `data/extracted/` | 172 | | `references/`（27 份深读） | 26840 |
+| `eval/frozen-01/fixtures/` | 195 | | `.planning/` + `eval/frozen-01/cases/` + `rules/` + `scripts/` | 14842 |
+| **14483** | | | **71887** | |
+
+⇒ 公开的是**实现**，不公开**过程与结论**。GitHub 主仓 `kevin1000x/finaudit-agent`
+**仍然 private 至 Phase 4**，本条其余部分一个字不动。
+
+**为什么必须选一个。** 实测（2026-09-07，`RGT07` 账号，`isPro=False`）：
+
+| 组合 | 结果 |
+|---|---|
+| private + static Space | 可以建 |
+| private + docker Space | **402 Payment Required**，要 PRO |
+| public + docker Space | 免费（`RGT07/cninfo-financial-analyzer` 正跑着，`cpu-basic`） |
+
+⇒ 「有一个能点开的链接」「不花订阅费」「Space 私有」三者**不能同时成立**。
+本条理由段的原话是「不开源在审计/金融方向是加分而非减分，但**完全无法展示是硬伤**」——
+那句话成立的前提就是有一个能点开的链接；本条给的兜底（60 秒录屏）在求职用途上
+基本等于没有。⇒ 放弃「Space 私有」这一项。
+
+### 🔴 换来的四条硬约束（操作者裁定里「主要安全」那半句的落点）
+
+1. **推之前必跑安全清扫，结果记进 `PROGRESS`。** 七类：密钥形状（`sk-` / `hf_` /
+   `ghp_` / `AKIA` / PEM 头）、本机绝对路径与用户名、邮箱、口令赋值式、
+   非公开域名、数据文件里的 `source_url`、**全文件清单逐个过目**。
+2. **密钥只走 Space secret，永不进仓库**（`FINAUDIT_API_TOKEN`、`FINAUDIT_MODEL_KEY`）。
+   公开 Space 的 secret 不随仓库内容公开，但**仓库里任何一处出现密钥就是永久泄漏**。
+3. 🔴 **上传清单 ≠ `.dockerignore`。** `.dockerignore` 管的是「进不进镜像」，
+   管不到「进不进公开仓库」——**这是两件事**。2026-09-07 首次组装载荷时，
+   `src/finaudit_semantic_layer.egg-info/` 就是这么混进去的：
+   `.dockerignore` 里明明写着 `*.egg-info/`，而 `cp -r` 不读它。
+   ⇒ 上传清单 = `COPY` 清单 + `Dockerfile` + `.dockerignore` + Space `README.md`，
+   **并显式剔除构建残留**（`*.egg-info/`、`__pycache__/`、`*.pyc`）。
+   （这是 `N-42` 那个形态的第四次：**一道闸的作用集，与它自称管住的集合，不是同一个。**）
+4. **不变的**：`data/raw/`（年报 PDF）不上传；`docs/` / `tests/` / `references/` /
+   `.planning/` / `eval/frozen-01/cases/` 不上传；GitHub 主仓保持 private 至 Phase 4。
 - 反转触发条件：Phase 4 完成且已有 offer → 重新评估开源。
 
 ## D-006 — 界面是交付形式不是卖点
@@ -1645,9 +1694,13 @@ wave 2 用三家公司实测（`docs/agent/phase-01.5/PROBE-COMBINATION.md`）�
   免费 Space 闲置休眠、请求唤醒 ⇒ 判据①（没人请求时有没有进程在跑）为「否」，
   `D-021` 豁免三成立，**不需要第四次修订**。
 
-- 🔴 **Space 必须建成 private。** `D-005` 允许的对外展示物是「**可访问的 Web 演示链接**」，
-  不是源码；而 Space 的构建源就是它的仓库内容。**建成 public 等于把主仓提前公开** ——
-  那是一次 `D-005` 修订，不是部署细节。
+- ~~🔴 **Space 必须建成 private。**~~ **本项已被 `D-005` 修订一（2026-09-07）推翻**，
+  连同它的论据。原文说「建成 public 等于把主仓提前公开」，**这句话是错的**：
+  Space 仓库的内容等于 `Dockerfile` 的 `COPY` 清单（14483 行实现），
+  不等于主仓（另有 71887 行的过程与结论不在其中）。
+  而 private + docker 的 Space **要 PRO 订阅**（2026-09-07 实测 402），
+  ⇒ 「有链接 / 不花钱 / Space 私有」三者不能同时成立。操作者裁定：放弃第三项。
+  **改判的是 Space 的可见性，不是主仓的** —— GitHub 主仓仍 private 至 Phase 4。
 
 - **连带的一处设计变更**：private Space 的平台门禁自己吃 `Authorization: Bearer <hf_token>`，
   两个令牌塞不进一个头。⇒ 服务自己的令牌改走 `X-Finaudit-Token`，`Authorization` 留给平台；

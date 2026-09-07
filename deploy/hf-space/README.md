@@ -17,17 +17,24 @@ pinned: false
 
 无状态的请求–响应服务。给一个问题，返回一个数与一条可独立复核的证据链。
 
-## 🔴 这个 Space 必须是 private
+## 这个 Space 是公开的，主仓不是
 
-`D-005`：主仓保持私有到 Phase 4，可对外的是「**可访问的链接**」，不是源码。
-而 Space 的构建源就是它的仓库内容 —— **建成 public 等于把主仓提前公开**。
-那是一次 `D-005` 修订，不是一个部署细节。
+`D-005` 修订一（2026-09-07）：private + docker 的 Space 要 PRO 订阅，
+⇒ 放弃「Space 私有」，换一个能点开的链接。
+
+公开的是**实现**（`src/` + `metrics/` + `data/extracted/` + 合成夹具，共 14483 行）；
+**不公开**过程与结论（`docs/` / `tests/` / `references/` / `.planning/` / 评测题面，
+另有 71887 行），GitHub 主仓 `kevin1000x/finaudit-agent` 仍 private 至 Phase 4。
+
+🔴 **因此这个仓库里出现的任何一个密钥都是永久泄漏。**
+两个令牌一律走 Space secret：`FINAUDIT_API_TOKEN`、`FINAUDIT_MODEL_KEY`。
 
 ## 两个环境变量
 
 | 名字 | 谁用 | 说明 |
 |---|---|---|
 | `FINAUDIT_API_TOKEN` | 本服务 | 调用方要在 `X-Finaudit-Token` 头里出示同一个值 |
+| `FINAUDIT_MODEL_KEY` | 指标名归一 | **可选**。没配就是没模型 —— 认不出的说法照旧拒答，不是报错 |
 | `PORT` | 平台注入 | 不用手配；没有时默认 7860 |
 
 ⚠️ **没设 `FINAUDIT_API_TOKEN` 时服务会拒绝启动**（因为它绑 `0.0.0.0`）。
@@ -35,9 +42,10 @@ pinned: false
 
 ## 令牌为什么不走 `Authorization`
 
-private Space 的平台门禁自己要吃 `Authorization: Bearer <hf_token>`。
-两个令牌塞一个头，只能塞进去一个。⇒ 本服务的令牌走 `X-Finaudit-Token`；
-`Authorization: Bearer` 仍被接受，那是 Space 建成 public 时的兼容路径。
+这个 Space 是 public，平台自己没有门禁，`Authorization` 本可以给本服务用。
+**仍然分成两个头**，因为改回去要动前端的 Pages Function，而那一头正好是
+「哪天 Space 转私有、平台开始吃 `Authorization: Bearer <hf_token>`」时唯一要改的地方。
+⇒ 本服务的令牌走 `X-Finaudit-Token`；`Authorization: Bearer` 也仍被接受。
 
 ## 两个端点
 
@@ -62,4 +70,8 @@ eval/frozen-01/fixtures/  合成夹具（页面上标成合成）
 ```
 
 **`data/raw/`（年报 PDF）不推** —— 几百 MB，而这个服务不解析 PDF。
-`.dockerignore` 挡了一道，这里再说一遍：两处都可能被人改。
+
+🔴 **`.dockerignore` 不是上传清单。** 它管的是「进不进镜像」，管不到「进不进这个
+**公开**仓库」。2026-09-07 组装载荷时 `src/*.egg-info/` 就是这么混进来的 ——
+`.dockerignore` 里明明写着 `*.egg-info/`，而 `cp -r` 不读它。
+⇒ 推之前显式剔除 `*.egg-info/`、`__pycache__/`、`*.pyc`，并把全文件清单过一遍眼。
