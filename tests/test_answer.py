@@ -73,13 +73,22 @@ def test_拒答与作答是同一套字段(registry, source):
     # `to_dict()` 返回字面量字典，键集由 dataclass 写死。
     # 2026-09-04 独立复核指出它是本测试里唯一的实质断言 ⇒ 换成会红的那种。
     assert set(ok.to_dict()) == set(bad.to_dict())
+    # 本测试的名字说的就是这一条：**两条路径上 evidence 的键集必须一样**。
+    # 一条路径悄悄多带/少带一个键，复核者就没法拿同一张表去读两种结果。
+    assert set(ok.to_dict()["evidence"]) == set(bad.to_dict()["evidence"])
     for rec in (ok, bad):
         d = rec.to_dict()
         # ⚠️ `metric_id` / `metric_version` **不在**这张表里：题面里根本没有可认的指标时
         # 它们为空是**事实**，不是缺字段。把它们要求成非空，等于逼实现去编一个。
         for key in ("question", "question_sha256", "gate"):
             assert d[key] not in (None, "", [], {}), f"{key} 在 {'拒答' if rec.refused else '作答'} 路径上是空的"
-        assert set(d["evidence"]) == set(REQUIRED_ANSWER_EVIDENCE)
+        # ⚠️ 这里是**包含**不是相等。`REQUIRED_ANSWER_EVIDENCE` 的定义原文写着「必填键，
+        #    取自 frozen-01 题面自己声明的 `required_evidence`」—— 那是**下限**，不是上限。
+        #    写成相等，等于把证据链的字段集永久钉死在评测夹具需要的那三个上
+        #    （夹具受 `D-012` 冻结，改不了），此后任何证据链增强都会被这一行拦住 ——
+        #    而那与 `D-003`「证据链是第一类产物」正好相反。
+        #    2026-09-07 `N-64` 要把「指标名是查表还是模型给的」带进证据链时撞上这一行。
+        assert set(REQUIRED_ANSWER_EVIDENCE) <= set(d["evidence"])
         # 出处与执行指纹两条**两条路径上都必须有真值**
         assert d["evidence"]["data_source"]
         assert d["evidence"]["execution_hash"]

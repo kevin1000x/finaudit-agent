@@ -36,6 +36,7 @@ from semantic_layer.__main__ import _flag_descriptions  # noqa: E402
 from semantic_layer.resolve import Registry  # noqa: E402
 
 from . import coverage as cov  # noqa: E402
+from . import model  # noqa: E402
 
 __all__ = [
     "MAX_QUESTION_BYTES",
@@ -120,6 +121,22 @@ MAX_QUESTION_BYTES = 2000
 def _registry():
     """口径注册表。**只读，可丢弃** —— 清掉重新从 `metrics/` 加载得到同一份。"""
     return Registry.load(REPO_ROOT / "metrics")
+
+
+@lru_cache(maxsize=1)
+def _provider():
+    """模型配置，没配就是 `None`。**只读一次**，与 `_registry()` 同 —— 换配置要重启。"""
+    return model.provider_from_env()
+
+
+@lru_cache(maxsize=1)
+def _aliases() -> tuple:
+    """给模型看的候选清单。
+
+    🔴 **与 `parse_intent` 用来校验的是同一张表**（都来自 `_registry().by_alias`）。
+    另抄一份给模型看，两份就会分叉，而那时模型会被要求去挑一条不存在的东西。
+    """
+    return tuple(sorted(_registry().by_alias))
 
 
 @lru_cache(maxsize=1)
@@ -236,7 +253,16 @@ def answer_endpoint(payload) -> tuple:
     if len(question.encode("utf-8")) > MAX_QUESTION_BYTES:
         return 400, {"detail": "question 太长（上限 " + str(MAX_QUESTION_BYTES) + " 字节）"}
 
-    answer = answer_question(" ".join(question.split()), _registry(), source=_pick_source())
+    # `N-64`：模型接在这里，而不是接在 `agent/` 里。
+    # `agent/intent.py` 只收一个 `(question) -> str` 的可调用对象，
+    # **它不知道对面是什么**，也不 import 任何客户端 —— 这条边界是架构本身，
+    # 不是风格偏好（`D-001` / `D-003`）。没配模型时 `asker is None`，整条路径离线跑完。
+    provider = _provider()
+    asker = model.Asker(provider, _aliases()) if provider is not None else None
+
+    answer = answer_question(
+        " ".join(question.split()), _registry(), source=_pick_source(), ask_model=asker
+    )
     defn = _registry().definitions.get(answer.metric_id) if answer.metric_id else None
     body = {
         "answer": answer.to_dict(),
@@ -248,6 +274,17 @@ def answer_endpoint(payload) -> tuple:
     refusal = answer.refusal or {}
     if refusal.get("code") == "UNAVAILABLE":
         body["coverage_note"] = cov.why_not(answer.entity, answer.period)
+    # 「配了模型、这次没接通」与「本来就没配模型」会给出**一模一样的拒答**，
+    # 而那两件事对复核者不是一回事 —— 不说，同一个问题两次不同结果就无从解释。
+    #
+    # ⚠️ 它**不进证据页**（`render_answer` 的输出）。证据页讲的是「这次回答的依据」；
+    #    「模型没接通」是服务的运行状况，不是任何口径依据。混进去会让证据页
+    #    开始承载运维信息，而这一页的价值恰恰来自它只讲一件事。
+    if asker is not None and asker.error:
+        body["model_note"] = (
+            "配了指标归一模型，但这次没问上（" + str(asker.error) + "）。"
+            "上面的判断只用了别名表 —— 模型接通时，同一个说法可能能被认出来。"
+        )
     return 200, body
 
 

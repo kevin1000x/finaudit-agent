@@ -495,6 +495,10 @@ def answer_question(
         "data_source": source.batch_id if source else None,
         "metric_definition_version": None,
         "execution_hash": None,
+        # `N-64`：指标名是**查表查到的**还是**模型归一出来的**。
+        # 解析没走到就留 `None` —— 「没走到」与「查表查到的」不是一回事。
+        "metric_resolved_by": None,
+        "matched_alias": None,
     }
 
     intent = parse_intent(question, registry, ask_model=ask_model)
@@ -512,6 +516,12 @@ def answer_question(
             else None
         )
         return _refused(question, digest, intent, dict(base), "not_reached", snapshot=snapshot)
+
+    # `D-003`：「这个指标名是查表查到的还是模型给的」是复核者要问的第一个问题 ——
+    # `Intent` 的抬头原文就是这么写的。这条信息在 `Intent` 里躺了很久没被带进 `Answer`；
+    # `N-64` 把模型接进服务之后，不带出来就等于让**唯一的非确定性组件隐身参与作答**。
+    base["metric_resolved_by"] = intent.resolved_by.get("metric")
+    base["matched_alias"] = intent.matched_alias
 
     # 意图解析成功之后才知道取哪一行。**夹具文件只读一次**（`source.at`），
     # 所以在此之前 `data_source` 已经能说清「是哪一份夹具」—— 不留空。
@@ -655,6 +665,8 @@ _A_INPUTS = "这个数是拿哪几个数算出来的"
 _A_WHY_HIT = "凭什么说满足了这一条"
 #: `D-038 G3` —— 说「没有这个指标」时，当时有哪些
 _A_REGISTRY = "我们当时有哪些指标"
+#: 只在**模型真的介入过**的那一页出现。见 `render_answer` 里那段注释。
+_A_BY_MODEL = "这次的指标名是模型归一出来的"
 
 
 def _input_lines(defn, inputs: dict) -> list:
@@ -701,6 +713,27 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
             L.append(_A_INPUTS)
             L.extend(_input_lines(defn, answer.inputs))
             L.append("")
+
+    # 🔴 模型介入过的那一次，**必须写在正文里**，不能只躺在附录。
+    # 全系统只有 `intent` 一个位置允许 LLM 介入，而它介没介入是这一页里
+    # **唯一的非确定性来源** —— 复核者有权在看见答案的同一屏看见它。
+    if answer.evidence.get("metric_resolved_by") == "model":
+        L.append(_A_BY_MODEL)
+        L.extend(
+            wrap(
+                "· 题面里的说法不在别名表里，是模型把它归到了「"
+                + str(answer.evidence.get("matched_alias"))
+                + "」这一条别名上"
+            )
+        )
+        L.extend(
+            wrap(
+                "· 模型只能从别名表里挑一条现成的，挑不中就拒答 —— "
+                "它没有新造口径，没有判断口径对不对，也没有参与计算"
+            )
+        )
+        L.extend(wrap("· 下面「用的是哪个口径」那一节，就是这条别名指向的定义"))
+        L.append("")
 
     # 可比性标记：`D-031` —— 一个没人看得见的标记等于没有标记
     if answer.flags or answer.deferred_flags:
@@ -797,6 +830,10 @@ def _execution_pairs(answer: Answer) -> list:
         ("数据源", str(ev.get("data_source"))),
         ("口径定义版本", str(ev.get("metric_definition_version"))),
         ("这次执行的指纹", str(ev.get("execution_hash"))),
+        # **每一页都印**，不只印模型介入的那些页 —— 否则「这一页没有这行」
+        # 就成了唯一的信号，而缺一行是最容易被读漏的那种信号。
+        ("指标名怎么定下来的", str(ev.get("metric_resolved_by"))),
+        ("命中的别名", str(ev.get("matched_alias"))),
     ]
     if answer.refused and answer.refusal:
         pairs.append(("拒答理由码", str(answer.refusal.get("code"))))
