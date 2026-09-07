@@ -102,6 +102,60 @@
 
 ## 变更日志
 
+### 2026-09-07（第四十六段）— **合进 cninfo 站点；但基底在我不知情时被换掉了**
+
+模式 `IMPLEMENT`。操作者：「合到 cninfo 那个网站，重新看看」。
+
+## 🔴 差一点用一次过时的合并把别人的重设计冲掉
+
+`git fetch` 之后看到 `origin/main` 从 `5fc2779` 动到了 `f826c26`：
+**整个 UI 被重做了** —— 新增 `DESIGN.md` 作为设计事实源、语义 token
+（`canvas`/`surface`/`fg` 四级/`accent` 墨绿）、Inter + JetBrains Mono、
+动效规范、新的 App 外壳与重做的 JobForm，另有 CI 与 SSE 去重两个提交。
+
+而我第一反应是在**本地那个过时的 main** 上执行了合并 —— 那次合并**没有推**，
+本地 `reset --hard origin/main` 撤掉了。
+
+**教训不是「合并前先 fetch」这句常识**，是更具体的一条：
+`git merge` 报的「Switched to branch 'main'」不会告诉你这个 main 落后多少。
+**推之前看一眼 `git log origin/main..HEAD` 与 `HEAD..origin/main` 两个方向**，
+只看前一个会让「我落后了」这件事完全不可见。
+
+## 不是把旧版合过来，是从新 main 重做
+
+旧版用的是裸 `zinc-*`，在新设计系统里是**不合规**的。按 `DESIGN.md` 重写：
+
+- 语义 token 取代裸色；复用 `ui.tsx` 的 `Button` / `Chip`；焦点走仓库统一的 ring 约定
+  （顺带解决了上一轮我在 outline 颜色上折腾半天的那件事 —— 仓库本来就有一套现成约定）
+- 圆角刻度、间距基数、`120-150ms ease-out-expo`、`active:scale(.97)` 与既有视图一致
+- 证据链正文用他们的 `log-scroll` + `whitespace-pre-wrap`
+- 他们的 `index.css` 已经有 `prefers-reduced-motion` 与 `touch-manipulation`，
+  **不重复造** —— 上一版我自己加过一份
+
+外壳：头部加两个视图的导航（真 `<a href>` + hash，不引路由库）。
+`bootChecked` 改成**只挡批量视图** —— 它等的是「存的 job id 还活着吗」，
+问答页没有东西要恢复，为它把整页留白是外壳引入的回归。
+
+按他们自己的规矩（**改了设计先改 `DESIGN.md`**），把这一页的意图、签名元素、
+三条设计约束、以及「页面上不许出现『经复核验证』」写进了那份文件。
+
+## 窄屏实测改的两处
+
+1. **答案数字被裁掉了。** 30 位十进制在 28px 字号下要 483px 宽，375px 视口里被卡片的
+   `overflow-hidden` 切断。它是整页的焦点，**裁掉等于把答案藏起来**；又不能四舍五入
+   （服务端给多少就是多少）。⇒ `break-all` + 窄屏降到 22px。实测 309px / 视口 375px。
+2. **头部三组元素在 375px 重叠**（品牌 / 两个视图 / GitHub）。⇒ GitHub 链接
+   `hidden sm:inline`，沿用这个文件原本对副标题的同一手法。
+
+## 验证
+
+`tsc -b && vite build` 通过、`eslint` 绿、`vitest 13 passed`、
+`tsconfig.functions.json` 类型检查通过（他们新加的 CI 会跑这条）。
+浏览器实跑：亮/暗、900px/375px；茅台 `0.1798…`、万华 `0.5464…`；
+**批量分析那一页原样可用**（我改了外壳，这一条必须单独验）。
+
+已合进 `main` 并推送（`a0112c2`）。作废的 `feat/audit-qa` 远端分支已删除。
+
 ### 2026-09-07（第四十五段）— **托管形态定了；顺带补上「服务根本没有鉴权」这个洞**
 
 模式 `IMPLEMENT`。操作者三句：推上去、`N-63` 选 (a)、`N-62` 签了。
