@@ -156,18 +156,33 @@ harness 把审计字段**从「零读者 ⇒ 可删」这条通用清理规则�
 ⇒ 公开的是**实现**，不公开**过程与结论**。GitHub 主仓 `kevin1000x/finaudit-agent`
 **仍然 private 至 Phase 4**，本条其余部分一个字不动。
 
-**为什么必须选一个。** 实测（2026-09-07，`RGT07` 账号，`isPro=False`）：
+### 🔴 本条的**授权成立，但它当初的理由是假的**（同日更正）
 
-| 组合 | 结果 |
+提出本修订时给的理由是「private + docker 要 PRO，public + docker 免费 ⇒
+用公开换一个链接」。**那个「public + docker 免费」是推断出来的，不是测出来的** ——
+它来自「`RGT07/cninfo-financial-analyzer` 是 public + docker 且正在跑」这一条观察。
+真去建的时候同样 402。补完的完整矩阵（2026-09-07，`RGT07`，`isPro=False`）：
+
+| 新建 Space | 结果 |
 |---|---|
-| private + static Space | 可以建 |
-| private + docker Space | **402 Payment Required**，要 PRO |
-| public + docker Space | 免费（`RGT07/cninfo-financial-analyzer` 正跑着，`cpu-basic`） |
+| private + static | 可以建 |
+| public + static | 可以建 |
+| private + docker | **402 Payment Required** |
+| public + docker | **402 Payment Required** |
+| 组织 `RGT7611` 下的 docker | 同样不行 |
 
-⇒ 「有一个能点开的链接」「不花订阅费」「Space 私有」三者**不能同时成立**。
-本条理由段的原话是「不开源在审计/金融方向是加分而非减分，但**完全无法展示是硬伤**」——
-那句话成立的前提就是有一个能点开的链接；本条给的兜底（60 秒录屏）在求职用途上
-基本等于没有。⇒ 放弃「Space 私有」这一项。
+⇒ **卡住的是 docker，与可见性无关。** 公开**换不来**那个链接，
+所以本修订当初那句「三者不能同时成立、放弃第三项」是**一笔不存在的交易**。
+
+**那为什么本条仍然 Accepted**：操作者给的是一条授权（「可以公开」），
+那条授权本身有效，只是它解决不了 HF 这件事。⇒ 保留为**待用的许可**：
+将来若在某个平台上「公开」能换来托管，不必再问一次；下面四条硬约束照旧适用。
+
+**这次错的形状（记进 `F-9`）**：`cninfo` 那个 Space 的存在，证明的是
+「**曾经**可以这样建」，不是「**现在**可以这样建」。已存在的产物不是当前策略的证据。
+
+**HF Spaces 这条路因此暂时走不通** ⇒ `D-040` 修订一（平台 = HF Spaces）失效，
+平台问题重新打开，见 `N-66`。
 
 ### 🔴 换来的四条硬约束（操作者裁定里「主要安全」那半句的落点）
 
@@ -1690,9 +1705,12 @@ wave 2 用三家公司实测（`docs/agent/phase-01.5/PROBE-COMBINATION.md`）�
   「要换供应商」——**而如果 cninfo 本来就在 HF Spaces 上，(a) 就是「再开一个 Space」**，
   零新账号、零新供应商、零新付费。
 
-- **落定**：平台 = **Hugging Face Spaces**（与 cninfo 后端同一形态）。
-  免费 Space 闲置休眠、请求唤醒 ⇒ 判据①（没人请求时有没有进程在跑）为「否」，
-  `D-021` 豁免三成立，**不需要第四次修订**。
+- ~~**落定**：平台 = **Hugging Face Spaces**~~ —— **2026-09-07 同日失效**。
+  实测：本账号新建 **docker** Space 一律 402（public / private / 组织下都试过），
+  只有 static 免费。`RGT07/cninfo-financial-analyzer` 能跑，证明的是
+  「曾经可以这样建」，不是「现在可以这样建」（`F-9`）。
+  ⇒ 平台问题重新打开，见 `N-66`。**判据本身不变**：要的仍是「按请求触发、能缩到零」。
+  Dockerfile / `.dockerignore` / 那 770 KB 的载荷**全部照用**，换的只是落脚点。
 
 - ~~🔴 **Space 必须建成 private。**~~ **本项已被 `D-005` 修订一（2026-09-07）推翻**，
   连同它的论据。原文说「建成 public 等于把主仓提前公开」，**这句话是错的**：
