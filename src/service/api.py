@@ -40,16 +40,29 @@ from . import coverage as cov  # noqa: E402
 __all__ = [
     "MAX_QUESTION_BYTES",
     "TOKEN_ENV",
+    "TOKEN_HEADER",
     "answer_endpoint",
     "authorized",
     "coverage_endpoint",
     "needs_token",
+    "presented_token",
     "serve",
 ]
 
-#: 令牌从环境变量读，**不进仓库**。cninfo 那边的 Pages Function 已经在发
-#: `Authorization: Bearer <AUDIT_API_TOKEN>`，这里读的就是它对面那一半。
+#: 令牌从环境变量读，**不进仓库**。
 TOKEN_ENV = "FINAUDIT_API_TOKEN"
+
+#: 🔴 **我们的令牌走自己的头，不占 `Authorization`。**
+#:
+#: 因为托管平台可能自己就要用 `Authorization`：`N-63` 裁定的 HF Spaces，
+#: 按 `D-005` 必须建成 **private**（`D-005` 允许对外的是「可访问的链接」，不是源码），
+#: 而 private Space 的平台门禁吃的就是 `Authorization: Bearer <hf_token>`。
+#: 两个都往一个头上塞，只能塞进去一个。
+#:
+#: ⇒ 分开：`Authorization` 留给平台，服务自己的令牌走 `X-Finaudit-Token`。
+#: 仍然接受 `Authorization: Bearer`，那是 Space 建成 public 时的路径 ——
+#: **少一条兼容不会让谁更安全，只会让部署那天多一个说不清的 401。**
+TOKEN_HEADER = "X-Finaudit-Token"
 
 
 def needs_token(host: str) -> bool:
@@ -68,20 +81,35 @@ def needs_token(host: str) -> bool:
     return host not in ("127.0.0.1", "::1", "localhost")
 
 
-def authorized(header_value, token) -> bool:
-    """`Authorization` 头对不对。
+def presented_token(get_header):
+    """调用方出示的令牌。`get_header(name)` 取一个请求头，取不到给 `None`。
+
+    先看 `X-Finaudit-Token`，再退到 `Authorization: Bearer` —— 顺序不能反：
+    平台的门禁令牌也在 `Authorization` 上，先读它就会拿平台的令牌来跟我们的比，
+    然后给出一个「令牌不对」的 401，而两个令牌其实都是对的。
+    """
+    direct = get_header(TOKEN_HEADER)
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+    auth = get_header("Authorization")
+    prefix = "Bearer "
+    if isinstance(auth, str) and auth.startswith(prefix):
+        return auth[len(prefix):]
+    return None
+
+
+def authorized(presented, token) -> bool:
+    """出示的令牌对不对。
 
     ⚠️ **用 `hmac.compare_digest` 而不是 `==`**：字符串相等在第一个不同的字节上就返回，
     比较耗时随「猜对了几个字符」变化，可以被用来逐字节试出令牌。
     """
     if not token:
         return True  # 不需要令牌的那种监听，上游已经判过（`needs_token`）
-    if not isinstance(header_value, str):
+    if not isinstance(presented, str):
         return False
-    prefix = "Bearer "
-    if not header_value.startswith(prefix):
-        return False
-    return hmac.compare_digest(header_value[len(prefix):], str(token))
+    return hmac.compare_digest(presented, str(token))
+
 
 #: 问题字符串的上限。**不是安全边界，是礼貌边界** ——
 #: 意图解析对超长输入不会崩，只会拒答；这条只是不让一次请求拖着几 MB 的正文走。
@@ -279,9 +307,9 @@ def serve(host: str | None = None, port: int | None = None):  # pragma: no cover
             拒答是「你问的这个我答不了」，是业务结果；
             认证失败是「我不知道你是谁」，连业务都还没开始。两件事不混。
             """
-            if authorized(self.headers.get("Authorization"), token):
+            if authorized(presented_token(self.headers.get), token):
                 return True
-            self._send(401, {"detail": "缺少或不正确的 Authorization: Bearer 令牌"})
+            self._send(401, {"detail": "缺少或不正确的令牌（" + TOKEN_HEADER + "）"})
             return False
 
         def do_GET(self):

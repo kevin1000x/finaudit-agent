@@ -1,4 +1,12 @@
-# 问答服务的容器定义（`N-63` 裁定 (a)：按请求触发、能缩到零的托管）。
+# 问答服务的容器定义。**目标平台：Hugging Face Spaces（`N-63` 裁 (a)，`D-040`）。**
+#
+# 为什么是 HF Spaces：cninfo 后端已经跑在同一形态上（那个仓库的 Dockerfile 通篇
+# 写着 HF Spaces、`PORT=7860`、`uid 1000`）。免费 Space 闲置休眠、请求唤醒 ——
+# **没人请求时没有进程在跑**，正好是 `D-021` 豁免三判据①要的。
+#
+# 🔴 **Space 必须建成 private。** `D-005` 允许对外的是「**可访问的链接**」，不是源码；
+# 而 Space 的构建源就是它的仓库内容。建成 public 等于把主仓提前公开 ——
+# 那是一次 `D-005` 修订，不是部署细节。
 #
 # ## 它为什么长这么小
 #
@@ -23,7 +31,7 @@
 # ## 构建与运行
 #
 #     docker build -t finaudit-service .
-#     docker run -e FINAUDIT_API_TOKEN=... -e PORT=8080 -p 8080:8080 finaudit-service
+#     docker run -e FINAUDIT_API_TOKEN=... -p 7860:7860 finaudit-service
 #
 # 托管平台注入 `$PORT`；`HOST` 默认 `0.0.0.0`（见下），而绑非回环地址时
 # **没有令牌会拒绝启动** —— 忘了配令牌的后果是服务起不来，不是服务敞开着。
@@ -47,15 +55,19 @@ COPY metrics/ /app/metrics/
 COPY data/extracted/ /app/data/extracted/
 COPY eval/frozen-01/fixtures/ /app/eval/frozen-01/fixtures/
 
+# `PORT=7860` 是 HF Spaces 的约定端口（与 cninfo 后端同）；平台也会注入 `$PORT`。
 ENV PYTHONPATH=/app/src \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     HOST=0.0.0.0 \
-    PORT=8080
+    PORT=7860
 
 # 不用 root 跑。这个进程不需要写任何东西。
-RUN useradd --create-home --uid 10001 app && chown -R app:app /app
-USER app
+# ⚠️ **uid 必须是 1000** —— HF Spaces 就是按这个 uid 跑容器的（cninfo 那个
+# Dockerfile 同样写着 `useradd -u 1000`）。换成别的数字，平台挂载的目录会不属于
+# 运行用户，而这类错误在本地 `docker run` 下**看不出来**。
+RUN useradd --create-home --uid 1000 user && chown -R user:user /app
+USER user
 
-EXPOSE 8080
+EXPOSE 7860
 CMD ["python", "-m", "service.api"]

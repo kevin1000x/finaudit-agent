@@ -1621,6 +1621,43 @@ wave 2 用三家公司实测（`docs/agent/phase-01.5/PROBE-COMBINATION.md`）�
 - 反转触发条件：若将来需要「跨请求共享状态」（会话、配额、结果缓存作为记录系统），
   本条与 `D-021` 豁免三**同时**失效，必须一起重估，不许只改这一条。
 
+### 修订一（2026-09-07）：**平台定为 Hugging Face Spaces，且本条原来的前提是偏的**
+
+- 状态：Accepted（操作者裁定，2026-09-07：「A，HF Spaces 就行」）
+- 🔴 **先更正本条原文的一处偏差。** 上面写「不搭现有那台常驻机器」，
+  那句话建立在「cninfo 后端跑在具名 Tunnel 后的常驻 uvicorn 上」这个前提上，
+  而这个前提**我只查了一半**：它来自 `references/cninfo.md` §5 与前端仓库的
+  `docs/frontend-handoff/`，**我没有翻后端仓库的 `Dockerfile`**。翻开之后：
+
+  ```
+  # Default usage (HF Spaces / docker run):
+  # Writable runtime dirs (ephemeral on HF Spaces — restart wipes them, by design)
+  # HF Spaces / Docker runs as uid 1000 by default
+  ENV PORT=7860
+  ```
+
+  ⇒ **两个仓库各记了一种形态，且哪一个是活的只写在 Pages secret 里。**
+  我把其中一种当成了唯一现实，于是把「(a) 另找一个能缩到零的地方」讲成了
+  「要换供应商」——**而如果 cninfo 本来就在 HF Spaces 上，(a) 就是「再开一个 Space」**，
+  零新账号、零新供应商、零新付费。
+
+- **落定**：平台 = **Hugging Face Spaces**（与 cninfo 后端同一形态）。
+  免费 Space 闲置休眠、请求唤醒 ⇒ 判据①（没人请求时有没有进程在跑）为「否」，
+  `D-021` 豁免三成立，**不需要第四次修订**。
+
+- 🔴 **Space 必须建成 private。** `D-005` 允许的对外展示物是「**可访问的 Web 演示链接**」，
+  不是源码；而 Space 的构建源就是它的仓库内容。**建成 public 等于把主仓提前公开** ——
+  那是一次 `D-005` 修订，不是部署细节。
+
+- **连带的一处设计变更**：private Space 的平台门禁自己吃 `Authorization: Bearer <hf_token>`，
+  两个令牌塞不进一个头。⇒ 服务自己的令牌改走 `X-Finaudit-Token`，`Authorization` 留给平台；
+  仍接受 `Authorization: Bearer` 作为 public Space 的兼容路径。
+  **硬塞一个头的后果**是服务拿平台的令牌跟自己的比、给出一个「令牌不对」的 401，
+  而两个令牌其实都是对的 —— 部署那天没人查得出这是怎么回事。
+
+- **仍未定**：Space 的归属与名字（`AUDIT_API_BASE` 要填的那个 URL）。
+
+
 ## 3. 未解决决策
 
 - **U-01**：证据链的字段集尚未确定。等待 Phase 2 的复核实验数据。不得在 Phase 1 提前拍板。

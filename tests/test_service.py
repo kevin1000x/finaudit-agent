@@ -464,12 +464,8 @@ def test_令牌对不上一律不放行():
     from service.api import authorized
 
     tok = "s3cret-token"
-    assert authorized("Bearer " + tok, tok) is True
-    for bad in (
-        None, "", "Bearer", "Bearer ", "Bearer wrong", tok,          # 少了 Bearer 前缀
-        "bearer " + tok,                                              # 大小写不对
-        "Bearer " + tok + "x", "Bearer x" + tok, 12345, ["Bearer", tok],
-    ):
+    assert authorized(tok, tok) is True
+    for bad in (None, "", tok + "x", "x" + tok, tok.upper(), 12345, [tok]):
         assert authorized(bad, tok) is False, f"这个不该放行：{bad!r}"
 
 
@@ -477,8 +473,39 @@ def test_不需要令牌时任何头都放行():
     """回环监听不配令牌是允许的（开发用）。此时不该反过来把本机也挡住。"""
     from service.api import authorized
 
-    for h in (None, "", "Bearer whatever"):
+    for h in (None, "", "whatever"):
         assert authorized(h, "") is True
+
+
+def test_令牌走自己的头_Authorization留给平台():
+    """🔴 **红的时候是什么样**：Space 建成 private 之后，平台的门禁令牌占着
+    `Authorization`，而服务拿它来跟自己的令牌比 —— 给出一个「令牌不对」的 401，
+    可两个令牌其实都是对的。部署那天没人查得出这是怎么回事。
+
+    ⇒ `X-Finaudit-Token` 优先，`Authorization: Bearer` 只是 public Space 的兼容路径。
+    """
+    from service.api import TOKEN_HEADER, presented_token
+
+    def headers(d):
+        return d.get
+
+    ours, platform = "ours-abc", "hf_platform_xyz"
+
+    # private Space：两个头同时在，必须取我们自己的那个
+    both = headers({TOKEN_HEADER: ours, "Authorization": "Bearer " + platform})
+    assert presented_token(both) == ours
+
+    # public Space：只有 Authorization，退回去读它
+    only_auth = headers({"Authorization": "Bearer " + ours})
+    assert presented_token(only_auth) == ours
+
+    # 只有自己的头
+    assert presented_token(headers({TOKEN_HEADER: ours})) == ours
+
+    # 一个都没有 / 形状不对 —— 给 None，让上游判 401
+    for d in ({}, {"Authorization": "Basic xyz"}, {"Authorization": ours},
+              {TOKEN_HEADER: "   "}, {TOKEN_HEADER: None}):
+        assert presented_token(headers(d)) is None, f"这个不该被当成令牌：{d!r}"
 
 
 def test_运行器不打访问日志():
