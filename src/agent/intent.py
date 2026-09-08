@@ -202,9 +202,21 @@ def parse_intent(question: str, registry: Registry, ask_model=None, entity_names
         return Refusal(RefusalCode.INTENT_INCOMPLETE, "题面里没有期间（形如「2023 年」）")
     if len(periods) > 1:
         years = chr(12289).join(str(y) for y in periods)
+        # ⚠️ 旧措辞是「那是跨期比较，不是本路径的三元组」，而它**对其中一类是错的**
+        # （`N-69`）：「2023 年的营业收入**比 2022 年**增长了多少」要的是**一个**
+        # 同比数，第二个年份是**比较基准**，不是第二个查询期间 ——
+        # 而同比类指标的定义**自己就知道**去取上期（只写一个年份照样算得出）。
+        #
+        # 这里**不去猜**是哪一类：判据只能是启发式的，而猜错的方向是
+        # 「该拒答的时候答了」。⇒ 把两种读法都摆出来，并告诉提问者各自怎么办。
         return Refusal(
             RefusalCode.INTENT_INCOMPLETE,
-            f"题面里出现多个期间：{years}。那是跨期比较，不是本路径的三元组 —— 取第一个是猜。",
+            "题面里出现多个期间："
+            + years
+            + "。本路径一次只答一个期间的一个数，不替你挑一个。"
+            + "如果你要的是这几年各一个数，那是跨期比较，本路径不做；"
+            + "如果你要的是一个同比数，把基准年去掉再问一次 ——"
+            + "同比类的指标自己会去取上期。",
         )
 
     return Intent(
