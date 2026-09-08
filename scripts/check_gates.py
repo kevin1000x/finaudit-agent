@@ -93,9 +93,9 @@ harness 对这种情况给了正解（**`invariants.md:59`**，逐字见
   **而不是放宽 R1**——放宽会让 R1 退化。
 - **R2 只保证「有一条具名负控制」，不保证它覆盖这道门的全部判据。**（2026-08-31 实测，台账 `N-45`）
   实例是真的：`verify_deps.py` 的 `DENIED_LICENSE_PATTERNS` 有**两条**模式
-  （`AGPL` 与 `affero`），而登记的负控制 `test_pymupdf_is_rejected_via_classifier`
+  （`\bAGPL` 与 `affero`），而登记的负控制 `test_pymupdf_is_rejected_via_classifier`
   用的 classifier 是「GNU **Affero** General Public License v3」——
-  **只考得到 `affero` 那条**。把 `AGPL` 打掉，登记的负控制**照样绿**
+  **只考得到 `affero` 那条**。把 `\bAGPL` 打掉，登记的负控制**照样绿**
   （覆盖它的是另外两条**没有登记**的测试）。
   ⇒ 「R2 通过」读作「这道门有一条被证明会红的用例」是对的，
   读作「这道门每条判据都有负控制」是**错的**。与 `N-40` 是同一族的粒度问题，
@@ -228,6 +228,15 @@ NOT_GATES: dict[str, str] = {
     "probe_fields.py": (
         "探测工具，只 dump 版面原文供人判定，不产生通过/不通过判定；"
         "它一旦开始替人判「这一行是不是那个字段」，SC-8 就在探测阶段先失守。其 docstring 已写明"
+    ),
+    "build_space_payload.py": (
+        "组装并扫描要推给 HF Space 的载荷。⚠️ **措辞要准**：它**会**在发现泄漏时"
+        "退非零 —— 那是**推之前给人直接跑**的那一道，**不是**提交链上的第八环。"
+        "链上的判定点是 `tests/test_space_payload.py`（把密钥、口令赋值、本机用户名、"
+        "构建残留、控制字符、`file://` 的 `source_url`、以及塌掉的 `src/` 层级"
+        "分别种进去看红），而 pytest 已经是链的第一环。"
+        "**不单独登记的理由与 `evidence_matrix.py` 同**：同一件事登记两遍，"
+        "R2/R4/R5 会要求它再配一套具名负控制与 CI 步骤，而那套东西已经以测试的形式存在了"
     ),
     "evidence_matrix.py": (
         "生成器（`ARCHITECTURE` §8.5.3 / 登记册 `L-6`）。⚠️ **措辞要准**：它**会**在发现断线时"

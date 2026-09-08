@@ -322,7 +322,13 @@ def test_被跟踪的md里没有字面控制字符():
 
     repo = Path(__file__).resolve().parent.parent
     offenders = {}
-    for path in repo.rglob("*.md"):
+    # ⚠️ **`.py` 也扫。** 这道门禁护的是「讲不可见字符的散文」，而散文有一半住在
+    #    docstring 里 —— 只扫 `.md` 时，它的作用集比它自称管住的集合小一圈
+    #    （`N-42` 那个形态）。2026-09-09 首次扩到 `.py` 就当场抓到两处：
+    #    `extractor/locate.py` 引年报原文时嵌了一个真的 BEL，
+    #    `semantic_layer/scan.py` 讲 `core.quotepath` 时嵌了真的 \x88 \x9a。
+    #    两份都是在**讲**这类字符，正是 2026-08-27 那次事故的同一形状。
+    for path in sorted(repo.rglob("*.md")) + sorted(repo.rglob("*.py")):
         parts = set(path.parts)
         if ".venv" in parts or ".git" in parts or "node_modules" in parts:
             continue
@@ -338,7 +344,7 @@ def test_被跟踪的md里没有字面控制字符():
         if bad:
             offenders[str(path.relative_to(repo))] = bad[:3]
     assert not offenders, (
-        f"这些 md 里有字面控制字符（示例为 (偏移, repr) 前三个）：{offenders}。"
+        f"这些文件里有字面控制字符（示例为 (偏移, repr) 前三个）：{offenders}。"
         "描述这类字符时**示例要写转义序列，不能写字符本身** —— "
         "2026-08-27 就是在写「不可见字符很危险」那份文档时把一个真的 BEL 写了进去。"
     )
