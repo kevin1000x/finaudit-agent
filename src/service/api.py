@@ -109,7 +109,24 @@ def authorized(presented, token) -> bool:
         return True  # 不需要令牌的那种监听，上游已经判过（`needs_token`）
     if not isinstance(presented, str):
         return False
-    return hmac.compare_digest(presented, str(token))
+    # 🔴 **两边都先编成 bytes。** `hmac.compare_digest` 的 `str` 版本只接受
+    # 全 ASCII 的字符串，任一边出现非 ASCII 字符它**抛 `TypeError`** ——
+    # 而 `presented` 来自请求头，也就是说**调用方送一个字节就能把鉴权打成 500**。
+    # bytes 版本没有这个限制。
+    #
+    # 2026-09-08 实测触发：把服务挂进 cninfo 那个 FastAPI 应用、令牌设成一串中文，
+    # 每一次带令牌的请求都 500。本仓 45 条服务测试一条都没红 ——
+    # 它们喂的是 **body**，没有一条喂过**头部取值**（`test_service.py` 的
+    # 「任何输入都不许 5xx」那一节，输入面漏了一半）。
+    # `surrogatepass` 而不是默认错误处理：孤立代理字符（`chr(0xD800)` 之流）
+    # 用默认的 `encode("utf-8")` 会抛 `UnicodeEncodeError` —— 又是同一个洞。
+    # ⚠️ 不写成 `try/except: return False`：那会让「编不出来的输入」比
+    #    「编得出来的输入」提前返回，等于自己在比对上开一条时序旁路。
+    #    `surrogatepass` 让这条路径**无分支**。
+    return hmac.compare_digest(
+        presented.encode("utf-8", "surrogatepass"),
+        str(token).encode("utf-8", "surrogatepass"),
+    )
 
 
 #: 问题字符串的上限。**不是安全边界，是礼貌边界** ——

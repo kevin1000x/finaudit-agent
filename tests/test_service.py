@@ -20,7 +20,9 @@ from service import coverage as cov  # noqa: E402
 from service.api import (  # noqa: E402
     MAX_QUESTION_BYTES,
     answer_endpoint,
+    authorized,
     coverage_endpoint,
+    presented_token,
 )
 
 SERVICE = REPO_ROOT / "src" / "service"
@@ -438,6 +440,59 @@ def test_外面够得着的监听必须要令牌():
         assert needs_token(loopback) is False, f"{loopback} 只有本机能连，不该逼着配令牌"
     for reachable in ("0.0.0.0", "::", "audit.example.com", "10.x.x.x（示例）"):
         assert needs_token(reachable) is True, f"{reachable} 网络上够得着，必须要令牌"
+
+
+#: 调用方能塞进请求头的那些东西。**一个反斜杠转义都不写** —— 全用 `chr()` 构造。
+坏头部 = [
+    None,
+    "",
+    "   ",
+    chr(0),                        # NUL
+    chr(255) * 40,                 # latin-1 解出来的高位字符，最像真实场景的那个
+    "中" * 100,                     # 多字节
+    chr(0xD800),                   # 孤立代理：连 encode("utf-8") 都会抛
+    chr(0xD800) + chr(0xDC00),
+    chr(0x200B),                   # 零宽
+    "Bearer ",
+    "Bearer " + chr(255),
+    "Bearer " + "中" * 50,
+    chr(10) + chr(13) + chr(9),
+]
+
+
+def test_头部里的非ASCII不许把鉴权打成崩溃():
+    """🔴 这条是一次**真实事故**换来的，不是假想。
+
+    2026-09-08 把本服务挂进 cninfo 那个 FastAPI 应用做联调，令牌用了一串中文，
+    结果**每一次带令牌的请求都 500**：`hmac.compare_digest` 的 `str` 版本
+    只接受全 ASCII 的字符串，任一边出现非 ASCII 就抛 `TypeError`。
+
+    ⚠️ 严重的不是「令牌设成中文」这种自找的用法，是 **`presented` 来自请求头** ——
+    调用方随便送一个非 ASCII 字节，就能把鉴权这一层打成 500。
+
+    **为什么本文件此前 45 条一条都没红**：它们喂的全是 **body**
+    （上面「任何输入都不许 5xx」那一整节都是 `{"question": ...}`），
+    **没有一条喂过头部取值** —— 输入面漏了一半。
+    """
+    assert authorized("送来的是中文", "配置的是中文") is False
+    assert authorized("中文令牌", "ascii-token") is False
+    assert authorized("中文令牌", "中文令牌") is True
+    for 坏 in 坏头部:
+        if isinstance(坏, str):
+            assert authorized(坏, "ascii-token") is False
+
+
+def test_头部取值再离谱也不许5xx():
+    """把「任何输入都不许 5xx」那条纪律补到**头部**这一侧。
+
+    走完整条路径：先 `presented_token` 解析头部，再 `authorized` 比对。
+    两步都不许抛 —— 抛出去在真实部署里就是一个 500。
+    """
+    for v in 坏头部:
+        presented = presented_token(lambda name, _v=v: _v)
+        assert authorized(presented, "正常令牌") in (True, False)
+        assert authorized(presented, "中文令牌") in (True, False)
+        assert authorized(presented, "") is True   # 没配令牌 ⇒ 上游已判过
 
 
 def test_令牌比对不许用普通字符串相等():

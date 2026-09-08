@@ -378,3 +378,33 @@ def test_cli_bad_row_key_is_caller_error(capsys):
     )
     capsys.readouterr()
     assert code == 2
+
+
+def test_换个工作目录加载注册表照样合规(tmp_path, monkeypatch):
+    """🔴 一次**真实事故**：定义从 `metrics_dir` 读，词表却从 **cwd** 读。
+
+    `Registry.load` 原来把词表默认成 `DEFAULT_VOCABULARY_PATH`（相对路径
+    `metrics/_flags.yaml`），于是同一个注册表的两半用了两个根。
+    找不到时它**静默退成空词表** —— 不报错，但此后每个指标的 flag 都
+    「不在受控词表内」⇒ 全部 `R4.FLAG_NOT_IN_VOCABULARY` ⇒
+    一个**加载成功、却每条定义都不许被消费**的注册表。
+
+    ⚠️ 而给出的拒答理由是「口径定义自身不合规」，不是「词表没找到」——
+    **一句会把复核者带偏的实话**，比报错难查得多。
+
+    **为什么此前没被发现**：每一个既有调用方（pytest、CLI、服务的 `__main__`）
+    cwd 恰好都是仓库根。2026-09-08 把服务挂进另一个应用（cwd = 那个应用的根）
+    才暴露出来。⇒ 这条测试**必须换 cwd**，否则它测不到任何东西。
+    """
+    monkeypatch.chdir(tmp_path)
+    assert not (tmp_path / "metrics").exists(), "夹具目录里不该有 metrics/，否则这条测试是假的"
+
+    reg = Registry.load(METRICS)
+    assert len(reg.vocabulary.flags) > 0, "换个 cwd 就把词表读空了"
+
+    # 逐条过 `resolve()` —— 它才会跑 `validate_definition`
+    for metric_id in reg.definitions:
+        got = reg.resolve(metric_id)
+        assert not isinstance(got, Refusal), (
+            metric_id + " 在别的工作目录下变成了不合规：" + str(getattr(got, "detail", ""))
+        )

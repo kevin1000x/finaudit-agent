@@ -20,7 +20,7 @@ from pathlib import Path
 from . import dsl
 from .definition import MetricDefinition, iter_definition_paths, load_definition
 from .validate import validate_definition
-from .vocabulary import DEFAULT_VOCABULARY_PATH, Vocabulary, load_vocabulary
+from .vocabulary import Vocabulary, load_vocabulary
 
 __all__ = [
     "RefusalCode",
@@ -127,7 +127,19 @@ class Registry:
                         f"别名冲突：{alias!r} 同时指向 {by_alias[alias]!r} 与 {defn.metric_id!r}"
                     )
                 by_alias[alias] = defn.metric_id
-        vocab_path = Path(vocabulary_path) if vocabulary_path else DEFAULT_VOCABULARY_PATH
+        # 🔴 **词表跟着定义走，不跟着进程的当前目录走。**
+        # 原来这里用的是 `DEFAULT_VOCABULARY_PATH`（= 相对路径 `metrics/_flags.yaml`），
+        # 于是定义从 `metrics_dir` 读、词表从 **cwd** 读 —— 同一个注册表的两半用了两个根。
+        # 只要 cwd 恰好是仓库根就看不出来，而**每一个既有调用方都满足这条**，
+        # 所以它一直没被发现。
+        #
+        # 2026-09-08 把问答服务挂进另一个应用（cwd = 那个应用的根）时暴露：
+        # 词表读成空 ⇒ 每个指标的 flag 都「不在词表里」⇒ 全部 `R4.FLAG_NOT_IN_VOCABULARY`
+        # ⇒ 一个**加载成功、但每条定义都不许被消费**的注册表，
+        # 而拒答理由说的是「定义不合规」，不是「词表没找到」—— 一句会把人带偏的实话。
+        vocab_path = (
+            Path(vocabulary_path) if vocabulary_path else Path(metrics_dir) / "_flags.yaml"
+        )
         vocab = load_vocabulary(vocab_path) if Path(vocab_path).is_file() else Vocabulary(0, {})
         return cls(definitions=definitions, by_alias=by_alias, vocabulary=vocab)
 
