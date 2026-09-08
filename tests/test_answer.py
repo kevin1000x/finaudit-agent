@@ -175,7 +175,11 @@ def test_拒答的渲染同样给得出理由与出处(registry, source):
     a = answer_question("华鑫科技（900001）2023 年的 EBITDA 是多少？", registry, source=source)
     out = render_answer(a, None)
     assert "为什么不给答案" in out
-    assert "这个数是从哪儿来的" in out
+    # ⚠️ 拒答页的出处抬头是「查的是哪份数据」，不是「这个数是从哪儿来的」。
+    #    `h2-02` 盲审：「拒答页也顶着『这个数是从哪儿来的』，可这几页根本没有数」——
+    #    抬头承诺了一个页面里不存在的东西。
+    assert "查的是哪份数据" in out
+    assert "这个数是从哪儿来的" not in out
     assert a.evidence["execution_hash"] in out
 
 
@@ -565,6 +569,38 @@ def test_G3_快照的指纹跟着名字表走(registry):
     assert registry_snapshot(假注册表())["sha256"] != a["sha256"], "表变了指纹没变"
 
 
+def test_G3_指标清单不许在一页里印两遍(registry, source):
+    """`h2-02` 盲审**三个人全都**提到了这一条。
+
+    原来正文列 68 个中文说法、附录再把 94 个（中英混排）重印一遍，
+    一页 299 行里绝大部分是重复。原话：「翻起来很累」「一页翻下去几乎全是重复，
+    真正有信息量的只有开头三行」。
+
+    ⇒ **一份没人愿意读完的证据，与没有证据的差别在缩小。**
+    这不是排版偏好，是 `D-038 G3` 那条「摆出清单以便证伪」能不能真的被用上。
+
+    附录改成只补正文没有的那一半（英文标识符）。指纹仍然覆盖完整清单，
+    所以页面必须说清它要两半合起来才复算得出。
+    """
+    a = answer_question("华鑫科技（900001）2023 年的 EBITDA 是多少？", registry, source=source)
+    page = render_answer(a, None, None)
+    正文, _, 附录 = page.partition("指标清单快照")
+    assert a.registry_snapshot is not None
+
+    中文 = [
+        n for n in a.registry_snapshot["names"]
+        if any(ord(c) > 0x2E80 for c in str(n))
+    ]
+    assert 中文, "快照里一个中文说法都没有？那正文那一节就是空的"
+    for 名 in 中文:
+        assert 名 in 正文, "中文说法应当在正文里：" + str(名)
+        assert 名 not in 附录, "中文说法不该在附录里再印一遍：" + str(名)
+
+    # 指纹覆盖的是完整清单 —— 不说清楚，读者会以为附录那一段自己就能对上
+    assert "指纹覆盖的范围" in 附录
+    assert str(len(a.registry_snapshot["names"])) in 附录
+
+
 def test_G3_题面缺主体时不摆指标清单(registry, source):
     """**证据要相关，不是要多。**
 
@@ -572,7 +608,10 @@ def test_G3_题面缺主体时不摆指标清单(registry, source):
     摆 94 行清单只会让复核者在 5 分钟里翻一页跟结论无关的东西。
     `AC-05` 的已知盲区正是「抓不到证据不相关」—— 这条替它守一小块。
     """
-    a = answer_question("华鑫科技 2023 年的毛利率是多少？", registry, source=source)
+    # ⚠️ 题面换过：原来用的是「华鑫科技 2023 年的毛利率」，而 `N-65` 落地之后
+    #    那句话**能答出来了**（简称查表查到 900001）。要测「缺主体」这条性质，
+    #    得换一个**表里确实没有**的公司名 —— 否则这条测试测的是别的东西。
+    a = answer_question("某某公司 2023 年的毛利率是多少？", registry, source=source)
     assert a.refused and a.refusal["code"] == "INTENT_INCOMPLETE"
     assert a.registry_snapshot is None
     assert "我们当时有哪些指标" not in render_answer(a, None, None)

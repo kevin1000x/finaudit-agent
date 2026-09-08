@@ -29,7 +29,7 @@ from eval.attribution import (  # noqa: E402
     FailureKind,
     attribute,
 )
-from eval.run import FAIL, main, run_suite  # noqa: E402
+from eval.run import FAIL, PASS, main, run_suite  # noqa: E402
 from semantic_layer.resolve import RefusalCode  # noqa: E402
 
 FROZEN = REPO / "eval" / "frozen-01"
@@ -108,15 +108,25 @@ def test_意图不完整归意图层_而认不出指标名归口径层():
     assert intent.layers != definition.layers
 
 
-def test_frozen01_上那两道意图题确实落在意图层():
-    """不是构造出来的：`Q-C3-003`（题面无主体）与 `Q-C3-004`（两个期间）。
+def test_frozen01_上那道意图题确实落在意图层():
+    """不是构造出来的：`Q-C3-004`（题面里两个期间）。
 
     它会红的场景：有人把 `INTENT_INCOMPLETE` 改回口径层 ——
-    那会让「归因覆盖率 100%」变成一句假话（4 条里有 2 条归错层）。
+    那会让「归因覆盖率 100%」变成一句假话。
+
+    ⚠️ **2026-09-09 从两道缩到一道，而且是好事**：原来还有 `Q-C3-003`
+    （「华鑫科技 2023 年的资产负债率」，题面只有公司名没有代码）。
+    `N-65` 落地之后它**不再 FAIL** —— 简称查表查到 900001，答出 0.55。
+    这条断言当时立刻报红，报的是「`Q-C3-003` 不再是 FAIL，本断言要重新看」，
+    正是它被写出来要做的事。⇒ 缩小的是**覆盖面**，不是纪律：
+    剩下这一道仍然守着同一条性质。
     """
     report = run_suite(FROZEN)
     by_id = {r["id"]: r for r in report["results"]}
-    for cid in ("Q-C3-003", "Q-C3-004"):
+    assert by_id["Q-C3-003"]["status"] == PASS, (
+        "`Q-C3-003` 又变回 FAIL 了 —— `N-65`（简称→代码）可能被改坏了"
+    )
+    for cid in ("Q-C3-004",):
         assert by_id[cid]["status"] == FAIL, f"{cid} 不再是 FAIL，本断言要重新看"
         assert by_id[cid]["attribution"] == ["意图层"], (
             f"{cid} 归到了 {by_id[cid]['attribution']}"

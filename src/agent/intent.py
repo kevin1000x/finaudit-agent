@@ -118,12 +118,18 @@ def _match_alias(registry: Registry, question: str):
     return None, None
 
 
-def parse_intent(question: str, registry: Registry, ask_model=None):
+def parse_intent(question: str, registry: Registry, ask_model=None, entity_names=None):
     """题面 → `Intent`，或说明缺什么的 `Refusal`。
 
     `ask_model` 是一个 `(question) -> str` 的可调用对象，**由调用方注入**。
     本模块不 import 任何 LLM 客户端 —— `eval/llm_client.py` 顶部明写它
     「永远不会被系统臂导入」，那条边界在这里照样成立。
+
+    `entity_names` 是 `简称 -> 六位代码` 的表，**同样由调用方注入**，
+    来源是那份数据源自己（`FixtureSource.entity_names`）。
+    🔴 **这一步不交给模型**：本模块第一条硬约束就是「能确定性解决的不交给模型」，
+    而「简称 → 代码」是一次查表。拿模型去做查表，等于把一个确定性映射
+    换成一个会错的映射。
     """
     q = " ".join(str(question).split())
     digest = _sha256(q)
@@ -145,12 +151,47 @@ def parse_intent(question: str, registry: Registry, ask_model=None):
         if guess and guess in registry.by_alias:
             alias, source = guess, "model"
     if alias is None:
-        return Refusal(RefusalCode.METRIC_NOT_DEFINED, f"题面里没有认得出的指标名：{q}")
+        # ⚠️ **不要把整个问句贴在冒号后面。** `h2-02` 的盲审有两个人读成了
+        # 「这一整句话被当成了指标名」，愣了几秒才明白意思。
+        # 而问句**已经印在这一页顶上的「问的是什么」里了** —— 在理由里再贴一遍，
+        # 除了制造那次误读之外没有任何作用。
+        return Refusal(
+            RefusalCode.METRIC_NOT_DEFINED,
+            "这句话里没有我认得出的指标名。下面列着当时全部可用的叫法，"
+            "你要问的那个不在里面。",
+        )
 
     entities = sorted(set(_ENTITY.findall(q)))
     periods = sorted({int(y) for y in _PERIOD.findall(q)})
+    entity_source = "六位代码"
+
+    # `N-65`：题面里没有六位代码时，再拿简称查一次表。
+    # 顺序是**先代码后简称**，不是偏好问题：代码是唯一标识，简称会重名、会变更。
+    if not entities and entity_names:
+        命中 = [n for n in entity_names if n and n in q]
+        # 一个名字被另一个包含时只留更长的那个 —— 与 `_match_alias` 同一条规矩。
+        命中 = [n for n in 命中 if not any(n != o and n in o for o in 命中)]
+        codes = sorted({str(entity_names[n]) for n in 命中})
+        if len(codes) == 1:
+            entities = codes
+            entity_source = "公司简称「" + 命中[0] + "」"
+        elif len(codes) > 1:
+            名单 = chr(12289).join(sorted(命中))
+            return Refusal(
+                RefusalCode.INTENT_INCOMPLETE,
+                "题面里出现多家公司：" + 名单 + "。本路径只处理单主体，不替提问者选一家。",
+            )
 
     if not entities:
+        # ⚠️ 措辞分两种。`h2-02` 的盲审有两个人被旧措辞误导过：
+        # 题面里明明写着「华鑫科技」，而系统回「题面里没有主体」——
+        # 读者会以为它连问的是哪家都没读出来。**缺的是代码，不是主体。**
+        if entity_names:
+            return Refusal(
+                RefusalCode.INTENT_INCOMPLETE,
+                "题面里没有认得出的公司。给一个六位股票代码，"
+                "或者一个我们确实有数据的公司简称 —— 两样都没有时不猜。",
+            )
         return Refusal(RefusalCode.INTENT_INCOMPLETE, "题面里没有主体（六位股票代码）")
     if len(entities) > 1:
         return Refusal(
@@ -172,6 +213,6 @@ def parse_intent(question: str, registry: Registry, ask_model=None):
         period=periods[0],
         question=q,
         question_sha256=digest,
-        resolved_by={"metric": source, "entity": "六位代码", "period": "题面年份"},
+        resolved_by={"metric": source, "entity": entity_source, "period": "题面年份"},
         matched_alias=alias,
     )

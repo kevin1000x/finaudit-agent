@@ -215,6 +215,24 @@ class _Sources:
         self.row: dict = {}
         self.found = False
 
+        # `N-65`：把每一份的简称表并起来。
+        # 🔴 **两份对同一个简称给出不同代码时，那个简称整条丢掉。**
+        # 同一条「分不清就不猜」的纪律：留下任意一个，用户拿到的是一个
+        # 看起来完全正常的错答案；丢掉，他拿到的是一句「认不出这家公司」。
+        names: dict = {}
+        冲突: set = set()
+        for src in self._sources:
+            for 名, 码 in (getattr(src, "entity_names", None) or {}).items():
+                if 名 in names and names[名] != 码:
+                    冲突.add(名)
+                names[名] = 码
+        for 名 in 冲突:
+            names.pop(名, None)
+        self.entity_names = names
+        #: 被丢掉的那些。留着是为了**将来能说清为什么认不出** ——
+        #: 「两份数据源对这个简称给的代码不一样」比「认不出」有用得多。
+        self.ambiguous_names = frozenset(冲突)
+
     @property
     def batch_id(self) -> str:
         """还没定位到某一行时，说清**手上有哪几份**，不编一个行号。"""
