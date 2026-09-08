@@ -1,77 +1,91 @@
----
-title: finaudit answering service
-emoji: 📑
-colorFrom: gray
-colorTo: green
-sdk: docker
-app_port: 7860
-pinned: false
----
+# 部署：挂进 cninfo 那个 Space，而不是自己占一个
 
-# finaudit — 可审计财务分析问答服务
+> ⚠️ **本文件不再是 Space 根目录的 `README.md`。** `D-040` 修订二（2026-09-08）
+> 之后本服务不再单独占一个 Space —— 它作为 `/audit/*` 挂进
+> `RGT07/cninfo-financial-analyzer`。那个 Space 的 `README.md` 是 cninfo 自己的，
+> 不要覆盖。本文件现在只是一份部署说明。
 
-> ⚠️ **这份 README 是给 Hugging Face Space 用的，不是给本仓库用的。**
-> 上面那段 YAML 前言是 HF Spaces 的配置（`sdk: docker` + `app_port`），
-> 它必须位于 **Space 仓库根目录的 `README.md`**。放在本仓库这个位置只是为了让它
-> 跟着版本控制走 —— 推 Space 的时候把它复制成 Space 根目录的 `README.md`。
+## 为什么不自己建一个
 
-无状态的请求–响应服务。给一个问题，返回一个数与一条可独立复核的证据链。
+建不了。2026-09-07 实测（`RGT07`，`isPro=False`）：
 
-## 这个 Space 是公开的，主仓不是
+| 新建 Space | 结果 |
+|---|---|
+| private / public + **static** | 可以 |
+| private / public + **docker** | **402 Payment Required（要 PRO）** |
+| 组织账号下的 docker | 同样不行 |
+| 复制现有 Space | 同样不行 |
 
-`D-005` 修订一（2026-09-07）：private + docker 的 Space 要 PRO 订阅，
-⇒ 放弃「Space 私有」，换一个能点开的链接。
+卡住的是 **docker**，与可见性无关。而 `RGT07/cninfo-financial-analyzer`
+建于 2026-05-03，早于政策收紧，是这个账号唯一能跑的容器。
 
-公开的是**实现**（`src/` + `metrics/` + `data/extracted/` + 合成夹具，共 14483 行）；
-**不公开**过程与结论（`docs/` / `tests/` / `references/` / `.planning/` / 评测题面，
-另有 71887 行），GitHub 主仓 `kevin1000x/finaudit-agent` 仍 private 至 Phase 4。
+⇒ 共用它。**共用的是容器，不是代码库**：cninfo 仓库里只有挂载代码
+（`api/audit_mount.py`）与一个 `finaudit/` 挂载点；本仓仍是权威副本。
 
-🔴 **因此这个仓库里出现的任何一个密钥都是永久泄漏。**
-两个令牌一律走 Space secret：`FINAUDIT_API_TOKEN`、`FINAUDIT_MODEL_KEY`。
+## 载荷：推什么
 
-## 两个环境变量
+```
+finaudit/
+  src/                      代码（PYTHONPATH 指向这里）
+  metrics/                  口径定义
+  data/extracted/           真实年报抽取结果（只有人工核对过的字段）
+  eval/frozen-01/fixtures/  合成夹具（页面上标成合成）
+```
+
+🔴 **目录形状是有承重作用的。** `service/api.py` 从**自己的模块路径**推数据根
+（`src/service/api.py` → 三层 parent），所以 `src/` 那一层必须保留，
+`metrics/` 与 `data/` 必须是它的兄弟。`PYTHONPATH` 指 `finaudit/src`，不是 `finaudit`。
+
+约 770 KB。**不推**：`data/raw/`（年报 PDF）、`docs/`、`tests/`、`references/`、
+`.planning/`、`eval/frozen-01/cases/`。
+
+🔴 **`.dockerignore` 不是上传清单。** 它管「进不进镜像」，管不到「进不进那个
+**公开**仓库」。2026-09-07 组装载荷时 `src/*.egg-info/` 就是这么混进来的 ——
+`.dockerignore` 里明明写着 `*.egg-info/`，而 `cp -r` 不读它。
+⇒ 推之前显式剔除 `*.egg-info/` / `__pycache__/` / `*.pyc`，并把全文件清单过一遍眼。
+
+## 推之前的安全清扫（七类，`D-005` 修订一的硬约束）
+
+那个 Space 是 **public**，所以载荷里出现的任何一个密钥都是**永久泄漏**。
+
+1. 密钥形状（`sk-` / `hf_` / `ghp_` / `AKIA` / PEM 头）
+2. 本机绝对路径与用户名
+3. 邮箱
+4. 口令赋值式
+5. 构建残留
+6. 数据文件里的 `source_url`（必须是 `null` 或 http(s)，不能是 `file://`）
+7. **全文件清单逐条过目**
+
+## 两个 Space secret
 
 | 名字 | 谁用 | 说明 |
 |---|---|---|
-| `FINAUDIT_API_TOKEN` | 本服务 | 调用方要在 `X-Finaudit-Token` 头里出示同一个值 |
+| `FINAUDIT_API_TOKEN` | 本服务 | 调用方在 `X-Finaudit-Token` 头里出示同一个值 |
 | `FINAUDIT_MODEL_KEY` | 指标名归一 | **可选**。没配就是没模型 —— 认不出的说法照旧拒答，不是报错 |
-| `PORT` | 平台注入 | 不用手配；没有时默认 7860 |
 
-⚠️ **没设 `FINAUDIT_API_TOKEN` 时服务会拒绝启动**（因为它绑 `0.0.0.0`）。
-这是有意的：「设了才检查」会让「忘了配」变成一个完全敞开、且没有任何一处会响的服务。
+⚠️ **没设 `FINAUDIT_API_TOKEN` 时 `/audit/*` 根本不注册**（`api/audit_mount.py`）。
+这是有意的：一个敞开的问答端点比一个不存在的端点糟。
+注意它与 cninfo 自己的 `API_TOKEN` **刻意不同** —— 后者没配时是 fail-open（本地开发用）。
 
-## 令牌为什么不走 `Authorization`
+## 前端那两个 Cloudflare Pages 变量
 
-这个 Space 是 public，平台自己没有门禁，`Authorization` 本可以给本服务用。
-**仍然分成两个头**，因为改回去要动前端的 Pages Function，而那一头正好是
-「哪天 Space 转私有、平台开始吃 `Authorization: Bearer <hf_token>`」时唯一要改的地方。
-⇒ 本服务的令牌走 `X-Finaudit-Token`；`Authorization: Bearer` 也仍被接受。
+| 名字 | 值 |
+|---|---|
+| `AUDIT_API_BASE` | `https://rgt07-cninfo-financial-analyzer.hf.space/audit`（**带 `/audit` 前缀**，无尾斜杠） |
+| `AUDIT_API_TOKEN` | 与 Space secret `FINAUDIT_API_TOKEN` 同值 |
+
+`AUDIT_PLATFORM_TOKEN` **不用配** —— Space 是 public，平台自己没有门禁。
 
 ## 两个端点
 
 ```
-GET  /coverage   我们对哪些公司/年份真的有数据
-POST /answer     {"question": "600519 2023 年的资产负债率是多少"}
+GET  /audit/coverage   我们对哪些公司/年份真的有数据
+POST /audit/answer     {"question": "600519 2023 年的资产负债率是多少"}
 ```
 
 **只收一个问题字符串** —— 没有文件上传、没有 CSV、没有表格粘贴（`D-010`）。
 
-## 推一个 Space 需要哪些文件
+## 回退
 
-Space 仓库 = 这份 README（改名为根目录 `README.md`）+ 本仓库的：
-
-```
-Dockerfile
-.dockerignore
-src/                      代码
-metrics/                  口径定义
-data/extracted/           真实年报抽取结果（只有人工核对过的字段）
-eval/frozen-01/fixtures/  合成夹具（页面上标成合成）
-```
-
-**`data/raw/`（年报 PDF）不推** —— 几百 MB，而这个服务不解析 PDF。
-
-🔴 **`.dockerignore` 不是上传清单。** 它管的是「进不进镜像」，管不到「进不进这个
-**公开**仓库」。2026-09-07 组装载荷时 `src/*.egg-info/` 就是这么混进来的 ——
-`.dockerignore` 里明明写着 `*.egg-info/`，而 `cp -r` 不读它。
-⇒ 推之前显式剔除 `*.egg-info/`、`__pycache__/`、`*.pyc`，并把全文件清单过一遍眼。
+Space 是 git 仓库。合体那次推送之前的 HEAD 是
+`b6ff5428c323b63066bf4b845898bd4be90ba38e`，回退一次 push 即可。

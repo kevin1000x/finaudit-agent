@@ -4,8 +4,13 @@
 # 写着 HF Spaces、`PORT=7860`、`uid 1000`）。免费 Space 闲置休眠、请求唤醒 ——
 # **没人请求时没有进程在跑**，正好是 `D-021` 豁免三判据①要的。
 #
-# **Space 是 public**（`D-005` 修订一，2026-09-07）。private + docker 要 PRO 订阅，
-# 而「有链接 / 不花钱 / Space 私有」三者不能同时成立，操作者裁定放弃第三项。
+# ⚠️ **本文件目前不是线上那份。** `D-040` 修订二（2026-09-08）之后，本服务不再
+# 单独占一个 Space —— 免费账号建不了新的 docker Space（实测 402，public/private
+# 都一样）。它作为 `/audit/*` 挂进 `RGT07/cninfo-financial-analyzer`，用的是**那个**
+# 仓库的 Dockerfile；本文件保留下来，是为了「换个落脚点」时不用从头写一遍，
+# 以及说清载荷该有哪些东西。部署步骤见 `deploy/hf-space/README.md`。
+#
+# **载荷是公开的**（`D-005` 修订一）：那个 Space 是 public。
 #
 # ⇒ 下面那份 `COPY` 清单**同时也是一份公开清单**。加一行之前先想：
 #    这个目录公开了会怎样？`data/raw/`（年报 PDF）与 `docs/` / `tests/` / `references/`
