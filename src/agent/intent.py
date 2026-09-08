@@ -118,6 +118,52 @@ def _match_alias(registry: Registry, question: str):
     return None, None
 
 
+#: `_match_entities` 的第三种返回：命中了，但命中的很可能只是一个更长名字的一截。
+_AMBIGUOUS_PREFIX = object()
+
+
+def _is_ideograph(ch: str) -> bool:
+    """CJK 表意文字。用码位判，不列字表。"""
+    return "一" <= ch <= "鿿"
+
+
+def _match_entities(q: str, entity_names):
+    """题面里认得出哪几家公司。返回命中的名字列表，或 `_AMBIGUOUS_PREFIX`。
+
+    🔴 **左边必须是边界。** 命中的名字紧挨着一个汉字时拒答 ——
+    「**南**华鑫科技」里确实含有「华鑫科技」，但那几乎一定是另一家公司。
+    2026-09-09 独立复核实测：修这一条之前，「南华鑫科技 2023 年的资产负债率」
+    答出了华鑫科技的 0.55，页面上一句异常都没有。
+
+    ⚠️ **右边没有同样的守卫，这是一个已知的、写下来的洞**（`N-70`）：
+    「华鑫科技**集团**有限公司」今天仍会被认成华鑫科技。
+    守右边的代价是误拒最自然的问法 —— 「贵州茅台**的**资产负债率是多少」
+    里紧跟着的也是汉字。中文没有词边界，而**误拒会让人绕过这个功能，
+    误答只会让人相信一个错数**：两种错都要避，但在拿不出一条能分开
+    「的」与「集团」的判据之前，先守住更危险的那一侧。
+    """
+    命中 = {}
+    for 名 in entity_names:
+        if not 名 or not isinstance(名, str):
+            continue
+        at = q.find(名)
+        if at >= 0:
+            命中[名] = at
+    # 一个名字被另一个包含时只留更长的那个（例如同时登记了简称与全称）。
+    命中 = {n: at for n, at in 命中.items() if not any(n != o and n in o for o in 命中)}
+
+    # 🔴 **先判「是不是两家」，再判「是不是只认出一截」。** 顺序反了会误伤：
+    # 「华鑫科技**和**长风制造哪个高」里，「长风制造」左边紧挨着「和」——
+    # 那是个连词，不是名字的一部分。2026-09-09 首版就是这么写的，
+    # 一条已有的测试当场把它抓了出来。
+    if len({str(entity_names[n]) for n in 命中 if entity_names[n]}) > 1:
+        return list(命中)
+
+    if any(at > 0 and _is_ideograph(q[at - 1]) for at in 命中.values()):
+        return _AMBIGUOUS_PREFIX
+    return list(命中)
+
+
 def parse_intent(question: str, registry: Registry, ask_model=None, entity_names=None):
     """题面 → `Intent`，或说明缺什么的 `Refusal`。
 
@@ -167,14 +213,30 @@ def parse_intent(question: str, registry: Registry, ask_model=None, entity_names
 
     # `N-65`：题面里没有六位代码时，再拿简称查一次表。
     # 顺序是**先代码后简称**，不是偏好问题：代码是唯一标识，简称会重名、会变更。
-    if not entities and entity_names:
-        命中 = [n for n in entity_names if n and n in q]
-        # 一个名字被另一个包含时只留更长的那个 —— 与 `_match_alias` 同一条规矩。
-        命中 = [n for n in 命中 if not any(n != o and n in o for o in 命中)]
-        codes = sorted({str(entity_names[n]) for n in 命中})
+    if not entities and hasattr(entity_names, "items"):
+        # `hasattr(items)` 而不是 `if entity_names`：调用方传了个列表进来时，
+        # 旧写法会在 `entity_names[n]` 上抛 TypeError —— 而本模块的纪律是
+        # **认不出就拒答**，不是崩。
+        命中 = _match_entities(q, entity_names)
+        if 命中 is _AMBIGUOUS_PREFIX:
+            # 🔴 独立复核（2026-09-09）实测出来的一个真危险：
+            # 「**南**华鑫科技 2023 年的资产负债率」当时答出 0.55，
+            # 认成了「华鑫科技」—— 正是 `intent.py` 抬头写的
+            # 「一个看起来完全正常的错误答案」。
+            return Refusal(
+                RefusalCode.INTENT_INCOMPLETE,
+                "题面里那个公司名，我只认出了它的「一部分」 —— 它前面还连着别的字，"
+                "很可能是另一家名字更长的公司。不猜。请给六位股票代码，"
+                "或者把公司名单独隔开写。",
+            )
+        # 代码取不到值的表项直接丢 —— 否则 `str(None)` 会变成一个
+        # 叫「None」的主体，证据页上印「取的是 None 的 2023 年那一行」。
+        codes = sorted({str(entity_names[n]) for n in 命中 if entity_names[n]})
         if len(codes) == 1:
+            # 取**最长**的那个命中，不取字典里第一个 —— 顺序由合表顺序决定，
+            # 不由任何人决定（`_near_miss` 的注释警告过同一个形状）。
+            entity_source = "公司简称「" + max(命中, key=len) + "」"
             entities = codes
-            entity_source = "公司简称「" + 命中[0] + "」"
         elif len(codes) > 1:
             名单 = chr(12289).join(sorted(命中))
             return Refusal(

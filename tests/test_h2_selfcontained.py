@@ -132,8 +132,65 @@ def test_脚本自己写明它证明不了什么():
     """`AC-05` 的已知盲区是「抓不到证据不相关」。一道只查「材料齐不齐」的检查
     如果不写明这一点，读的人会把它当成 `AC-06` 的证据。
     """
-    doc = (REPO_ROOT / "scripts" / "check_h2_selfcontained.py").read_text(encoding="utf-8")
-    assert "查不了" in doc
-    assert "AC-06" in doc
-    # 输出里也要说，不能只写在 docstring 里 —— 跑的人未必去读源码
-    assert "不等于" in doc
+    # ⚠️ 断的必须是**实际输出**，不是源码文本。断源码是空转：
+    #    那三个词在 docstring 里本来就有，把 `main()` 里的 print 全删掉也不会红。
+    import contextlib
+    import io as _io
+
+    缓冲 = _io.StringIO()
+    with contextlib.redirect_stdout(缓冲):
+        code = chk.main(["x", str(PACKETS)])
+    输出 = 缓冲.getvalue()
+    assert code == 0, 输出
+    assert "不等于" in 输出 and "AC-06" in 输出, "跑的人未必去读源码，这句得印出来"
+    assert "盲审" in 输出 or "人" in 输出, "要说清「谁才给得出那个判断」"
+
+
+# ── 🔴 查活渲染器，不只查存盘产物 ──────────────────────────────────────
+
+
+def test_拿当前渲染器现出一份题包也要全过():
+    """🔴 **本文件最要紧的一条。**
+
+    上面那些查的是存盘的 `docs/agent/h2-02/packets.md` —— 那份是 2026-09-09
+    上午的渲染器出的。**只查存盘产物的检查，查不出渲染器变了。**
+
+    实测：同日把拒答页抬头从「这个数是从哪儿来的」改成「查的是哪份数据」之后，
+    存盘那份**照样全绿**，而拿当前渲染器现出一份来跑，15 题里 **9 题**报「缺出处」。
+    检查器里抄的那份抬头常量没跟着改，而它的注释恰恰写着「不在这里重写措辞」。
+
+    ⇒ 抬头常量改成从 `agent.answer` **import**，而这一条负责保证
+    「改了渲染器就会红」。（`N-42` 那个形态，第六次。）
+    """
+    import eval.h2 as h2
+
+    packets, _ = h2.build_packets(REPO_ROOT / "eval" / "frozen-01", seed=20260909)
+    现出的 = chk.split_packets(h2.render_packets(packets))
+    assert len(现出的) == 15
+
+    结果 = {t: chk.check_one(t, b) for t, b in 现出的.items()}
+    坏 = {t: g for t, g in 结果.items() if g}
+    assert not 坏, 坏
+
+    类型 = {chk.classify(b) for b in 现出的.values()}
+    assert "unknown" not in 类型, "有页面认不出类别 —— 拒答措辞改过而 REFUSAL_KINDS 没跟上"
+
+
+def test_分类判据不许松到互相串门():
+    """🔴 也是实测出来的。
+
+    原来有一条判据是「里没有」（想匹配「…里没有 900001/2023 这一行」），
+    而同日改过的拒答理由「这句话**里没有**我认得出的指标名」也含这三个字，
+    于是「没有这个指标」被误判成「没有这一行」。
+
+    ⚠️ 更要命的是 `unknown` 那条兜底**没兜住**：它确实匹配上了，只是匹配错了。
+    **松的判据比没有判据更危险** —— 它让「认不出」这个信号消失了。
+    """
+    页 = (
+        "问的是什么\n    某个问题\n\n"
+        "为什么不给答案\n    · 这句话里没有我认得出的指标名。下面列着当时全部可用的叫法。\n\n"
+        "我们当时有哪些指标\n    · 毛利率\n\n"
+        "查的是哪份数据\n    · 合成夹具（虚构公司与数值），不是任何真实公司的年报\n"
+    )
+    assert chk.classify(页) == "no_metric", "「没有这个指标」被判成了别的类"
+    assert chk.check_one("H2-XX", 页) == []

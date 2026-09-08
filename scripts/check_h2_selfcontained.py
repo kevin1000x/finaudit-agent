@@ -47,28 +47,45 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 SPLIT = re.compile(r"={60,}\n(H2-\d+)\n={60,}")
 
-# 小节抬头，逐字取自 `agent/answer.py` 的 `_A_*` 常量。
-# ⚠️ 不在这里重写措辞：抬头改了而这里没跟着改，检查会安静地全绿。
-H_ANSWER = "答案"
-H_REFUSED = "为什么不给答案"
-H_INPUTS = "这个数是拿哪几个数算出来的"
-H_WHY_HIT = "凭什么说满足了这一条"
-H_REGISTRY = "我们当时有哪些指标"
-H_WHERE = "这个数是从哪儿来的"
+# 🔴 小节抬头**从渲染器 import，不在这里抄一份**。
+#
+# 2026-09-09 教训：原来这里抄了六个常量，注释还写着「不在这里重写措辞」。
+# 同一天改了拒答页的抬头（「这个数是从哪儿来的」→「查的是哪份数据」），
+# **抄来的那份没跟着改** —— 拿当前渲染器重出一份题包再跑，15 题里 9 题报「缺出处」。
+# 而存盘的那份题包照样全绿，因为它是用旧渲染器出的。
+#
+# ⇒ **只查存盘产物的检查，查不出渲染器变了。**（`N-42` 那个形态，第六次。）
+from agent.answer import (  # noqa: E402
+    _A_ANSWER as H_ANSWER,
+    _A_INPUTS as H_INPUTS,
+    _A_REFUSED as H_REFUSED,
+    _A_REGISTRY as H_REGISTRY,
+    _A_WHERE as H_WHERE,
+    _A_WHERE_REFUSED as H_WHERE_REFUSED,
+    _A_WHY_HIT as H_WHY_HIT,
+)
 
 #: 拒答理由的措辞 → 该页属于哪一类。**顺序有意义**，先匹配到的算。
+#
+# ⚠️ 每一条都要**够独特**。原来有一条是「里没有」（想匹配「…里没有 900001/2023
+# 这一行」），而同日改过的「这句话**里没有**我认得出的指标名」也含这三个字 ——
+# 于是「没有这个指标」被误判成「没有这一行」。而 `unknown` 那条兜底**没兜住**：
+# 它确实匹配上了，只是匹配错了。**松的判据比没有判据更危险**，
+# 因为它让「认不出」这个信号消失了。
 REFUSAL_KINDS = (
     ("没有对应的口径定义", "no_metric"),
-    ("没有认得出的指标名", "no_metric"),
+    ("认得出的指标名", "no_metric"),
     ("题面里没有主体", "incomplete"),
+    ("没有认得出的公司", "incomplete"),
     ("题面里没有期间", "incomplete"),
     ("出现多个主体", "incomplete"),
+    ("出现多家公司", "incomplete"),
     ("出现多个期间", "incomplete"),
-    ("里没有", "no_row"),          # 「…里没有 900001/2023 这一行」
-    ("都没有", "no_row"),
+    ("这一行", "no_row"),          # 「…里没有 900001/2023 这一行」
 )
 
 
@@ -95,6 +112,14 @@ def _section(body: str, head: str) -> str | None:
             break
         out.append(s)
     return "\n".join(out)
+
+
+def _where(body: str) -> str | None:
+    """出处那一节。**作答页与拒答页抬头不同**：拒答页那几页根本没有数，
+    所以抬头是「查的是哪份数据」而不是「这个数是从哪儿来的」——
+    一个抬头不该承诺页面里不存在的东西。
+    """
+    return _section(body, H_WHERE) or _section(body, H_WHERE_REFUSED)
 
 
 #: 「没有值」的三种写法。**它们都是有效取值**，不是缺口 ——
@@ -161,13 +186,16 @@ def check_one(tag: str, body: str) -> list[str]:
         if not any(w in why for w in ("主体", "期间")):
             gaps.append("说题面不全，却没点名缺的是哪一项")
     elif kind == "no_row":
-        if _section(body, H_WHERE) is None:
+        if _where(body) is None:
             gaps.append("说数据源里没有这一行，却没说清是哪个数据源")
     else:
         gaps.append("认不出这一页属于哪一类 —— 拒答理由的措辞可能改过，检查器要跟着改")
 
-    if _section(body, H_WHERE) is None:
-        gaps.append("缺「" + H_WHERE + "」：任何一页都要说清数据是真实年报还是合成夹具（D-010）")
+    if _where(body) is None:
+        gaps.append(
+            "缺出处（作答页「" + H_WHERE + "」／拒答页「" + H_WHERE_REFUSED + "」）："
+            "任何一页都要说清数据是真实年报还是合成夹具（D-010）"
+        )
     return gaps
 
 

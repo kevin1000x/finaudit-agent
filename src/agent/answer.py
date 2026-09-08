@@ -166,6 +166,12 @@ class FixtureSource:
         # 而那时拒答理由会从「没有这家公司的数据」退化成「认不出主体」。
         self.entity_names: dict = {}
         for ent in data.get("entities") or []:
+            # ⚠️ 不假设它是 mapping。数据文件写歪一行（`- 华鑫科技` 而不是
+            #    `- {short_name: …}`），旧写法在 `ent.get` 上抛 `AttributeError`，
+            #    而这个构造发生在**每次请求**的路径上 ⇒ 一路穿出去就是 5xx。
+            #    本仓的纪律是「任何输入都不许 5xx」——数据文件也是输入。
+            if not isinstance(ent, dict):
+                continue
             名, 码 = ent.get("short_name"), ent.get("stock_code")
             if 名 and 码:
                 self.entity_names[str(名)] = str(码)

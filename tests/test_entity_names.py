@@ -86,15 +86,20 @@ def test_两家近似简称各归各的(registry, source):
     assert a.value != b.value
 
 
-def test_只给共同前缀时拒答而不是挑一家(registry, source):
-    """🔴 与指标那边的近似命中同一条纪律：**分不清就拒答，不猜。**
+def test_只给共同前缀时拒答(registry, source):
+    """⚠️ **它走的不是「多家公司」那条分支**，别被名字骗了。
 
-    「华鑫」既可能是华鑫科技也可能是华鑫股份。挑一个，用户拿到的是一个
-    看起来完全正常的错答案。
+    「华鑫」是华鑫科技与华鑫股份的共同前缀，但代码根本不把它看成歧义 ——
+    表里没有「华鑫」这个键，于是一个都没命中，走的是「认不出这家公司」那条路。
+    真正守住「多家公司」分支的是下面那条 `test_题面里出现两家公司时拒答`。
+
+    这条仍然有价值：它守的是**不许拿前缀去凑一家**（比如把匹配改成
+    「表里哪个名字以题面里的字串开头」，这条会立刻红）。
     """
     a = answer_question("华鑫 2023 年的资产负债率是多少？", registry, source=source)
     assert a.refused
     assert a.refusal["code"] == "INTENT_INCOMPLETE"
+    assert "没有认得出的公司" in a.refusal["detail"], "走的应当是「认不出」那条分支"
 
 
 def test_题面里出现两家公司时拒答(registry, source):
@@ -134,7 +139,11 @@ def test_没有数据源时退回旧措辞(registry):
     """离线解析（不给 source）时简称整条不生效，就不该承诺简称能用。"""
     got = parse_intent("某某公司 2023 年的资产负债率是多少？", registry)
     assert isinstance(got, Refusal)
-    assert "六位股票代码" in got.detail
+    # ⚠️ 断的是**新旧两句里只有旧的才有**的那几个字。
+    #    只断「六位股票代码」是空转 —— 新措辞里也有这五个字，
+    #    把 `if entity_names:` 那个分支删掉让它永远走新措辞，照样绿。
+    assert "没有主体" in got.detail
+    assert "简称" not in got.detail
 
 
 # ── 证据页要说出这一步 ──────────────────────────────────────────────────
@@ -146,8 +155,11 @@ def test_查表查到的主体要印在证据页上(registry, source):
     """
     a = answer_question("华鑫科技 2023 年的资产负债率是多少？", registry, source=source)
     page = render_answer(a, registry.resolve(a.metric_id))
-    assert "华鑫科技" in page
-    assert "查表查到的" in page
+    # ⚠️ 不断「"华鑫科技" in page」—— 那是**恒真**的：`render_answer` 第一件事
+    #    就是把题面原样印在「问的是什么」下面。要断就断**出处那一节里**有它。
+    出处 = page.split("这个数是从哪儿来的")[1].split("用的是哪个口径")[0]
+    assert "华鑫科技" in 出处
+    assert "查表查到的" in 出处
     assert "主体怎么定下来的" in page
 
 
@@ -242,3 +254,90 @@ def test_带基准年的同比问法今天够不到期间那一步(registry, sou
         "别名覆盖上了？那就回去核 `N-69`：这道题现在会走到期间检查，"
         "而那句拒答理由对「带基准年的同比」是不是还成立，要重新看一遍"
     )
+
+
+# ── 左边必须是边界（独立复核 2026-09-09 实测出来的） ────────────────────
+
+
+def test_名字左边紧挨着汉字时拒答(registry, source):
+    """🔴 **本文件最要紧的一条。** 独立复核实测出来的一个真危险。
+
+    修这条之前，「**南**华鑫科技 2023 年的资产负债率是多少？」**答出了 0.55** ——
+    华鑫科技的数，页面上一句异常都没有。那正是 `intent.py` 抬头写的
+    「一个看起来完全正常的错误答案」。
+
+    「南华鑫科技」里确实含有「华鑫科技」四个字，但它几乎一定是另一家公司。
+    """
+    for q in ("南华鑫科技 2023 年的资产负债率是多少？",
+              "新华鑫科技 2023 年的资产负债率是多少？"):
+        a = answer_question(q, registry, source=source)
+        assert a.refused, q + " 又开始答了"
+        assert a.refusal["code"] == "INTENT_INCOMPLETE"
+        assert "一部分" in a.refusal["detail"]
+
+
+def test_先判多家再判只认出一截(registry, source):
+    """🔴 顺序。反了会误伤「A**和**B」——「和」是连词，不是名字的一部分。
+
+    首版就是反的（先判左边界），而已有的
+    `test_题面里出现两家公司时拒答` 当场把它抓了出来。
+    这一条把顺序本身钉住。
+    """
+    a = answer_question(
+        "华鑫科技和长风制造 2023 年的资产负债率哪个高？", registry, source=source
+    )
+    assert a.refused
+    assert "多家公司" in a.refusal["detail"], "被误判成「只认出一截」了"
+    assert "一部分" not in a.refusal["detail"]
+
+
+def test_右边紧挨着汉字今天不拦这是已知的洞(registry, source):
+    """⚠️ 记录一个**当前事实**，不是主张它对（`N-70`）。
+
+    「华鑫科技**集团**有限公司」今天仍会被认成华鑫科技。守右边的代价是
+    误拒最自然的问法 —— 「贵州茅台**的**资产负债率是多少」里紧跟着的也是汉字，
+    而中文没有词边界。在拿不出一条能分开「的」与「集团」的判据之前，
+    先守住更危险的左侧。
+
+    这条测试的作用是：**哪天有人把右侧也守上，它会红** ——
+    那时应当回来确认「的」那类问法没有被一起误拒。
+    """
+    a = answer_question(
+        "华鑫科技集团有限公司 2023 年的资产负债率是多少？", registry, source=source
+    )
+    assert not a.refused, (
+        "右侧守上了？回去核 `N-70`：确认「贵州茅台的资产负债率是多少」"
+        "这类问法没有被一起误拒"
+    )
+    assert a.entity == "900001"
+
+
+def test_最自然的问法不许被误拒(registry, source):
+    """「…的资产负债率是多少」——名字右边紧跟着「的」。这是最常见的问法。"""
+    a = answer_question("华鑫科技的资产负债率是多少？2023 年", registry, source=source)
+    assert not a.refused, a.refusal
+    assert a.entity == "900001"
+
+
+# ── 畸形入参不许崩（拒答是正常结果，崩不是） ────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "坏表",
+    [["华鑫科技"], {900001: "900001"}, {"华鑫科技": None}, "字符串不是表", 42],
+)
+def test_简称表畸形时拒答而不是抛(registry, 坏表):
+    got = parse_intent("华鑫科技 2023 年的资产负债率是多少？", registry, entity_names=坏表)
+    assert isinstance(got, Refusal), "畸形的表不该让它答出一个数"
+
+
+def test_数据文件里entities写歪一行也不许崩(tmp_path):
+    """这个构造在**每次请求**的路径上，抛出去就是 5xx。数据文件也是输入。"""
+    p = tmp_path / "歪.yaml"
+    p.write_text(
+        "meta: {fixture_id: x}\nentities:\n  - 华鑫科技\n"
+        "  - {short_name: 长风制造, stock_code: '900003'}\nrows: []\n",
+        encoding="utf-8",
+    )
+    src = FixtureSource(p)
+    assert src.entity_names == {"长风制造": "900003"}, "写歪的那一行应当被跳过，不是让它崩"
