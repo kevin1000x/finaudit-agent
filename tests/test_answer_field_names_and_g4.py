@@ -236,3 +236,34 @@ def test_G4_快照哈希不受标注影响(registry):
     b = entity_snapshot({"甲": "900001"}, {"甲": "synthetic"})
     assert a["sha256"] == b["sha256"], "标注变了指纹也变 ⇒ 指纹指的不再是名字表"
     assert a["natures"] != b["natures"]
+
+
+def test_G4_家数按股票代码去重不按名字条数(registry, source):
+    """🔴 2026-09-10 推 Space 之前肉眼看渲染时抓到的假数字。
+
+    登记全称之后，一家公司在名单里占两行（简称 + 全称），而抬头那句写的是
+    「当时能认出 N 家公司」—— N 取的是名字条数 ⇒ 页面印出「8 家公司」，
+    而实际只有 4 家。**证据页在陈述一个假事实。**
+
+    ⚠️ **既有测试一条都没照出来**：它们查的是「某个名字在不在表里」，
+    不查这个计数。⇒ 这条专钉计数。
+    """
+    a = answer_question("华鑫 2023 年的毛利率是多少？", registry, source=source)
+    s = a.entity_snapshot
+    codes = {source.entity_names[n] for n in s["names"]}
+    assert s["entity_count"] == len(codes) == 4, s
+    assert s["name_count"] == len(s["names"]) == 8, s
+    assert s["synthetic_count"] == 4, "虚构家数也要按公司算，不按名字条数"
+
+    页 = render_answer(a, None, None)
+    assert "认出 4 家公司" in 页, 页[:400]
+    assert "共 8 种叫法" in 页, "两个数要分开报，只报一个会让读者以为公司多了一倍"
+    assert "认出 8 家公司" not in 页
+
+
+def test_G4_一家一种叫法时不画蛇添足(registry):
+    """**反方向的一半**：家数与叫法数相同时，不要多印一句「共 N 种叫法」。"""
+    from agent.answer import entity_snapshot
+
+    s = entity_snapshot({"甲": "900001"}, {"甲": "synthetic"})
+    assert s["entity_count"] == s["name_count"] == 1

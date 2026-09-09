@@ -454,16 +454,24 @@ def entity_snapshot(entity_names, entity_natures=None) -> dict:
     `sha256` 哈希的是排好序的名字表：证明「这一页列的就是当时那份表」，
     **不**证明那份表是对的 —— 与 `registry_snapshot` 的限制完全相同。
     """
-    names = sorted(str(n) for n in (entity_names or {}))
+    表 = entity_names or {}
+    names = sorted(str(n) for n in 表)
     nat = entity_natures or {}
     # 🔴 **认不出来源时按合成算**，与 `FixtureSource.is_real` 同一个方向：
     # 把真的标成虚构只是保守，把虚构的标成真的是 `D-010` 的红线。
     natures = {n: ("real" if nat.get(n) == "real" else "synthetic") for n in names}
+    # 🔴 **家数按股票代码去重，不按名字条数。**
+    #    2026-09-10 登记全称之后，一家公司在名单里占两行（简称 + 全称），
+    #    页面当场印出「当时能认出 8 家公司」而实际只有 4 家 —— 一个假数字。
+    #    测试没照出来，因为它们查的是「名字在不在表里」，不查这个计数。
+    codes = {str(表[n]) for n in names if 表.get(n)}
+    合成代码 = {str(表[n]) for n in names if 表.get(n) and natures[n] == "synthetic"}
     return {
-        "entity_count": len(names),
+        "entity_count": len(codes),
+        "name_count": len(names),
         "names": names,
         "natures": natures,
-        "synthetic_count": sum(1 for v in natures.values() if v == "synthetic"),
+        "synthetic_count": len(合成代码),
         # 哈希只吃名字表，**不吃 natures** —— 它是同一份表的标注，
         # 不是表本身；混进去会让「这一页列的就是当时那份表」这句话失去指称。
         "sha256": _sha256_text(json.dumps(names, ensure_ascii=False)),
@@ -956,8 +964,15 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
         L.append(_A_ENTITIES)
         L.extend(
             wrap(
-                "· 当时能认出 " + str(ents.get("entity_count")) + " 家公司的简称，"
-                "全列在下面 —— 可以直接核「我问的那家在不在里面」。"
+                "· 当时能认出 " + str(ents.get("entity_count")) + " 家公司，"
+                # 一家公司可能有多种叫法（简称与全称都登记），**两个数分开报** ——
+                # 只报名字条数会让页面声称公司比实际多一倍。
+                + (
+                    "共 " + str(ents.get("name_count")) + " 种叫法，"
+                    if ents.get("name_count") != ents.get("entity_count")
+                    else ""
+                )
+                + "全列在下面 —— 可以直接核「我问的那家在不在里面」。"
                 "不在里面时，给六位股票代码同样能问。"
                 # ⚠️ 纯文本页面，**不要用 `**` 加重**：这一页别处都经 `_plain`
                 #    剥掉了标记，这里留着会原样印出来。
