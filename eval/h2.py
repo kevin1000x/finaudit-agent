@@ -64,6 +64,11 @@ REQUIRED_ANNOTATIONS = (
     "w_ge_5_satisfied",            # `≥5 题答错` 是否满足
     "resolution_floor_on_wrong",   # 错题子集上的分辨率下限 1/W
     "limitations",                 # 指向 `02-03-PLAN.md` 那三条限定，不复述
+    # `N-75`（2026-09-09 新增）：这份题包是不是**盲出**的 ——
+    # 出包时执行者有没有读过、报过跑分结果。不是盲出的，
+    # 复核者可能已经知道答案，那时一致率这个数**不能当成 AC-06 的读数**。
+    # 缺 `BUILD.json` ⇒ 记「未声明」，**不记「是」** —— fail-closed。
+    "blind_build",
 )
 
 #: §4.2 的三档。**数值一个不动**（`D-037` 只改了「样本怎么取」与「报告说什么」）。
@@ -91,8 +96,30 @@ class Packet:
 # --------------------------------------------------------------------------
 
 
-def build_packets(suite_dir: Path, seed: int):
+def build_packets(suite_dir: Path, seed: int, blind: bool = False):
     """跑一次评测，把**可计分**的每一题做成一个题包。返回 `(packets, report)`。
+
+    ## `blind=True`：**报告对象不出这个函数**（`N-75`）
+
+    2026-09-09 实际栽过的一次：出题包必须先有跑分结果，而
+    `EVAL_CASES` §4.1 的「`W ≥ 5`」又要操作者裁 ⇒ 执行者跑了 `eval.run`、
+    读了结果、把「21/21 全对」告诉了复核者本人。复核者知道答案全对之后，
+    **他每判一个「对」都不含信息**，§4.2 一致率那一读数当场作废。
+
+    `blind=True` 时返回 `(packets, None)` —— 调用方**拿不到** `report`，
+    因此**印不出** `W`、印不出逐题结果。这不是提醒，是把那条路封掉。
+
+    🔴 **它封不住的那条路，如实写在这里**：`python -m eval.run --suite X`
+    仍然会把分布打在屏幕上。本函数管不着别的进程。
+    ⇒ 真正的规矩是**「出包 → 复核 → 才跑、才报」**，`--blind` 只让这条规矩
+    在这一个入口上**做得到**，做不到「别人绕不过」。
+    ⚠️ 别把它当成保证。判据写在 `N-75`。
+
+    ## 为什么盲出题包在信息上是够的
+
+    §4.1 那句「≥5 题答错」约束的是**抽样**；而这里是**普查**（`D-037`），
+    一道不挑 ⇒ 出包阶段根本不需要知道 `W`。`W` 只在**算数**时才需要
+    （§4.2 附注要求报错题子集的原始计数），那时复核已经做完了。
 
     **普查，不抽样**（`D-037` / §4.1.1）：`status` 落在 `PASS`/`FAIL` 的题一道不落，
     挑题的余地在这里就不存在。`NOT_RUN`（C4 准则检索 / C5 图谱）没有答案可复核，
@@ -139,7 +166,9 @@ def build_packets(suite_dir: Path, seed: int):
         # 泄题的题包不许流出去。这道门比「测试红了」更靠前：
         # 测试守的是代码，这一句守的是**这一次真的要交出去的那份文件**。
         raise ValueError("题包泄题，拒绝产出：\n  " + "\n  ".join(problems))
-    return packets, report
+    # 🔴 **盲模式下报告到此为止。** 不是「调用方自觉别看」——
+    # 是它手上根本没有那个对象，于是印不出 W，也印不出逐题结果。
+    return packets, (None if blind else report)
 
 
 def render_packets(packets) -> str:
@@ -259,10 +288,13 @@ def blank_sheet(packets) -> str:
     return "\n".join(L) + "\n"
 
 
-def score(sheet: dict, report: dict, packets) -> dict:
+def score(sheet: dict, report: dict, packets, build_info: dict | None = None) -> dict:
     """回填后的答卷 → 一致率 / 无法判断率 / §4.2 判定。
 
     **fail-closed 两处**：答卷没填完不给结论；`D-037` 的强制标注缺一项不给结论。
+
+    `build_info` 是出包时写下的 `BUILD.json`（`N-75`）。**给不出就记「未声明」**，
+    不记「是」—— 一份不知道是不是盲出的题包，必须当成可能已经泄底的来读。
     """
     results = {r["id"]: r for r in report["results"]}
     by_anon = {p.anon_id: p for p in packets}
@@ -307,6 +339,12 @@ def score(sheet: dict, report: dict, packets) -> dict:
             "1/%d = %.0f 个百分点" % (w, 100.0 / w) if w else "错题为 0，这一档无从分辨"
         ),
         "limitations": _LIMITATIONS_REF,
+        # `N-75`：出包时有没有人读过 / 报过跑分结果。
+        "blind_build": (
+            "是（出包时未读跑分结果）"
+            if (build_info or {}).get("blind") is True
+            else "未声明 —— 复核者可能已知答案，一致率不可当作 AC-06 读数"
+        ),
     }
     for key in REQUIRED_ANNOTATIONS:
         if key not in annotations:
@@ -378,7 +416,7 @@ def render_score(got: dict) -> str:
 
 #: 进 `SHA256SUMS` 的产物。**答卷不在其中** —— 它就是要被复核者改的，
 #: 冻它等于让清单在实验开始的那一刻必然变红。
-FROZEN_ARTIFACTS = ("packets.md", "keymap.json")
+FROZEN_ARTIFACTS = ("packets.md", "keymap.json", "BUILD.json")
 
 
 def _write(path: Path, text: str) -> None:
@@ -422,16 +460,38 @@ def main(argv=None) -> int:
     ap.add_argument("--seed", type=int, default=20260905)
     ap.add_argument("--out", default=None, help="题包输出目录，默认 docs/agent/h2-01/")
     ap.add_argument("--sheet", default=None, help="回填后的答卷；给了就只算数不重出题包")
+    ap.add_argument(
+        "--blind",
+        action="store_true",
+        help="盲出题包：跑分结果不出 build_packets，因此印不出 W 与逐题结果（N-75）。"
+        "与 --sheet 互斥 —— 算数本来就需要那份结果。",
+    )
     args = ap.parse_args(argv)
+
+    if args.blind and args.sheet:
+        print(
+            "--blind 与 --sheet 不能同时给：算数必须读跑分结果，盲不了。\n"
+            "盲的是**出包**那一步，不是算数那一步（算数时复核已经做完了）。",
+            file=sys.stderr,
+        )
+        return 2
 
     suite_dir = EVAL_ROOT / args.suite
     out_dir = Path(args.out) if args.out else (REPO_ROOT / "docs" / "agent" / "h2-01")
 
-    packets, report = build_packets(suite_dir, args.seed)
+    packets, report = build_packets(suite_dir, args.seed, blind=args.blind)
 
     if args.sheet:
         sheet = yaml.safe_load(Path(args.sheet).read_text(encoding="utf-8")) or {}
-        got = score(sheet, report, packets)
+        # `N-75`：出包时写下的自证。**读不到就当没盲过**，不猜。
+        build_path = Path(args.sheet).parent / "BUILD.json"
+        build_info = None
+        if build_path.is_file():
+            try:
+                build_info = json.loads(build_path.read_text(encoding="utf-8"))
+            except Exception:
+                build_info = None
+        got = score(sheet, report, packets, build_info)
         print(render_score(got))
         return 0 if got["conclusion"] is not None else 1
 
@@ -442,9 +502,36 @@ def main(argv=None) -> int:
         out_dir / "keymap.json",
         json.dumps(keymap(packets, args.seed), ensure_ascii=False, indent=2) + chr(10),
     )
+    # `N-75` 的自证。**只记出包这一步做了什么**，不记任何跑分结果 ——
+    # `n` 是题包题数，复核者数一数就知道，不是剧透。
+    _write(
+        out_dir / "BUILD.json",
+        json.dumps(
+            {
+                "blind": bool(args.blind),
+                "suite": args.suite,
+                "seed": args.seed,
+                "n": len(packets),
+                "note": (
+                    "blind=true 表示出包时跑分结果没有离开 build_packets，"
+                    "执行者印不出 W 与逐题结果。它管不住另起一个进程跑 eval.run —— "
+                    "那条要靠「出包 → 复核 → 才跑才报」这条规矩。见 N-75。"
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + chr(10),
+    )
     _write(out_dir / "SHA256SUMS", _manifest(out_dir, FROZEN_ARTIFACTS))
     print("题包 %d 题（普查，不抽样）已写入 %s" % (len(packets), out_dir))
     print("⚠️ keymap.json 是对照表，**复核者不拿到**；复核前也不要读 02-03-PLAN 的 <context>。")
+    if args.blind:
+        print("✅ 盲出：跑分结果未离开 build_packets，本进程印不出 W 与逐题结果。")
+        print("⚠️ 但它拦不住 `python -m eval.run --suite %s` —— **复核做完之前别跑那个**。" % args.suite)
+    else:
+        print("⚠️ **非盲出**：本次没给 --blind。若执行者读过或转述过跑分结果，")
+        print("   复核者可能已知答案 ⇒ 一致率不能当作 AC-06 的读数（N-75）。")
     return 0
 
 

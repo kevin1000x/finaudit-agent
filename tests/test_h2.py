@@ -279,3 +279,67 @@ def test_错题子集给的是原始计数不是只有百分比(built):
     packets, report, _ = built
     got = score(_filled(packets, report), report, packets)
     assert got["wrong_subset"] == {"agreed": 1, "total": 1, "raw": "1/1"}
+
+
+# ──────────────────── `N-75`：盲出题包 ────────────────────
+
+
+def test_blind_出包时报告对象根本不出函数(tmp_path):
+    """判据不是「调用方自觉别看」，是**它手上没有那个对象**。
+
+    2026-09-09 栽过的那次：执行者读了跑分结果、把「21/21 全对」告诉了复核者本人，
+    §4.2 一致率当场作废（`N-75`）。拿不到 `report` 就印不出 `W`。
+
+    它会红的场景：有人把 `blind` 参数忽略掉，或把 `report` 照样返回。
+    """
+    suite = _suite(tmp_path, [GOOD, BAD])
+    packets, report = build_packets(suite, seed=1, blind=True)
+    assert report is None, "盲模式下报告仍然被交了出来 —— 那条泄露路径没封住"
+    assert len(packets) == 2, "盲不该改变收哪几题：普查，一道不落"
+
+
+def test_blind_不改变题包内容(tmp_path):
+    """盲的是「谁看得到结果」，不是「出哪些题」。**两者必须逐字节相同**，
+
+    否则 `--blind` 就成了另一个实验，而不是同一个实验的安全出法。
+    """
+    a, _ = build_packets(_suite(tmp_path, [GOOD, BAD], "a"), seed=5, blind=True)
+    b, rep = build_packets(_suite(tmp_path, [GOOD, BAD], "b"), seed=5, blind=False)
+    assert rep is not None
+    assert [p.anon_id for p in a] == [p.anon_id for p in b]
+    assert [p.body for p in a] == [p.body for p in b]
+
+
+def test_没有BUILD_json时blind_build记未声明而不是记是(tmp_path):
+    """**fail-closed**：一份不知道是不是盲出的题包，必须当成可能已经泄底的来读。
+
+    `h2-01` / `h2-02` 都产在这个字段存在之前 ⇒ 它们永远落在「未声明」这一档，
+    这正确 —— 那两轮确实无从证明是盲出的。
+    """
+    suite = _suite(tmp_path, [GOOD, BAD])
+    packets, report = build_packets(suite, seed=3)
+    sheet = {"verdicts": [{"id": p.anon_id, "verdict": "对"} for p in packets]}
+
+    got = score(sheet, report, packets, build_info=None)
+    assert "未声明" in got["annotations"]["blind_build"]
+
+    got2 = score(sheet, report, packets, build_info={"blind": False})
+    assert "未声明" in got2["annotations"]["blind_build"], "blind=false 也不该记成盲出"
+
+    got3 = score(sheet, report, packets, build_info={"blind": True})
+    assert got3["annotations"]["blind_build"].startswith("是")
+
+
+def test_blind_与sheet互斥(tmp_path, capsys):
+    """算数必须读跑分结果，盲不了。**明确报错，不静默忽略。**
+
+    静默忽略的后果是：使用者以为自己盲着算了一遍，其实没有。
+    """
+    from eval import h2
+
+    suite = _suite(tmp_path, [GOOD, BAD])
+    sheet = tmp_path / "s.yaml"
+    sheet.write_text("verdicts: []\n", encoding="utf-8")
+    rc = h2.main(["--suite", suite.name, "--sheet", str(sheet), "--blind"])
+    assert rc == 2
+    assert "不能同时给" in capsys.readouterr().err
