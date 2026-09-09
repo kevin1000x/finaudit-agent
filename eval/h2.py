@@ -367,9 +367,42 @@ def score(sheet: dict, report: dict, packets, build_info: dict | None = None) ->
         },
         "annotations": annotations,
         "problems": problems,
+        "pass_blocked": [],
         "conclusion": None,
     }
     if problems:
+        return out
+
+    # 🔴 **强制标注不只是「在不在」，值也要成立**（2026-09-10 实测补上）。
+    #
+    # 此前只检查键存在，于是 `h2-frozen-02` 那一轮在同一屏上印出了
+    # 「判定：H2 通过」与「blind_build: 未声明 —— 一致率不可当作 AC-06 读数」，
+    # 自己跟自己拧着。一个看起来完全正当的「通过」，正是本项目反复栽的那个形状。
+    #
+    # ⚠️ **不对称是刻意的**：下面这些只挡「通过」，**不挡「不成立」**。
+    #    「通过」是宽松结论，需要完整前提；「不成立」是停止信号，
+    #    没有错题子集照样断定得了证据链不够用 —— 把停止信号也一起挡掉才是危险的。
+    pass_blocked = []
+    if w < 5:
+        pass_blocked.append(
+            "W = %d < 5：§4.1 要求样本含 ≥5 题答错。一致率整个落在**正确答案**上时，"
+            "测不到「证据页帮不帮得上抓错」—— §4.2 附注说的分辨信号正来自错题子集。"
+            "⇒ 这个数不构成 §4.2 的通过读数。" % w
+        )
+    if not str(annotations["blind_build"]).startswith("是"):
+        pass_blocked.append(
+            "题包非盲出（`N-75`）：复核者可能已知答案，"
+            "那时每个「对」都不含信息 ⇒ 一致率不可当作 `AC-06` 读数。"
+        )
+    out["pass_blocked"] = pass_blocked
+
+    if rate >= GATE_PASS and pass_blocked:
+        out["conclusion"] = (
+            "**不给「通过」。** 一致率 %.1f%% 达到了 §4.2 的 ≥80%%，"
+            "但下面的前提不成立，所以它不是一次合格的 §4.2 读数（详见上）。"
+            "⚠️ 仍然成立的是 §4.3 那个读数（「无法判断」占比），它不依赖错题子集。"
+            % (rate * 100)
+        )
         return out
 
     if rate >= GATE_PASS:
@@ -405,6 +438,12 @@ def render_score(got: dict) -> str:
         ),
         "  错题子集      %s（原始计数，§4.2 附注强制）" % got["wrong_subset"]["raw"],
         "",
+    ]
+    if got.get("pass_blocked"):
+        L.append("🔴 **这一次不构成 §4.2 的通过读数**，原因：")
+        L += ["  - " + r for r in got["pass_blocked"]]
+        L.append("")
+    L += [
         "  判定：" + got["conclusion"],
         "",
         "强制标注（`D-037` / `EVAL_CASES` §4.1.1）：",
@@ -493,7 +532,10 @@ def main(argv=None) -> int:
                 build_info = None
         got = score(sheet, report, packets, build_info)
         print(render_score(got))
-        return 0 if got["conclusion"] is not None else 1
+        # 结论缺失、或「通过」被前提挡下 ⇒ 退非零。
+        # 退 0 会让调用方以为这一轮拿到了合格读数。
+        ok = got["conclusion"] is not None and not got.get("pass_blocked")
+        return 0 if ok else 1
 
     out_dir.mkdir(parents=True, exist_ok=True)
     _write(out_dir / "packets.md", render_packets(packets))
