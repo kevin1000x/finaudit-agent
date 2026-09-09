@@ -42,6 +42,13 @@ SERVICE = REPO_ROOT / "src" / "service"
     {"question": 123},
     {"question": ["列表不是字符串"]},
     {"question": "x" * (MAX_QUESTION_BYTES + 1)},
+    # 🔴 孤立代理。`json.loads` 对它的转义写法**不报错**，返回的字符串里就带着它，
+    #    而默认的 `encode("utf-8")` 会抛 `UnicodeEncodeError` ⇒ 连响应都发不出去。
+    #    2026-09-10 独立复核实测：一个 22 字节的纯 ASCII 请求体打穿了 body 这一侧。
+    #    ⚠️ **头部那一侧 2026-09-08 就补过**（`坏头部` 表里有 `chr(0xD800)`），
+    #    body 这一侧当时漏了 —— 两张表本该是镜像的，缺口正好在没人对照的那一半。
+    {"question": chr(0xD83D)},
+    {"question": "华鑫科技" + chr(0xDC00) + " 2023 年的毛利率"},
     {"question": "毛利率"},                       # 缺主体缺期间
     {"question": "?" * 50},                        # 纯符号
     {"question": "SELECT * FROM users; --"},       # 注入形状
@@ -631,3 +638,54 @@ def test_镜像不许把年报PDF带出去():
         assert not c.startswith("data/raw"), f"Dockerfile 拷了年报 PDF：{c}"
     ignored = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8")
     assert "data/raw/" in ignored, ".dockerignore 得挡住 data/raw/"
+
+
+# ── `G4` 的 nature 合并：任一份说合成就是合成（2026-09-10） ─────────────
+
+_HEX64 = "a" * 64
+
+
+def _写夹具(路径, *, kind, 简称, 代码):
+    """造一份最小夹具。`kind: real` 还要一个 64 位 PDF 指纹才算数。"""
+    行 = ["meta:", "  fixture_id: " + 路径.stem]
+    if kind == "real":
+        行 += ["  kind: real", '  source_pdf_sha256: "' + _HEX64 + '"']
+    行 += ["  short_name: " + 简称, '  stock_code: "' + 代码 + '"', "rows: []", ""]
+    路径.write_text("\n".join(行), encoding="utf-8")
+    return 路径
+
+
+def test_任一份源说合成就是合成而不是最后一份赢(tmp_path):
+    """🔴 独立复核抓到的 `D-010` 方向问题（2026-09-10）。
+
+    原写法是 `natures[名] = ...` —— **最后一份赢**。于是
+    real→syn 的顺序保守，syn→real 的顺序把一家合成公司标成了真实。
+    而名字冲突检测比的是**代码**，同名同码不同 nature 一路穿过去。
+
+    当时之所以没出事，只因为 `coverage.SOURCE_DIRS` 恰好把 real 目录排在前面 ——
+    **那是排序巧合，不是代码保证**。
+
+    ⚠️ **造回归时发现的空档**：只跑「真实在前」那个顺序的话，
+    把代码改回后写覆盖，测试照样绿（实测 93 passed）。
+    这条测试存在的全部意义就是**把对抗顺序摆出来**。
+    """
+    from service.api import _Sources
+
+    合成 = _写夹具(tmp_path / "syn.yaml", kind="synthetic", 简称="甲公司", 代码="900001")
+    真实 = _写夹具(tmp_path / "real.yaml", kind="real", 简称="甲公司", 代码="900001")
+
+    for 顺序, 标签 in (((合成, 真实), "合成在前"), ((真实, 合成), "真实在前")):
+        got = _Sources([str(x) for x in 顺序]).entity_natures
+        assert got["甲公司"] == "synthetic", (
+            标签 + "：有一份源说它是合成，结果被标成了 " + got["甲公司"]
+            + " —— 把合成说成真实是 D-010 的红线"
+        )
+
+
+def test_两份都说真实时才算真实(tmp_path):
+    """**反方向的一半**：别把所有东西一律标成合成，那样标注就没有信息了。"""
+    from service.api import _Sources
+
+    a = _写夹具(tmp_path / "r1.yaml", kind="real", 简称="乙公司", 代码="600001")
+    b = _写夹具(tmp_path / "r2.yaml", kind="real", 简称="乙公司", 代码="600001")
+    assert _Sources([str(a), str(b)]).entity_natures["乙公司"] == "real"

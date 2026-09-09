@@ -1459,6 +1459,19 @@ wave 2 用三家公司实测（`docs/agent/phase-01.5/PROBE-COMBINATION.md`）�
   （例如 `standard_basis[].article` 的排版调整被判成口径变更），
   修订 `PROSE_PATHS` **并同时更新本条**，不得在测试里加豁免。
 
+### 与 `PROJECT_SPEC.md` 的冲突已收口（2026-09-10，台账 `N-73`）
+
+本条立下时，`PROJECT_SPEC.md` §版本号语义 写的是另一套，且**三处方向相反**
+（`display_name` / `aliases` 那两行说不 bump，`derivation` 那行说任何改动都要 bump）。
+按 `AGENTS.md` 的文档优先级 `PROJECT_SPEC.md` 上位 ⇒ 冲突期间**机器上跑的这一套
+与上位文档的字面相反**，而且已经被行使过一次（`N-58` 改散文、指纹不变、`version` 没动，
+按旧字面属违规）。
+
+操作者 2026-09-09 裁「版本号对齐最新的（即本条），之后统一更新」。
+2026-09-10 落地：**改的是 `PROJECT_SPEC.md` §版本号语义 的措辞**，
+本条与 `PROSE_PATHS` 一个字节没动。⇒ 两处从此指同一件事，
+`PROJECT_SPEC.md` 那一节里留着更正记录，说明原文错在哪。
+
 ## D-035 — 归因分层：加第五层「意图层」，并把两处规格自相矛盾各定一边
 
 - 状态：Accepted（**操作者 2026-09-05 授权由执行者裁**。台账 `N-56`，落地于 `EVAL_CASES.md` §5.5）

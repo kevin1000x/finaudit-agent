@@ -199,13 +199,43 @@ system 域标记的机械承载体在运行时，它确实存在，只是不在�
 
 #### 版本号语义
 
-版本号在本项目里的**唯一用途**是判定「两期结论能不能比」。因此它只对影响可比性的改动敏感：
+版本号在本项目里的**唯一用途**是判定「两期结论能不能比」。因此它只对影响可比性的改动敏感。
 
-- **必须 bump**：`grain` / `source_fields` / `formula` / `sign_convention` / `derivation` /
-  flag 触发条件 / `undefined_conditions` 的任何改动
-- **不 bump**：`advisory_only` 陷阱文本、`display_name`、`aliases` 的措辞调整
+**线画在三条精确路径上**（`semantic_layer.definition.PROSE_PATHS`）：
+
+- **不 bump** —— 只有这三处，一个不多：
+  `derivation.note` / `common_pitfalls[].text` / `undefined_conditions[].reason`
+- **必须 bump** —— **其余一切**，包括 `display_name`、`aliases`、
+  `source_fields[].line_item` / `.statement` 这些看起来也像「说法」的东西。
+  它们进证据链，改了就改变了这条答案自称的出处。
+
+**机器判据是口径指纹**：定义文件剔除那三处之后的规范化 JSON 的 SHA-256，
+记在 `metrics/_fingerprints.json`，由 `tests/test_definition_fingerprint.py` 守着 ——
+指纹变而 `version` 没变即红。⇒ **「我只改了措辞」这句话是可核的，不靠自律。**
 
 版本号变更即视为口径变更，**历史结论不可跨版本比较**，证据链须携带 `metric_id` 与版本号。
+
+> 🔴 **2026-09-10 更正（台账 `N-73`）。** 本节原先写的是：
+> 「必须 bump：`grain` / `source_fields` / `formula` / `sign_convention` / `derivation` /
+> flag 触发条件 / `undefined_conditions` 的任何改动；
+> 不 bump：`advisory_only` 陷阱文本、`display_name`、`aliases` 的措辞调整」。
+>
+> 那个版本与 `D-034` 有**三处方向相反**的冲突，而 `D-034` 那一套是**机器上真在跑的**：
+>
+> | 键 | 本节原文 | `D-034` + `PROSE_PATHS` |
+> |---|---|---|
+> | `display_name` | 不 bump | 算改口径 ⇒ 必须 bump |
+> | `aliases` | 不 bump | 算改口径 ⇒ 必须 bump |
+> | `derivation` | **任何**改动都要 bump | `derivation.note` 不 bump |
+>
+> 按 `AGENTS.md` 的文档优先级，本文件**上位**于 `DECISIONS.md`
+> ⇒ 冲突期间「机器上跑的那一套与上位文档的字面相反」。
+> 而且第三行**已经被行使过**：`N-58` 改了 9 份定义的散文（含 `derivation.note`）、
+> 指纹逐字节不变、`version` 没动 —— 那次操作按本节的旧字面**是违规的**，只是没人发现。
+>
+> **操作者 2026-09-09 裁决：版本号对齐最新的（即 `D-034`），之后统一更新。**
+> 本次更新即为该裁决的落地：改的是**上位文档的措辞**，`D-034` 与
+> `PROSE_PATHS` 的内容一个字节没动，三个数值门槛也没动。
 
 #### 全局 flag 词表
 

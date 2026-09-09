@@ -47,10 +47,17 @@ def test_简称表来自数据源本身而不是另立一张名录(source):
     「没有这家公司的数据」退化成「认不出主体」，读者反而更难判。
     """
     assert source.entity_names == {
+        # 简称
         "华鑫科技": "900001",
         "华鑫股份": "900002",
         "长风制造": "900003",
         "startup 新元": "900004",
+        # 全称（2026-09-10 一并登记；说明性括注剥掉）——
+        # 不登的话，用户打公司自己的注册全称会被右边界当成「另一家更长的公司」拒掉。
+        "华鑫科技股份有限公司": "900001",
+        "华鑫控股股份有限公司": "900002",
+        "长风精密制造股份有限公司": "900003",
+        "新元生物科技股份有限公司": "900004",
     }
 
 
@@ -58,7 +65,10 @@ def test_真实年报文件的简称也进表():
     """两种文件形状不同：合成夹具是 `entities:` 列表，真实抽取结果是 `meta` 单条。"""
     if not REAL.is_file():
         pytest.skip("真实抽取结果不在，跑 `python -m extractor export`")
-    assert FixtureSource(REAL).entity_names == {"贵州茅台": "600519"}
+    assert FixtureSource(REAL).entity_names == {
+        "贵州茅台": "600519",
+        "贵州茅台酒股份有限公司": "600519",
+    }
 
 
 def test_换一行取数之后简称表还在(source):
@@ -291,25 +301,57 @@ def test_先判多家再判只认出一截(registry, source):
     assert "一部分" not in a.refusal["detail"]
 
 
-def test_右边紧挨着汉字今天不拦这是已知的洞(registry, source):
-    """⚠️ 记录一个**当前事实**，不是主张它对（`N-70`）。
+def test_右边紧挨着别的汉字要拦(registry, source):
+    """`N-70` 收口（2026-09-10）。**本条原先钉的是相反的行为**。
 
-    「华鑫科技**集团**有限公司」今天仍会被认成华鑫科技。守右边的代价是
-    误拒最自然的问法 —— 「贵州茅台**的**资产负债率是多少」里紧跟着的也是汉字，
-    而中文没有词边界。在拿不出一条能分开「的」与「集团」的判据之前，
-    先守住更危险的左侧。
+    原测试叫「右边紧挨着汉字今天不拦这是已知的洞」，记录的是一个当时补不上的洞，
+    并写着「哪天有人把右侧也守上，它会红 —— 那时应当回来确认『的』那类问法
+    没有被一起误拒」。右侧守上了，它红了，这里按它的指示翻过来 ——
+    它点名要核的那件事由下一条 `test_最自然的问法不许被误拒` 守着。
 
-    这条测试的作用是：**哪天有人把右侧也守上，它会红** ——
-    那时应当回来确认「的」那类问法没有被一起误拒。
+    「华鑫科技集团有限公司」与「华鑫科技」很可能是两家（母公司与上市子公司
+    在中国常常分立）。拿前者的问题答出后者的数，又是一个看起来完全正常的错数。
     """
     a = answer_question(
         "华鑫科技集团有限公司 2023 年的资产负债率是多少？", registry, source=source
     )
-    assert not a.refused, (
-        "右侧守上了？回去核 `N-70`：确认「贵州茅台的资产负债率是多少」"
-        "这类问法没有被一起误拒"
-    )
+    assert a.refused, "「…集团有限公司」被认成了「华鑫科技」——那是另一家公司的数"
+    # 🔴 **钉的是方向，不是「一部分」这三个字**（2026-09-10 独立复核抓到）。
+    #    本条初版写 `assert "一部分" in detail`，而当时右边界复用了左边界的文案
+    #    「它**前面**还连着别的字」—— 多出来的字明明在后面。
+    #    于是这条测试把一句说反方向的诊断**钉成了行为**。
+    #    本仓已为拒答措辞误导返工过两次（`N-65`、`h2-02` 盲审两人读错「指标名」）。
+    assert "后面" in a.refusal["detail"], a.refusal["detail"]
+    assert "前面" not in a.refusal["detail"]
+
+
+def test_右边是别名时不算越界(registry, source):
+    """判据靠**别名表自己**，不靠编一张修饰语词表。
+
+    「华鑫科技资产负债率是多少」里，名字右边紧跟的是一个注册别名的开头
+    ⇒ 那就是边界。若改成按「后面是不是汉字」一刀切，这条会红。
+    """
+    a = answer_question("华鑫科技资产负债率是多少？2023 年", registry, source=source)
+    assert not a.refused, a.refusal
     assert a.entity == "900001"
+
+
+def test_拿不到别名表时右边界只认前两类(registry):
+    """fail-closed：`registry` 缺席时宁可误拒，不可误答。
+
+    `parse_intent` 总会带上 registry，本条守的是 `_match_entities` 自己的契约 ——
+    将来若有别的调用方不传，它不能悄悄退化成「什么都放行」。
+    """
+    from agent.intent import _AMBIGUOUS_SUFFIX, _match_entities
+
+    表 = {"华鑫科技": "900001"}
+    assert _match_entities("华鑫科技的毛利率", 表, None) == ["华鑫科技"]
+    assert _match_entities("华鑫科技2023年", 表, None) == ["华鑫科技"]
+    # 右边界越界返回的是 `_AMBIGUOUS_SUFFIX`，不是 `_PREFIX` ——
+    # 两个哨兵分开，页面才说得出多的字在前面还是后面。
+    assert _match_entities("华鑫科技集团有限公司", 表, None) is _AMBIGUOUS_SUFFIX
+    # 没有别名表时，连「资产负债率」也认不出来 ⇒ 保守地拒
+    assert _match_entities("华鑫科技资产负债率", 表, None) is _AMBIGUOUS_SUFFIX
 
 
 def test_最自然的问法不许被误拒(registry, source):
@@ -341,3 +383,75 @@ def test_数据文件里entities写歪一行也不许崩(tmp_path):
     )
     src = FixtureSource(p)
     assert src.entity_names == {"长风制造": "900003"}, "写歪的那一行应当被跳过，不是让它崩"
+
+
+# ── 全称、组织形式后缀、两侧对称（2026-09-10 独立复核的 P1/P3） ──────────
+
+
+def test_公司自己的注册全称不许被拒(registry, source):
+    """🔴 独立复核抓到的 P1。
+
+    「华鑫科技股份有限公司」是这家公司**自己的注册全称**，逐字写在
+    同一份夹具的 `full_name` 里。而 `FixtureSource` 此前只登记 `short_name`
+    ⇒ 用户打全称时，右边界看到「股份有限公司」几个字，判成「另一家更长的公司」。
+    **它不是另一家。**
+
+    它会红的场景：有人把 `full_name` 的登记去掉。
+    """
+    a = answer_question(
+        "华鑫科技股份有限公司 2023 年的毛利率是多少？", registry, source=source
+    )
+    assert not a.refused, a.refusal
+    assert a.entity == "900001"
+
+
+def test_真实公司的全称也不许被拒(registry):
+    """真实抽取结果那一侧同一件事。
+
+    ⚠️ 这条**不能**只靠组织形式后缀表解决：「贵州茅台酒股份有限公司」
+    比简称多出来的是「**酒**股份有限公司」，那个「酒」任何后缀表都盖不住。
+    所以 `full_name` 必须真的登记进去。
+    """
+    if not REAL.is_file():
+        pytest.skip("没有真实抽取结果")
+    src = FixtureSource(REAL)
+    assert "贵州茅台酒股份有限公司" in src.entity_names, src.entity_names
+    a = answer_question("贵州茅台酒股份有限公司 2023 年的毛利率", registry, source=src)
+    assert not a.refused, a.refusal
+
+
+def test_全称里的说明性括注不进名录(registry, source):
+    """夹具写的是「华鑫科技股份有限公司（虚构）」——那个括注是给读文件的人看的，
+
+    用户不会把它打进提问里。登记时剥掉，**但只剥结尾整对全角括号**。
+    """
+    assert "华鑫科技股份有限公司" in source.entity_names
+    assert "华鑫科技股份有限公司（虚构）" not in source.entity_names
+
+
+def test_组织形式后缀不算越界而集团算(registry, source):
+    """`公司` 是同一家的强信号，`集团` 不是 —— `X集团有限公司` 与 `X股份有限公司`
+
+    在中国常常是两个法人（未上市母公司 vs 上市子公司）。
+    """
+    通 = answer_question("华鑫科技公司 2023 年的毛利率", registry, source=source)
+    assert not 通.refused, 通.refusal
+
+    拒 = answer_question("华鑫科技集团有限公司 2023 年的毛利率", registry, source=source)
+    assert 拒.refused, "「集团」被当成了组织形式后缀 —— 那正是这道门要拦的"
+
+
+def test_左边界也认分隔虚词(registry, source):
+    """「2023**年**华鑫科技的毛利率」是最常见的中文语序之一。
+
+    卡住它的那个「年」字本来就在 `_BOUNDARY_CHARS` 里，而左边界此前没用那张表
+    ⇒ 一边严一边松。两侧现在用同一张表。
+
+    ⚠️ **「南华鑫科技」仍然要拒** —— 「南」不在表里。
+    """
+    通 = answer_question("2023年华鑫科技的毛利率是多少", registry, source=source)
+    assert not 通.refused, 通.refusal
+    assert 通.entity == "900001"
+
+    拒 = answer_question("南华鑫科技 2023 年的毛利率是多少？", registry, source=source)
+    assert 拒.refused, "左边界被放松过头了"

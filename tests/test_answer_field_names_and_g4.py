@@ -157,3 +157,82 @@ def test_G4_判据是责任方标识不是拒答措辞(registry, source):
     r = parse_intent("华鑫 2023 年的毛利率是多少？", registry, entity_names=source.entity_names)
     assert r.__class__.__name__ == "Refusal"
     assert r.source == "intent:entity_table", "责任方标识没挂上 ⇒ 证据页那一节会失效"
+
+
+# ─────────── `G4` 必须标出虚构公司（2026-09-10 线上实测发现的自相矛盾） ───────────
+
+REAL_FIXTURE = REPO / "data" / "extracted" / "600519_2023.yaml"
+
+
+def test_G4_合成公司当场标成虚构(registry, source):
+    """🔴 `coverage.py:106` 刻意**不显示**合成公司的简称（免得有人去搜一家
+    不存在的公司），而 `G4` 把它们全列了出来 —— 两处对同一件事的处置相反。
+
+    解法不是让 `G4` 也藏起来：藏了，「认不出这家公司」就重新变成
+    不可证伪的断言，`G4` 的全部作用就没了。**列出来 + 标明**。
+
+    它会红的场景：有人把标注去掉，或让 `entity_snapshot` 不再带 `natures`。
+    """
+    a = answer_question("华鑫 2023 年的毛利率是多少？", registry, source=source)
+    assert a.refused
+    snap = a.entity_snapshot
+    assert snap["natures"], "快照没带 natures ⇒ 页面无从区分真假"
+    assert set(snap["natures"].values()) == {"synthetic"}, snap["natures"]
+    assert snap["synthetic_count"] == snap["entity_count"]
+
+    page = render_answer(a, None, None)
+    节 = page.split("我们当时认得出哪些公司", 1)[1]
+    for n in ("华鑫科技", "华鑫股份"):
+        assert n in 节
+    # 每一个虚构公司都要带标注，不是只在抬头说一句。
+    行 = [l for l in 节.splitlines() if l.strip().startswith("· ") and "认出" not in l]
+    assert 行, 节
+    for l in 行:
+        assert "虚构" in l, f"这一行没标虚构：{l!r}"
+
+
+def test_G4_真实公司不带虚构标注(registry):
+    """**反方向的一半**：别把所有公司一律标成虚构，那样标注就没有信息了。
+
+    真实年报抽取结果（`kind: real` 且带 64 位 PDF 指纹）不该被标。
+    """
+    if not REAL_FIXTURE.is_file():
+        pytest.skip("没有真实抽取结果，跳过")
+    src = FixtureSource(REAL_FIXTURE)
+    assert src.is_real, "这份夹具不是 kind: real，本测试选错了文件"
+    assert set(src.entity_natures.values()) == {"real"}, src.entity_natures
+
+    a = answer_question("贵州 2023 年的毛利率是多少？", registry, source=src)
+    assert a.refused, "「贵州」不是登记简称，本该拒答"
+    page = render_answer(a, None, None)
+    节 = page.split("我们当时认得出哪些公司", 1)[1]
+    行 = [l for l in 节.splitlines() if "贵州茅台" in l]
+    assert 行, 节
+    assert not any("虚构" in l for l in 行), f"真实公司被标成虚构了：{行}"
+
+
+def test_G4_来源认不出时按合成算(registry):
+    """fail-closed 的方向：把真的标成虚构只是保守，把虚构的标成真的是 `D-010` 红线。"""
+    from agent.answer import entity_snapshot
+
+    snap = entity_snapshot({"甲": "900001", "乙": "900002"}, {"甲": "real"})
+    assert snap["natures"] == {"甲": "real", "乙": "synthetic"}, snap["natures"]
+    assert snap["synthetic_count"] == 1
+
+    # 完全不给 natures ⇒ 全部按合成算
+    snap2 = entity_snapshot({"甲": "900001"}, None)
+    assert snap2["natures"] == {"甲": "synthetic"}
+
+
+def test_G4_快照哈希不受标注影响(registry):
+    """`sha256` 证明的是「这一页列的就是当时那份**名字表**」。
+
+    把 `natures` 混进哈希，会让同一份表因为标注变化而换指纹 ——
+    那句话就失去了指称。
+    """
+    from agent.answer import entity_snapshot
+
+    a = entity_snapshot({"甲": "900001"}, {"甲": "real"})
+    b = entity_snapshot({"甲": "900001"}, {"甲": "synthetic"})
+    assert a["sha256"] == b["sha256"], "标注变了指纹也变 ⇒ 指纹指的不再是名字表"
+    assert a["natures"] != b["natures"]

@@ -86,7 +86,12 @@ REQUIRED_ANSWER_EVIDENCE: tuple = (
 
 
 def _sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    # `surrogatepass`：题面里可能带孤立代理（`json.loads` 对它的转义写法不报错），
+    # 默认的 `encode("utf-8")` 会抛 `UnicodeEncodeError` ⇒ 一路穿出去就是 5xx。
+    # 对合法文本它与默认行为**逐字节相同**，所以不动任何既有哈希。
+    # ⚠️ 这是同一个洞的第 3、4 处：`api._token_ok` 2026-09-08 补过头部那侧，
+    #    2026-09-10 补 body 的长度检查，而真正崩的是这里 —— 测试逼出来的。
+    return hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -130,6 +135,22 @@ def _as_number(value):
         return value
 
 
+def _plain_full_name(value):
+    """`full_name` 去掉结尾那个说明性括注，用于登记成可解析的名字。
+
+    合成夹具里写的是「华鑫科技股份有限公司**（虚构）**」——
+    那个括注是**给读文件的人看的标注**，不是公司名的一部分，
+    用户不会把它打进提问里。真实抽取结果没有括注，原样通过。
+
+    ⚠️ **只剥结尾的整对全角括号，不动别处**。公司名里本来就可能有括号
+    （「（中国）」这类），剥掉会造出一个不存在的名字。
+    """
+    text = str(value or "").strip()
+    if text.endswith("）") and "（" in text:
+        text = text[: text.rindex("（")].strip()
+    return text or None
+
+
 class FixtureSource:
     """一份合成夹具里的一行。接上 `evaluate_formula`，不改那个求值器。"""
 
@@ -165,6 +186,16 @@ class FixtureSource:
         # 🔴 **能解析的简称 = 我们真的有数据的公司。** 表从数据文件本身来，
         # 不另立一张公司名录 —— 另立一张，它迟早会包含我们答不了的公司，
         # 而那时拒答理由会从「没有这家公司的数据」退化成「认不出主体」。
+        #: 简称 → `"real"` / `"synthetic"`。**`G4` 要用它把虚构公司标出来。**
+        #:
+        #: 🔴 2026-09-10 线上实测发现的一处自相矛盾：`coverage.py:106` 刻意
+        #: **不显示**合成公司的简称（「免得有人去搜一家不存在的公司」），
+        #: 而 `G4` 那一节把它们全列了出来，两处对同一件事的处置相反。
+        #: 解法不是把 `G4` 也改成藏起来 —— 藏起来那句「认不出这家公司」
+        #: 就重新变得不可证伪，`G4` 的全部作用就没了。
+        #: **列出来，但标明哪几个是虚构的**：两个目的同时满足，
+        #: 且与 `coverage` 的 `notice` 字段是同一条 `D-010` 纪律。
+        self.entity_natures: dict = {}
         self.entity_names: dict = {}
         for ent in data.get("entities") or []:
             # ⚠️ 不假设它是 mapping。数据文件写歪一行（`- 华鑫科技` 而不是
@@ -173,11 +204,25 @@ class FixtureSource:
             #    本仓的纪律是「任何输入都不许 5xx」——数据文件也是输入。
             if not isinstance(ent, dict):
                 continue
-            名, 码 = ent.get("short_name"), ent.get("stock_code")
-            if 名 and 码:
-                self.entity_names[str(名)] = str(码)
-        if meta.get("short_name") and meta.get("stock_code"):
-            self.entity_names[str(meta["short_name"])] = str(meta["stock_code"])
+            码 = ent.get("stock_code")
+            # 🔴 **简称与全称都登记**（2026-09-10，独立复核抓到的 P1）。
+            #    只登简称时，用户打这家公司**自己的注册全称**会被右边界拒掉：
+            #    「贵州茅台酒股份有限公司」里多出来的是「酒股份有限公司」，
+            #    而 `贵州茅台` 是登记的简称 ⇒ 右边界判成「另一家更长名字的公司」。
+            #    **它不是另一家，全称就写在同一份数据文件的 `full_name` 里。**
+            #    登记之后由 `_match_entities` 既有的「取更长的那个命中」自动压过简称，
+            #    不需要新逻辑。
+            for 名 in (ent.get("short_name"), _plain_full_name(ent.get("full_name"))):
+                if 名 and 码:
+                    self.entity_names[str(名)] = str(码)
+                    # 与 `coverage._scan` 同一条判据：`nature` 以文件自己的
+                    # `meta.kind` 为准（`self.is_real` 据此算好，含 PDF 指纹校验）。
+                    self.entity_natures[str(名)] = "real" if self.is_real else "synthetic"
+        if meta.get("stock_code"):
+            for 名 in (meta.get("short_name"), _plain_full_name(meta.get("full_name"))):
+                if 名:
+                    self.entity_names[str(名)] = str(meta["stock_code"])
+                    self.entity_natures[str(名)] = "real" if self.is_real else "synthetic"
 
         self.stock_code = None if stock_code is None else str(stock_code)
         self.fiscal_year = None if fiscal_year is None else int(fiscal_year)
@@ -395,7 +440,7 @@ class Answer:
         }
 
 
-def entity_snapshot(entity_names) -> dict:
+def entity_snapshot(entity_names, entity_natures=None) -> dict:
     """当时**认得出哪些公司**（`G4`）。
 
     与 `registry_snapshot` 同一条原理，作用在主体这一维：
@@ -410,9 +455,17 @@ def entity_snapshot(entity_names) -> dict:
     **不**证明那份表是对的 —— 与 `registry_snapshot` 的限制完全相同。
     """
     names = sorted(str(n) for n in (entity_names or {}))
+    nat = entity_natures or {}
+    # 🔴 **认不出来源时按合成算**，与 `FixtureSource.is_real` 同一个方向：
+    # 把真的标成虚构只是保守，把虚构的标成真的是 `D-010` 的红线。
+    natures = {n: ("real" if nat.get(n) == "real" else "synthetic") for n in names}
     return {
         "entity_count": len(names),
         "names": names,
+        "natures": natures,
+        "synthetic_count": sum(1 for v in natures.values() if v == "synthetic"),
+        # 哈希只吃名字表，**不吃 natures** —— 它是同一份表的标注，
+        # 不是表本身；混进去会让「这一页列的就是当时那份表」这句话失去指称。
         "sha256": _sha256_text(json.dumps(names, ensure_ascii=False)),
     }
 
@@ -585,7 +638,10 @@ def answer_question(
         # 同样遵守「证据要相关，不是要多」：只有**简称表这一环拒的**才挂，
         # 「题面里没有期间」那类不挂。
         ents = (
-            entity_snapshot(getattr(source, "entity_names", None))
+            entity_snapshot(
+                getattr(source, "entity_names", None),
+                getattr(source, "entity_natures", None),
+            )
             if intent.source == "intent:entity_table"
             else None
         )
@@ -902,12 +958,26 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
             wrap(
                 "· 当时能认出 " + str(ents.get("entity_count")) + " 家公司的简称，"
                 "全列在下面 —— 可以直接核「我问的那家在不在里面」。"
-                "不在里面时，给六位股票代码同样能问。",
+                "不在里面时，给六位股票代码同样能问。"
+                # ⚠️ 纯文本页面，**不要用 `**` 加重**：这一页别处都经 `_plain`
+                #    剥掉了标记，这里留着会原样印出来。
+                + (
+                    "其中 " + str(ents.get("synthetic_count")) + " 家是虚构公司"
+                    "（合成夹具，不是任何真实公司的年报），逐个标在名字后面。"
+                    if ents.get("synthetic_count")
+                    else ""
+                ),
                 indent="    ",
             )
         )
+        natures = ents.get("natures") or {}
         for name in [str(n) for n in (ents.get("names") or [])]:
-            L.extend(wrap("· " + name, indent="      "))
+            # 🔴 虚构公司必须当场标出来。`coverage` 那一侧的做法是**整个不显示**
+            # （免得有人去搜一家不存在的公司），但这一节藏不得 ——
+            # 藏了「认不出这家公司」就重新变成不可证伪的断言。
+            # ⇒ 列出来 + 标明，两个目的同时满足（`D-010` 同一条纪律）。
+            尾 = "" if natures.get(name) == "real" else "　（虚构公司，合成夹具）"
+            L.extend(wrap("· " + name + 尾, indent="      "))
         L.append("")
 
     blocks: list = []

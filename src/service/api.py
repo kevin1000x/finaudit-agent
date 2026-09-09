@@ -220,15 +220,30 @@ class _Sources:
         # 同一条「分不清就不猜」的纪律：留下任意一个，用户拿到的是一个
         # 看起来完全正常的错答案；丢掉，他拿到的是一句「认不出这家公司」。
         names: dict = {}
+        natures: dict = {}
         冲突: set = set()
         for src in self._sources:
+            src_natures = getattr(src, "entity_natures", None) or {}
             for 名, 码 in (getattr(src, "entity_names", None) or {}).items():
                 if 名 in names and names[名] != 码:
                     冲突.add(名)
                 names[名] = 码
+                # `G4` 要用它标出虚构公司。
+                # 🔴 **任一份源说 synthetic 就是 synthetic**，不是后写覆盖。
+                #    2026-09-10 独立复核实测：写成 `natures[名] = ...` 时，
+                #    两份源对同一个名字给出不同 nature 会是**最后一份赢** ——
+                #    real→syn 的顺序保守，syn→real 的顺序把合成标成了真实。
+                #    而上面那个冲突检测比的是**代码**，同名同码不同 nature 穿得过去。
+                #    彼时安全只因为 `coverage.SOURCE_DIRS` 恰好把 real 排在前面 ——
+                #    那是排序巧合。`D-010` 的方向必须由代码保证，不靠顺序。
+                这一份 = src_natures.get(名, "synthetic")
+                if natures.get(名) != "synthetic":
+                    natures[名] = 这一份
         for 名 in 冲突:
             names.pop(名, None)
+            natures.pop(名, None)
         self.entity_names = names
+        self.entity_natures = natures
         #: 被丢掉的那些。留着是为了**将来能说清为什么认不出** ——
         #: 「两份数据源对这个简称给的代码不一样」比「认不出」有用得多。
         self.ambiguous_names = frozenset(冲突)
@@ -285,7 +300,13 @@ def answer_endpoint(payload) -> tuple:
     question = payload.get("question")
     if not isinstance(question, str) or not question.strip():
         return 400, {"detail": "question 要是一个非空字符串"}
-    if len(question.encode("utf-8")) > MAX_QUESTION_BYTES:
+    # ⚠️ `surrogatepass`，理由与 `_token_ok` 那一处逐字相同：
+    #    `json.loads` 对一个孤立代理的转义写法**不报错**，返回的字符串里就带着它，
+    #    而默认的 `encode("utf-8")` 会抛 `UnicodeEncodeError` —— 一路穿出去就是 5xx。
+    #    头部那一侧 2026-09-08 已经补过，**body 这一侧当时漏了**；
+    #    测试面也是镜像的：`坏头部` 表里有 `chr(0xD800)`，`畸形输入` 表里没有。
+    #    2026-09-10 独立复核用一个 22 字节的纯 ASCII 请求体把它打穿了。
+    if len(question.encode("utf-8", "surrogatepass")) > MAX_QUESTION_BYTES:
         return 400, {"detail": "question 太长（上限 " + str(MAX_QUESTION_BYTES) + " 字节）"}
 
     # `N-64`：模型接在这里，而不是接在 `agent/` 里。
@@ -366,7 +387,10 @@ def serve(host: str | None = None, port: int | None = None):  # pragma: no cover
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, status: int, body: dict):
-            raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+            # `surrogatepass` 同上：题面会原样回显进响应体，
+            # 这一处崩掉的后果最重 —— **连响应都发不出去**（客户端看到的是
+            # `RemoteDisconnected`，不是一个 4xx）。
+            raw = json.dumps(body, ensure_ascii=False).encode("utf-8", "surrogatepass")
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(raw)))

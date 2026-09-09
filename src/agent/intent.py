@@ -72,7 +72,12 @@ class Intent:
 
 
 def _sha256(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    # `surrogatepass`：题面里可能带孤立代理（`json.loads` 对它的转义写法不报错），
+    # 默认的 `encode("utf-8")` 会抛 `UnicodeEncodeError` ⇒ 一路穿出去就是 5xx。
+    # 对合法文本它与默认行为**逐字节相同**，所以不动任何既有哈希。
+    # ⚠️ 这是同一个洞的第 3、4 处：`api._token_ok` 2026-09-08 补过头部那侧，
+    #    2026-09-10 补 body 的长度检查，而真正崩的是这里 —— 测试逼出来的。
+    return hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest()
 
 
 def _near_miss(registry: Registry, question: str, alias: str, at: int):
@@ -118,8 +123,15 @@ def _match_alias(registry: Registry, question: str):
     return None, None
 
 
-#: `_match_entities` 的第三种返回：命中了，但命中的很可能只是一个更长名字的一截。
+#: `_match_entities` 的第三种返回：命中了，但**左边**还连着别的字。
 _AMBIGUOUS_PREFIX = object()
+#: 第四种：命中了，但**右边**还连着别的字。
+#:
+#: 🔴 **两者必须分开**（2026-09-10，独立复核抓到的 P1）。此前右边界复用了
+#: 左边界那条文案，页面对一个「华鑫科技公司」的提问说「它**前面**还连着别的字」——
+#: 读者照着去看名字前面，什么都找不到。本仓已经为拒答措辞误导返工过两次
+#: （`N-65` 的「缺的是代码不是主体」、`h2-02` 盲审两人读错「指标名」）。
+_AMBIGUOUS_SUFFIX = object()
 
 
 def _is_ideograph(ch: str) -> bool:
@@ -127,7 +139,59 @@ def _is_ideograph(ch: str) -> bool:
     return "一" <= ch <= "鿿"
 
 
-def _match_entities(q: str, entity_names):
+#: 分隔用的虚词。**只放确实不可能是公司名一部分的字**。
+#: 这不是「修饰语词表」——它列的是边界标记，不是「哪些字算修饰」，
+#: 后者正是本模块抬头点名的错方向（靠编词表猜哪些字是修饰语）。
+#:
+#: ⚠️ **刻意不收 `近` / `上` / `中` / `大`**：它们在真实公司名里出现得起
+#: （近海、上实、中远、大族），收进来会把「另一家更长的公司」放行 ——
+#: 那是误答方向，比误拒严重。
+_BOUNDARY_CHARS = frozenset(
+    "的和与及或在于对从把被为是年月日季度报"
+    # 2026-09-10 补：时间与指代虚词。独立复核实测「华鑫科技去年的毛利率」
+    # 「华鑫科技这家公司…」这类常见问法被误拒，而它们卡住的就是这几个字。
+    "去今明这那该它其呢吗么了过各全历"
+)
+
+#: **组织形式后缀**：紧跟在一个已登记名字之后时，几乎一定还是同一家。
+#: 「华鑫科技公司」「华鑫科技股份有限公司」与「华鑫科技」是同一个主体。
+#:
+#: ⚠️ **`集团` / `控股` / `国际` 刻意不在这里**：`X集团有限公司` 与
+#: `X股份有限公司` 在中国常常是两个法人（未上市母公司 vs 上市子公司），
+#: 那正是这道右边界要拦的东西。
+_ORG_SUFFIXES = (
+    "股份有限公司",
+    "有限责任公司",
+    "有限公司",
+    "股份",
+    "公司",
+)
+
+
+def _right_boundary_ok(q: str, end: int, registry) -> bool:
+    """`q[end:]` 是不是一个合法的右边界。
+
+    认不出就返回 `False`（拒答）—— fail-closed 的方向与本模块其余各处一致。
+    """
+    if end >= len(q):
+        return True
+    ch = q[end]
+    if not _is_ideograph(ch):
+        return True
+    if ch in _BOUNDARY_CHARS:
+        return True
+    tail0 = q[end:]
+    if any(tail0.startswith(suf) for suf in _ORG_SUFFIXES):
+        return True
+    if registry is None:
+        # 拿不到别名表时**只认前两类**。宁可误拒，不可误答。
+        return False
+    # 🔴 靠别名表自己，不靠猜：剩下的文本是不是从一个注册别名开头的。
+    tail = q[end:]
+    return any(tail.startswith(a) for a in registry.by_alias)
+
+
+def _match_entities(q: str, entity_names, registry=None):
     """题面里认得出哪几家公司。返回命中的名字列表，或 `_AMBIGUOUS_PREFIX`。
 
     🔴 **左边必须是边界。** 命中的名字紧挨着一个汉字时拒答 ——
@@ -135,12 +199,25 @@ def _match_entities(q: str, entity_names):
     2026-09-09 独立复核实测：修这一条之前，「南华鑫科技 2023 年的资产负债率」
     答出了华鑫科技的 0.55，页面上一句异常都没有。
 
-    ⚠️ **右边没有同样的守卫，这是一个已知的、写下来的洞**（`N-70`）：
-    「华鑫科技**集团**有限公司」今天仍会被认成华鑫科技。
-    守右边的代价是误拒最自然的问法 —— 「贵州茅台**的**资产负债率是多少」
-    里紧跟着的也是汉字。中文没有词边界，而**误拒会让人绕过这个功能，
-    误答只会让人相信一个错数**：两种错都要避，但在拿不出一条能分开
-    「的」与「集团」的判据之前，先守住更危险的那一侧。
+    🔴 **右边也守了**（`N-70`，2026-09-10）。判据**不靠编一张修饰语词表** ——
+    那正是本模块抬头警告过的错方向。右边界由**紧跟其后的那串是不是我们认得的东西**
+    来确认，认不出就拒答：
+
+    | 紧跟其后的 | 判定 | 例 |
+    |---|---|---|
+    | 非汉字（数字 / 标点 / 空白 / 句末） | 是边界 | 「贵州茅台2023年…」 |
+    | 分隔用的虚词与连词（`_BOUNDARY_CHARS`） | 是边界 | 「贵州茅台**的**资产负债率」 |
+    | **一个注册指标别名的开头** | 是边界 | 「华鑫科技**资产负债率**是多少」 |
+    | 其余汉字 | **不是边界 ⇒ 拒答** | 「华鑫科技**集团**有限公司」 |
+
+    最后一行就是 `N-70` 记的那个洞：`华鑫科技集团有限公司` 与 `华鑫科技`
+    很可能是两家（母公司与上市子公司在中国常常分立），而拿前者的问题
+    答出后者的数，又是一个「看起来完全正常的错数」。
+
+    ⚠️ **这条会误拒一些问法**，例如「华鑫科技这家公司的毛利率」——
+    `这` 既不是分隔词也不开不出别名。这是**刻意选的方向**：
+    误拒还能用六位代码绕过去（拒答理由里就写着怎么绕），
+    误答只会让人相信一个错数。两种错不对称，守更危险的那一侧。
     """
     命中 = {}
     for 名 in entity_names:
@@ -159,8 +236,17 @@ def _match_entities(q: str, entity_names):
     if len({str(entity_names[n]) for n in 命中 if entity_names[n]}) > 1:
         return list(命中)
 
-    if any(at > 0 and _is_ideograph(q[at - 1]) for at in 命中.values()):
+    # 左边界。**分隔虚词不算越界** —— 2026-09-10 补：此前「2023**年**华鑫科技的
+    # 毛利率」这类最常见的中文语序被误拒，卡住的就是一个「年」字，
+    # 而它本来就在 `_BOUNDARY_CHARS` 里。两侧用同一张表，不再一边严一边松。
+    if any(
+        at > 0 and _is_ideograph(q[at - 1]) and q[at - 1] not in _BOUNDARY_CHARS
+        for at in 命中.values()
+    ):
         return _AMBIGUOUS_PREFIX
+    # 右边界，判据见 docstring 那张表。
+    if any(not _right_boundary_ok(q, at + len(n), registry) for n, at in 命中.items()):
+        return _AMBIGUOUS_SUFFIX
     return list(命中)
 
 
@@ -217,7 +303,17 @@ def parse_intent(question: str, registry: Registry, ask_model=None, entity_names
         # `hasattr(items)` 而不是 `if entity_names`：调用方传了个列表进来时，
         # 旧写法会在 `entity_names[n]` 上抛 TypeError —— 而本模块的纪律是
         # **认不出就拒答**，不是崩。
-        命中 = _match_entities(q, entity_names)
+        命中 = _match_entities(q, entity_names, registry)
+        if 命中 is _AMBIGUOUS_SUFFIX:
+            # 🔴 与左边界**分开措辞**：多出来的字在名字**后面**。
+            # 说反方向的诊断比不给诊断更糟 —— 读者会照着去看名字前面。
+            return Refusal(
+                RefusalCode.INTENT_INCOMPLETE,
+                "题面里那个公司名，我只认出了它的「一部分」 —— 它后面还连着别的字，"
+                "很可能是另一家名字更长的公司（比如「…集团有限公司」与「…」"
+                "常常是两个法人）。不猜。请给六位股票代码，或者把公司名单独隔开写。",
+                source="intent:entity_table",
+            )
         if 命中 is _AMBIGUOUS_PREFIX:
             # 🔴 独立复核（2026-09-09）实测出来的一个真危险：
             # 「**南**华鑫科技 2023 年的资产负债率」当时答出 0.55，
