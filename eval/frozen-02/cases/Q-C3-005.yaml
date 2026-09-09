@@ -1,0 +1,33 @@
+id: Q-C3-005
+category: C3
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 同名不同实体：与 Q-C1-004 只差一家公司，答案不同。
+
+question: |
+  瑞捷科技（900102）2023 年的资产负债率是多少？
+
+expected:
+  metric_id: debt_to_asset_ratio
+  metric_version: 2
+  value: 0.65
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  fixture: synthetic-02
+  rationale: >
+    3250000000 / 5000000000 = 0.65。
+    本夹具有两家简称共享前缀「瑞捷」的公司：瑞捷精工（900101，资产负债率 0.60）
+    与瑞捷科技（900102，0.65）。两个数刻意错开，取错主体会得到 0.60，
+    它同样是个正常的资产负债率，不会因为数值荒谬而被发现。
+    证据页必须让读者看出取的是哪一家（代码加简称），否则无法复核。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 数据层：取错主体，答出另一家公司的数

@@ -1,0 +1,33 @@
+id: Q-C1-004
+category: C1
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 「负债率」日常同时指资产负债率与有息负债率，语料两者都有定义。
+
+question: |
+  瑞捷精工（900101）2023 年的负债率是多少？
+
+expected:
+  metric_id: debt_to_asset_ratio
+  metric_version: 2
+  value: 0.6
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  fixture: synthetic-02
+  rationale: >
+    「负债率」是 debt_to_asset_ratio 的别名：7500000000 / 12500000000 = 0.60。
+    同一夹具行的有息负债率是 3000000000 / 12500000000 = 0.24——
+    两个数都能被日常口语称作「负债率」，相差一倍以上。
+    本题考的是：语料把「负债率」这个别名挂在哪一个指标上就必须答哪一个，
+    并且证据页要让读者看出用的是哪一个口径。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 口径层：负债率误解析为有息负债率

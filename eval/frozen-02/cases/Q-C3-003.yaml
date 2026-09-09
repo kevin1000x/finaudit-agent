@@ -1,0 +1,32 @@
+id: Q-C3-003
+category: C3
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 首次披露无比较期，同比类指标必须拒答而不是当作零增长。
+
+question: |
+  北屿能源（900104）2023 年的营业收入同比增长率是多少？
+
+expected:
+  metric_id: revenue_growth_yoy
+  metric_version: 2
+  value: null
+  refusal_code: UNDEFINED_CONDITION_HIT
+  fixture: synthetic-02
+  rationale: >
+    该公司当年新上市，夹具中刻意缺 is.operating_revenue_prior_as_presented，
+    命中「is_missing(is.operating_revenue_prior_as_presented)」，正确行为是拒答。
+    把缺失的上期额当作 0 会得到无穷大或一个巨大的增长率；
+    当作等于本期会得到 0——两种都是把「没有数」偷换成「有一个数」。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: exact
+  refusal_expected: true
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 数据层：缺失的比较期被当作 0 或当作与本期相等

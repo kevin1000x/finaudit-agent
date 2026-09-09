@@ -1,0 +1,35 @@
+id: Q-C3-007
+category: C3
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 只给两家公司的共同前缀，分不清就该拒答。
+
+question: |
+  瑞捷 2023 年的毛利率是多少？
+
+expected:
+  metric_id: gross_profit_margin
+  metric_version: 2
+  value: null
+  refusal_code: INTENT_INCOMPLETE
+  fixture: synthetic-02
+  rationale: >
+    「瑞捷」是瑞捷精工（900101）与瑞捷科技（900102）的共同前缀，
+    它本身不是任何一家的登记简称。两家当年的毛利率分别是 0.30 与 0.20，
+    差一半，猜错的代价是一个看起来完全正常的错数。
+    正确行为是拒答并说明缺什么（要六位代码，或一个能唯一确定主体的简称）。
+    
+    ⚠️ 与 Q-C3-006 成对：那题给了完整简称应当答，本题只给前缀应当拒。
+    两题一起才说明系统守的是「唯一可确定」，不是「见字就猜」也不是「一律不认」。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: exact
+  refusal_expected: true
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 意图层：拿共同前缀猜一家公司作答

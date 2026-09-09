@@ -1,0 +1,36 @@
+id: Q-C3-002
+category: C3
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 两个负数相除得正数——这是本套件里最危险的一道。
+
+question: |
+  云岭材料（900103）2023 年的净现比是多少？
+
+expected:
+  metric_id: ocf_to_net_profit_attributable
+  metric_version: 2
+  value: null
+  refusal_code: UNDEFINED_CONDITION_HIT
+  fixture: synthetic-02
+  rationale: >
+    归母净利润为 −240000000，命中定义里「is.net_profit_attributable_to_parent <= 0」
+    这条未定义条件，正确行为是拒答。
+    
+    🔴 不拒答的后果在这一题上尤其隐蔽：经营现金流同为负（−120000000），
+    两负相除得 −120000000 / −240000000 = 0.5——一个完全正常的净现比读数。
+    一个只看数值合理性的读者不可能发现这是错的。
+    亏损公司的净现比没有经济含义（分母为负时比率的方向被翻转），
+    定义把它声明为未定义条件正是为了这个。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: exact
+  refusal_expected: true
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 计算层：分母为负未拒答，两负相除得到一个看起来正常的比率

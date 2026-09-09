@@ -21,8 +21,15 @@ python -m eval.run --suite frozen-01 --report reports/
 
 ```bash
 # H2 复核实验器械（02-03）。第一条出题包，第二条在答卷填完之后算数。
-.venv/Scripts/python -m eval.h2 --suite frozen-01 --seed 20260905
+# 🔴 出题包**一律加 --blind**（`N-75`）：盲模式下跑分结果不出 `build_packets`，
+#    于是执行者印不出 W、印不出逐题结果。2026-09-09 栽过一次 ——
+#    读了结果又转述给复核者本人，§4.2 一致率当场作废。
+.venv/Scripts/python -m eval.h2 --suite frozen-02 --seed 20260909 --out docs/agent/h2-xxx --blind
 .venv/Scripts/python -m eval.h2 --suite frozen-01 --sheet docs/agent/h2-01/answer-sheet.yaml
+
+# ⚠️ **复核做完之前不要跑下面这条。** `--blind` 管不着别的进程，
+#    而这一条会把逐题结果和分布直接打在屏幕上 —— 规矩是「出包 → 复核 → 才跑、才报」。
+# .venv/Scripts/python -m eval.run --suite frozen-02
 ```
 
 ⚠️ **第二条只有真人填完答卷才跑得出结论**：留空即 fail-closed，退出码 1 并逐题点名。

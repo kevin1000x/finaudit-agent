@@ -1,0 +1,33 @@
+id: Q-C1-002
+category: C1
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 「资产收益率」的分子是净利润还是归母净利润——定义写死了前者。
+
+question: |
+  瑞捷精工（900101）2023 年的资产收益率是多少？
+
+expected:
+  metric_id: return_on_total_assets
+  metric_version: 2
+  value: 0.0624
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  fixture: synthetic-02
+  rationale: >
+    定义 return_on_total_assets 的分子是 is.net_profit（含少数股东损益），
+    不是归母净利润：780000000 / 12500000000 = 0.0624。
+    若误取归母净利润得 700000000 / 12500000000 = 0.056——同样是个正常数字。
+    本题与 Q-C1-001 方向相反：那题的正解是归母，这题的正解是含少数股东。
+    「哪个口径对」由定义决定，不由哪个更常见决定。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 口径层：ROA 分子误取归母净利润

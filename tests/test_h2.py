@@ -279,3 +279,166 @@ def test_错题子集给的是原始计数不是只有百分比(built):
     packets, report, _ = built
     got = score(_filled(packets, report), report, packets)
     assert got["wrong_subset"] == {"agreed": 1, "total": 1, "raw": "1/1"}
+
+
+# ──────────────────── `N-75`：盲出题包 ────────────────────
+
+
+def test_blind_出包时报告对象根本不出函数(tmp_path):
+    """判据不是「调用方自觉别看」，是**它手上没有那个对象**。
+
+    2026-09-09 栽过的那次：执行者读了跑分结果、把「21/21 全对」告诉了复核者本人，
+    §4.2 一致率当场作废（`N-75`）。拿不到 `report` 就印不出 `W`。
+
+    它会红的场景：有人把 `blind` 参数忽略掉，或把 `report` 照样返回。
+    """
+    suite = _suite(tmp_path, [GOOD, BAD])
+    packets, report = build_packets(suite, seed=1, blind=True)
+    assert report is None, "盲模式下报告仍然被交了出来 —— 那条泄露路径没封住"
+    assert len(packets) == 2, "盲不该改变收哪几题：普查，一道不落"
+
+
+def test_blind_不改变题包内容(tmp_path):
+    """盲的是「谁看得到结果」，不是「出哪些题」。**两者必须逐字节相同**，
+
+    否则 `--blind` 就成了另一个实验，而不是同一个实验的安全出法。
+    """
+    a, _ = build_packets(_suite(tmp_path, [GOOD, BAD], "a"), seed=5, blind=True)
+    b, rep = build_packets(_suite(tmp_path, [GOOD, BAD], "b"), seed=5, blind=False)
+    assert rep is not None
+    assert [p.anon_id for p in a] == [p.anon_id for p in b]
+    assert [p.body for p in a] == [p.body for p in b]
+
+
+def test_没有BUILD_json时blind_build记未声明而不是记是(tmp_path):
+    """**fail-closed**：一份不知道是不是盲出的题包，必须当成可能已经泄底的来读。
+
+    `h2-01` / `h2-02` 都产在这个字段存在之前 ⇒ 它们永远落在「未声明」这一档，
+    这正确 —— 那两轮确实无从证明是盲出的。
+    """
+    suite = _suite(tmp_path, [GOOD, BAD])
+    packets, report = build_packets(suite, seed=3)
+    sheet = {"verdicts": [{"id": p.anon_id, "verdict": "对"} for p in packets]}
+
+    got = score(sheet, report, packets, build_info=None)
+    assert "未声明" in got["annotations"]["blind_build"]
+
+    got2 = score(sheet, report, packets, build_info={"blind": False})
+    assert "未声明" in got2["annotations"]["blind_build"], "blind=false 也不该记成盲出"
+
+    got3 = score(sheet, report, packets, build_info={"blind": True})
+    assert got3["annotations"]["blind_build"].startswith("是")
+
+
+def test_blind_与sheet互斥(tmp_path, capsys):
+    """算数必须读跑分结果，盲不了。**明确报错，不静默忽略。**
+
+    静默忽略的后果是：使用者以为自己盲着算了一遍，其实没有。
+    """
+    from eval import h2
+
+    suite = _suite(tmp_path, [GOOD, BAD])
+    sheet = tmp_path / "s.yaml"
+    sheet.write_text("verdicts: []\n", encoding="utf-8")
+    rc = h2.main(["--suite", suite.name, "--sheet", str(sheet), "--blind"])
+    assert rc == 2
+    assert "不能同时给" in capsys.readouterr().err
+
+
+# ──────────── 强制标注的**值**也要成立，不只是键在不在（2026-09-10） ────────────
+
+
+def _sheet(packets, results_by_anon):
+    return {"verdicts": [{"id": p.anon_id, "verdict": results_by_anon[p.anon_id]} for p in packets]}
+
+
+def _all(packets, verdict):
+    return {"verdicts": [{"id": p.anon_id, "verdict": verdict} for p in packets]}
+
+
+def test_一致率达标但W为0时不给通过(tmp_path):
+    """🔴 2026-09-10 实测出来的逻辑洞。
+
+    `h2-frozen-02` 那一轮在同一屏上印出了「判定：H2 通过」与
+    「blind_build: 未声明 —— 一致率不可当作 AC-06 读数」，**自己跟自己拧着**。
+    根因：`W < 5` 那道守卫只挂在 60–80% 那一档，≥80% 直接放行 ——
+    而 `W = 0` 恰恰是最该拦的情形：一致率整个落在正确答案上，
+    测不到「证据页帮不帮得上抓错」。
+
+    它会红的场景：有人把 `pass_blocked` 拿掉，或只在某一档里判 `w < 5`。
+    """
+    suite = _suite(tmp_path, [GOOD, GOOD])
+    packets, report = build_packets(suite, seed=1)
+    got = score(_all(packets, "对"), report, packets, build_info={"blind": True})
+
+    assert got["agreement_rate"] == 1.0
+    assert got["annotations"]["w"] == 0
+    assert got["conclusion"] is not None
+    assert "H2 通过" != got["conclusion"]
+    assert got["pass_blocked"], "W=0 却没有挡下「通过」"
+    assert any("W = 0" in r for r in got["pass_blocked"])
+
+
+def test_非盲出的题包同样挡下通过(tmp_path):
+    """`N-75`：复核者可能已知答案时，每个「对」都不含信息。
+
+    与上一条**分开测**：两个前提各自独立成立，合在一条里，
+    去掉其中一个判据测试照样绿。
+    """
+    suite = _suite(tmp_path, [GOOD, GOOD])
+    packets, report = build_packets(suite, seed=1)
+    got = score(_all(packets, "对"), report, packets, build_info={"blind": False})
+    assert any("非盲出" in r for r in got["pass_blocked"])
+
+    got_blind = score(_all(packets, "对"), report, packets, build_info={"blind": True})
+    assert not any("非盲出" in r for r in got_blind["pass_blocked"]), (
+        "盲出的题包不该因为这一条被挡"
+    )
+
+
+def test_停止信号不受这些前提影响(tmp_path):
+    """⚠️ **不对称是刻意的。**
+
+    「通过」是宽松结论，需要完整前提；「不成立」是停止信号 ——
+    没有错题子集照样断定得了证据链不够用。把停止信号也一起挡掉才是危险的：
+    那等于在证据链最差的时候让门禁沉默。
+
+    它会红的场景：有人图省事，把 `pass_blocked` 改成对所有档位一律拦下。
+    """
+    suite = _suite(tmp_path, [GOOD, GOOD])
+    packets, report = build_packets(suite, seed=1)
+    # 全判「无法判断」⇒ 一致率 0%，落在 <60% 那一档
+    got = score(_all(packets, "无法判断"), report, packets, build_info=None)
+
+    assert got["agreement_rate"] == 0.0
+    assert got["annotations"]["w"] == 0, "本例的 W 同样是 0"
+    assert got["conclusion"] is not None, "停止信号被挡掉了 —— 这比放过一个「通过」更危险"
+    assert "H2 不成立" in got["conclusion"]
+
+
+def test_前提齐全时通过仍然给得出来(tmp_path):
+    """**反方向的一半**：别把门修成永远不给「通过」，那样它就不是门了。
+
+    5 道答错 + 5 道答对，全判对，盲出 ⇒ `W = 5` 满足、`blind_build` 是 ⇒ 应当给「通过」。
+    """
+    suite = _suite(tmp_path, [GOOD] * 5 + [BAD] * 5)
+    packets, report = build_packets(suite, seed=2)
+    assert len(packets) == 10
+
+    # ⚠️ `case_id` 来自题面 YAML 里的 `id:`（`T-PASS` / `T-FAIL`），
+    #    **不是** `_suite` 写出来的文件名 `C0…C9`。初版按文件名判，条件恒假，
+    #    于是全判「对」得 50%，落进「不成立」那一档 —— 测试当场把它抓了出来。
+    by_anon = {p.anon_id: ("错" if _is_fail(report, p.case_id) else "对") for p in packets}
+    got = score({"verdicts": [{"id": a, "verdict": v} for a, v in by_anon.items()]},
+                report, packets, build_info={"blind": True})
+
+    assert got["annotations"]["w"] == 5, got["annotations"]
+    assert got["annotations"]["w_ge_5_satisfied"] is True
+    assert not got["pass_blocked"], got["pass_blocked"]
+    assert got["conclusion"] == "H2 通过"
+
+
+def _is_fail(report, case_id):
+    from eval.run import FAIL as _F
+
+    return {r["id"]: r["status"] for r in report["results"]}[case_id] == _F

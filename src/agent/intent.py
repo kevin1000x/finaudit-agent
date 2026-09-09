@@ -118,12 +118,64 @@ def _match_alias(registry: Registry, question: str):
     return None, None
 
 
-def parse_intent(question: str, registry: Registry, ask_model=None):
+#: `_match_entities` 的第三种返回：命中了，但命中的很可能只是一个更长名字的一截。
+_AMBIGUOUS_PREFIX = object()
+
+
+def _is_ideograph(ch: str) -> bool:
+    """CJK 表意文字。用码位判，不列字表。"""
+    return "一" <= ch <= "鿿"
+
+
+def _match_entities(q: str, entity_names):
+    """题面里认得出哪几家公司。返回命中的名字列表，或 `_AMBIGUOUS_PREFIX`。
+
+    🔴 **左边必须是边界。** 命中的名字紧挨着一个汉字时拒答 ——
+    「**南**华鑫科技」里确实含有「华鑫科技」，但那几乎一定是另一家公司。
+    2026-09-09 独立复核实测：修这一条之前，「南华鑫科技 2023 年的资产负债率」
+    答出了华鑫科技的 0.55，页面上一句异常都没有。
+
+    ⚠️ **右边没有同样的守卫，这是一个已知的、写下来的洞**（`N-70`）：
+    「华鑫科技**集团**有限公司」今天仍会被认成华鑫科技。
+    守右边的代价是误拒最自然的问法 —— 「贵州茅台**的**资产负债率是多少」
+    里紧跟着的也是汉字。中文没有词边界，而**误拒会让人绕过这个功能，
+    误答只会让人相信一个错数**：两种错都要避，但在拿不出一条能分开
+    「的」与「集团」的判据之前，先守住更危险的那一侧。
+    """
+    命中 = {}
+    for 名 in entity_names:
+        if not 名 or not isinstance(名, str):
+            continue
+        at = q.find(名)
+        if at >= 0:
+            命中[名] = at
+    # 一个名字被另一个包含时只留更长的那个（例如同时登记了简称与全称）。
+    命中 = {n: at for n, at in 命中.items() if not any(n != o and n in o for o in 命中)}
+
+    # 🔴 **先判「是不是两家」，再判「是不是只认出一截」。** 顺序反了会误伤：
+    # 「华鑫科技**和**长风制造哪个高」里，「长风制造」左边紧挨着「和」——
+    # 那是个连词，不是名字的一部分。2026-09-09 首版就是这么写的，
+    # 一条已有的测试当场把它抓了出来。
+    if len({str(entity_names[n]) for n in 命中 if entity_names[n]}) > 1:
+        return list(命中)
+
+    if any(at > 0 and _is_ideograph(q[at - 1]) for at in 命中.values()):
+        return _AMBIGUOUS_PREFIX
+    return list(命中)
+
+
+def parse_intent(question: str, registry: Registry, ask_model=None, entity_names=None):
     """题面 → `Intent`，或说明缺什么的 `Refusal`。
 
     `ask_model` 是一个 `(question) -> str` 的可调用对象，**由调用方注入**。
     本模块不 import 任何 LLM 客户端 —— `eval/llm_client.py` 顶部明写它
     「永远不会被系统臂导入」，那条边界在这里照样成立。
+
+    `entity_names` 是 `简称 -> 六位代码` 的表，**同样由调用方注入**，
+    来源是那份数据源自己（`FixtureSource.entity_names`）。
+    🔴 **这一步不交给模型**：本模块第一条硬约束就是「能确定性解决的不交给模型」，
+    而「简称 → 代码」是一次查表。拿模型去做查表，等于把一个确定性映射
+    换成一个会错的映射。
     """
     q = " ".join(str(question).split())
     digest = _sha256(q)
@@ -145,12 +197,69 @@ def parse_intent(question: str, registry: Registry, ask_model=None):
         if guess and guess in registry.by_alias:
             alias, source = guess, "model"
     if alias is None:
-        return Refusal(RefusalCode.METRIC_NOT_DEFINED, f"题面里没有认得出的指标名：{q}")
+        # ⚠️ **不要把整个问句贴在冒号后面。** `h2-02` 的盲审有两个人读成了
+        # 「这一整句话被当成了指标名」，愣了几秒才明白意思。
+        # 而问句**已经印在这一页顶上的「问的是什么」里了** —— 在理由里再贴一遍，
+        # 除了制造那次误读之外没有任何作用。
+        return Refusal(
+            RefusalCode.METRIC_NOT_DEFINED,
+            "这句话里没有我认得出的指标名。下面列着当时全部可用的叫法，"
+            "你要问的那个不在里面。",
+        )
 
     entities = sorted(set(_ENTITY.findall(q)))
     periods = sorted({int(y) for y in _PERIOD.findall(q)})
+    entity_source = "六位代码"
+
+    # `N-65`：题面里没有六位代码时，再拿简称查一次表。
+    # 顺序是**先代码后简称**，不是偏好问题：代码是唯一标识，简称会重名、会变更。
+    if not entities and hasattr(entity_names, "items"):
+        # `hasattr(items)` 而不是 `if entity_names`：调用方传了个列表进来时，
+        # 旧写法会在 `entity_names[n]` 上抛 TypeError —— 而本模块的纪律是
+        # **认不出就拒答**，不是崩。
+        命中 = _match_entities(q, entity_names)
+        if 命中 is _AMBIGUOUS_PREFIX:
+            # 🔴 独立复核（2026-09-09）实测出来的一个真危险：
+            # 「**南**华鑫科技 2023 年的资产负债率」当时答出 0.55，
+            # 认成了「华鑫科技」—— 正是 `intent.py` 抬头写的
+            # 「一个看起来完全正常的错误答案」。
+            return Refusal(
+                RefusalCode.INTENT_INCOMPLETE,
+                "题面里那个公司名，我只认出了它的「一部分」 —— 它前面还连着别的字，"
+                "很可能是另一家名字更长的公司。不猜。请给六位股票代码，"
+                "或者把公司名单独隔开写。",
+                # `L-9` 的责任方标识：**是简称表这一环拒的**。
+                # 证据页据此挂上「当时认得出哪些公司」那一节 —— 见 answer.py 的 `G4`。
+                source="intent:entity_table",
+            )
+        # 代码取不到值的表项直接丢 —— 否则 `str(None)` 会变成一个
+        # 叫「None」的主体，证据页上印「取的是 None 的 2023 年那一行」。
+        codes = sorted({str(entity_names[n]) for n in 命中 if entity_names[n]})
+        if len(codes) == 1:
+            # 取**最长**的那个命中，不取字典里第一个 —— 顺序由合表顺序决定，
+            # 不由任何人决定（`_near_miss` 的注释警告过同一个形状）。
+            entity_source = "公司简称「" + max(命中, key=len) + "」"
+            entities = codes
+        elif len(codes) > 1:
+            名单 = chr(12289).join(sorted(命中))
+            return Refusal(
+                RefusalCode.INTENT_INCOMPLETE,
+                "题面里出现多家公司：" + 名单 + "。本路径只处理单主体，不替提问者选一家。",
+            )
 
     if not entities:
+        # ⚠️ 措辞分两种。`h2-02` 的盲审有两个人被旧措辞误导过：
+        # 题面里明明写着「华鑫科技」，而系统回「题面里没有主体」——
+        # 读者会以为它连问的是哪家都没读出来。**缺的是代码，不是主体。**
+        if entity_names:
+            return Refusal(
+                RefusalCode.INTENT_INCOMPLETE,
+                "题面里没有认得出的公司。给一个六位股票代码，"
+                "或者一个我们确实有数据的公司简称 —— 两样都没有时不猜。",
+                # 同上：责任方是简称表。**这句话没有这一节就不可证伪** ——
+                # 读者无从知道「认得出的」到底是哪几家（`G4`）。
+                source="intent:entity_table",
+            )
         return Refusal(RefusalCode.INTENT_INCOMPLETE, "题面里没有主体（六位股票代码）")
     if len(entities) > 1:
         return Refusal(
@@ -161,9 +270,21 @@ def parse_intent(question: str, registry: Registry, ask_model=None):
         return Refusal(RefusalCode.INTENT_INCOMPLETE, "题面里没有期间（形如「2023 年」）")
     if len(periods) > 1:
         years = chr(12289).join(str(y) for y in periods)
+        # ⚠️ 旧措辞是「那是跨期比较，不是本路径的三元组」，而它**对其中一类是错的**
+        # （`N-69`）：「2023 年的营业收入**比 2022 年**增长了多少」要的是**一个**
+        # 同比数，第二个年份是**比较基准**，不是第二个查询期间 ——
+        # 而同比类指标的定义**自己就知道**去取上期（只写一个年份照样算得出）。
+        #
+        # 这里**不去猜**是哪一类：判据只能是启发式的，而猜错的方向是
+        # 「该拒答的时候答了」。⇒ 把两种读法都摆出来，并告诉提问者各自怎么办。
         return Refusal(
             RefusalCode.INTENT_INCOMPLETE,
-            f"题面里出现多个期间：{years}。那是跨期比较，不是本路径的三元组 —— 取第一个是猜。",
+            "题面里出现多个期间："
+            + years
+            + "。本路径一次只答一个期间的一个数，不替你挑一个。"
+            + "如果你要的是这几年各一个数，那是跨期比较，本路径不做；"
+            + "如果你要的是一个同比数，把基准年去掉再问一次 ——"
+            + "同比类的指标自己会去取上期。",
         )
 
     return Intent(
@@ -172,6 +293,6 @@ def parse_intent(question: str, registry: Registry, ask_model=None):
         period=periods[0],
         question=q,
         question_sha256=digest,
-        resolved_by={"metric": source, "entity": "六位代码", "period": "题面年份"},
+        resolved_by={"metric": source, "entity": entity_source, "period": "题面年份"},
         matched_alias=alias,
     )

@@ -1,0 +1,32 @@
+id: Q-C1-007
+category: C1
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 「现金含量比率」的分母是归母净利润，不是净利润。
+
+question: |
+  瑞捷精工（900101）2023 年的现金含量比率是多少？
+
+expected:
+  metric_id: ocf_to_net_profit_attributable
+  metric_version: 2
+  value: 1.5
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  fixture: synthetic-02
+  rationale: >
+    1050000000 / 700000000 = 1.5。分母是归母净利润。
+    若误取含少数股东损益的净利润，得 1050000000 / 780000000 约 1.346——
+    差 10% 以上，而两个数都落在「经营现金流略高于利润」的正常区间里，
+    不会有人凭数值大小看出错误。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 口径层：净现比分母误取含少数股东损益的净利润

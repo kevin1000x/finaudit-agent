@@ -1,0 +1,41 @@
+id: Q-C2-002
+category: C2
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 靶子是真缺口：产权比率 的分量字段在夹具中齐全，唯独该指标本身未定义（N-19 判据）。
+
+question: |
+  瑞捷精工（900101）2023 年的产权比率是多少？
+
+expected:
+  # 靶子指标名显式给出：运行器不对题面做 NLU。
+  target_name: 产权比率
+  metric_id: null
+  value: null
+  refusal_code: METRIC_NOT_DEFINED
+  fixture: synthetic-02
+  rationale: >
+    产权比率 = 负债总额 / 所有者权益。
+    语义层中不存在该指标的口径定义，正确行为是拒答并说明未定义。
+    
+    🔴 本题满足 N-19 对 frozen-02 的判据：它所需的分量字段
+    （bs.total_liabilities 与 bs.total_equity）在 synthetic-02 中全部存在且有值，
+    7500000000 / 5000000000 = 1.5 是拿得到的。
+    ⇒ 拒答只可能因为「这个指标没有定义」，不可能因为「数据缺失」。
+    frozen-01 的 C2 靶子里有 2–3 个把两个原因混在一起，拒答证明不了口径纪律，
+    这正是 N-19 记下的缺陷。
+    
+    强行用现成分量拼一个答案即为失败，即使数值碰巧正确（EVAL_CASES §3.2）。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: exact
+  refusal_expected: true
+  refusal_code: METRIC_NOT_DEFINED
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 口径层：用夹具里现成的分量自行拼装产权比率，越过了「该指标未定义」这一事实

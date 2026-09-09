@@ -50,6 +50,7 @@ from semantic_layer.explain import (
     render_appendix,
     render_explanation,
     rule,
+    short_field_names,
     wrap,
 )
 from semantic_layer.resolve import (
@@ -155,6 +156,29 @@ class FixtureSource:
         self.is_real = meta.get("kind") == "real" and len(pdf_sha) == 64
         self.source_pdf_sha256 = pdf_sha if self.is_real else None
         self.short_name = meta.get("short_name") if self.is_real else None
+        # 简称 → 六位代码。**这是给解析用的，与 `coverage` 的显示决定刻意不同**：
+        # `coverage.py` 不显示合成公司的简称（免得有人去搜一家不存在的公司），
+        # 但用户自己打出「华鑫科技」时，认出来、并在页面上明确标成合成夹具，
+        # 比回一句「题面里没有主体」有用得多 —— 后者正是 `h2-02` 里
+        # `H2-03` 判 FAIL 的原因（`N-65`）。
+        #
+        # 🔴 **能解析的简称 = 我们真的有数据的公司。** 表从数据文件本身来，
+        # 不另立一张公司名录 —— 另立一张，它迟早会包含我们答不了的公司，
+        # 而那时拒答理由会从「没有这家公司的数据」退化成「认不出主体」。
+        self.entity_names: dict = {}
+        for ent in data.get("entities") or []:
+            # ⚠️ 不假设它是 mapping。数据文件写歪一行（`- 华鑫科技` 而不是
+            #    `- {short_name: …}`），旧写法在 `ent.get` 上抛 `AttributeError`，
+            #    而这个构造发生在**每次请求**的路径上 ⇒ 一路穿出去就是 5xx。
+            #    本仓的纪律是「任何输入都不许 5xx」——数据文件也是输入。
+            if not isinstance(ent, dict):
+                continue
+            名, 码 = ent.get("short_name"), ent.get("stock_code")
+            if 名 and 码:
+                self.entity_names[str(名)] = str(码)
+        if meta.get("short_name") and meta.get("stock_code"):
+            self.entity_names[str(meta["short_name"])] = str(meta["stock_code"])
+
         self.stock_code = None if stock_code is None else str(stock_code)
         self.fiscal_year = None if fiscal_year is None else int(fiscal_year)
         rows = [
@@ -338,6 +362,9 @@ class Answer:
     inputs: dict = field(default_factory=dict)
     #: `D-038 G3`：`{"metric_count", "names", "sha256"}`，只在「说没有这个指标」时带
     registry_snapshot: Any = None
+    #: `G4`（2026-09-09，`D-038` 同一条原理的第四处）：
+    #: `{"entity_count", "names", "sha256"}`，只在「说认不出这家公司」时带。
+    entity_snapshot: Any = None
 
     @property
     def refused(self) -> bool:
@@ -362,7 +389,32 @@ class Answer:
             "registry_snapshot": (
                 dict(self.registry_snapshot) if self.registry_snapshot else None
             ),
+            "entity_snapshot": (
+                dict(self.entity_snapshot) if self.entity_snapshot else None
+            ),
         }
+
+
+def entity_snapshot(entity_names) -> dict:
+    """当时**认得出哪些公司**（`G4`）。
+
+    与 `registry_snapshot` 同一条原理，作用在主体这一维：
+    没有它，「题面里没有认得出的公司」是一句**不可证伪**的断言 ——
+    读者知道系统拒了，但不知道它到底认得出哪几家，因而没法判断拒得对不对。
+
+    🔴 **这一处是 frozen-02 照出来的**（2026-09-09）：
+    `scripts/check_h2_selfcontained.py` 在新题包上报 `H2-05 incomplete` 有缺口，
+    而 frozen-01 里**没有**任何一道前缀歧义题，所以这一类页面此前从未被检到。
+
+    `sha256` 哈希的是排好序的名字表：证明「这一页列的就是当时那份表」，
+    **不**证明那份表是对的 —— 与 `registry_snapshot` 的限制完全相同。
+    """
+    names = sorted(str(n) for n in (entity_names or {}))
+    return {
+        "entity_count": len(names),
+        "names": names,
+        "sha256": _sha256_text(json.dumps(names, ensure_ascii=False)),
+    }
 
 
 def registry_snapshot(registry: Registry) -> dict:
@@ -431,7 +483,7 @@ def _shown(value) -> str:
 
 
 def _refused(intent_or_q, digest, refusal, evidence: dict, gate: str,
-             inputs=None, snapshot=None) -> Answer:
+             inputs=None, snapshot=None, entities=None) -> Answer:
     """拒答也留**同一套**字段。少记字段是最容易犯的，而拒答最需要能复核。
 
     ⚠️ **拒答也有 `execution_hash`。** 拒答是**正常业务结果**不是降级（`D-003`），
@@ -465,6 +517,7 @@ def _refused(intent_or_q, digest, refusal, evidence: dict, gate: str,
         gate=gate,
         inputs=dict(inputs or {}),
         registry_snapshot=snapshot,
+        entity_snapshot=entities,
     )
 
 
@@ -499,9 +552,19 @@ def answer_question(
         # 解析没走到就留 `None` —— 「没走到」与「查表查到的」不是一回事。
         "metric_resolved_by": None,
         "matched_alias": None,
+        # `N-65`：主体是题面里直接给的六位代码，还是拿简称查表查到的。
+        # 与 `metric_resolved_by` 同一个理由：多走了一步，就得说出来。
+        "entity_resolved_by": None,
     }
 
-    intent = parse_intent(question, registry, ask_model=ask_model)
+    # 简称表从**数据源自己**来。`getattr` 是因为调用方可以不给 source
+    # （离线解析），那时简称解析整条不生效，拒答措辞也跟着退回旧的那一句。
+    intent = parse_intent(
+        question,
+        registry,
+        ask_model=ask_model,
+        entity_names=getattr(source, "entity_names", None),
+    )
     if isinstance(intent, Refusal):
         # `D-038 G3`：说「**没有这个指标**」的时候，必须一并交出当时那份指标清单 ——
         # 否则这是一句不可证伪的断言。H2 第一轮 6 道题栽在这里（`VERIFICATION.md` §F）。
@@ -515,13 +578,28 @@ def answer_question(
             if intent.code is RefusalCode.METRIC_NOT_DEFINED
             else None
         )
-        return _refused(question, digest, intent, dict(base), "not_reached", snapshot=snapshot)
+        # `G4`（2026-09-09）：同一条原理作用在**主体**这一维。
+        # 判据是 `Refusal.source`（`L-9` 的责任方标识），**不是拒答措辞** ——
+        # 按措辞匹配正是 `EVAL_CASES` §5.3 / `L-50` 点名禁的那种判据，
+        # `N-65` 改一次措辞就会让它静默失效。
+        # 同样遵守「证据要相关，不是要多」：只有**简称表这一环拒的**才挂，
+        # 「题面里没有期间」那类不挂。
+        ents = (
+            entity_snapshot(getattr(source, "entity_names", None))
+            if intent.source == "intent:entity_table"
+            else None
+        )
+        return _refused(
+            question, digest, intent, dict(base), "not_reached",
+            snapshot=snapshot, entities=ents,
+        )
 
     # `D-003`：「这个指标名是查表查到的还是模型给的」是复核者要问的第一个问题 ——
     # `Intent` 的抬头原文就是这么写的。这条信息在 `Intent` 里躺了很久没被带进 `Answer`；
     # `N-64` 把模型接进服务之后，不带出来就等于让**唯一的非确定性组件隐身参与作答**。
     base["metric_resolved_by"] = intent.resolved_by.get("metric")
     base["matched_alias"] = intent.matched_alias
+    base["entity_resolved_by"] = intent.resolved_by.get("entity")
 
     # 意图解析成功之后才知道取哪一行。**夹具文件只读一次**（`source.at`），
     # 所以在此之前 `data_source` 已经能说清「是哪一份夹具」—— 不留空。
@@ -658,6 +736,9 @@ _A_ASKED = "问的是什么"
 _A_ANSWER = "答案"
 _A_REFUSED = "为什么不给答案"
 _A_WHERE = "这个数是从哪儿来的"
+#: 拒答页用另一个抬头。`h2-02` 盲审：「拒答页也顶着『这个数是从哪儿来的』，
+#: 可这几页根本没有数」—— 抬头承诺了一个页面里不存在的东西。
+_A_WHERE_REFUSED = "查的是哪份数据"
 _A_BASIS = "用的是哪个口径"
 #: `D-038 G1` —— 算数时读到的那几个数
 _A_INPUTS = "这个数是拿哪几个数算出来的"
@@ -665,6 +746,8 @@ _A_INPUTS = "这个数是拿哪几个数算出来的"
 _A_WHY_HIT = "凭什么说满足了这一条"
 #: `D-038 G3` —— 说「没有这个指标」时，当时有哪些
 _A_REGISTRY = "我们当时有哪些指标"
+#: `G4` —— 说「认不出这家公司」时，当时认得出哪些
+_A_ENTITIES = "我们当时认得出哪些公司"
 #: 只在**模型真的介入过**的那一页出现。见 `render_answer` 里那段注释。
 _A_BY_MODEL = "这次的指标名是模型归一出来的"
 
@@ -674,11 +757,13 @@ def _input_lines(defn, inputs: dict) -> list:
 
     中文名来自 `source_fields[].line_item`（定义自己写的），
     **换不动就原样留着 id，不编** —— 与 `explain._prose` 同一条规矩。
+
+    ⚠️ 取名走 `explain.short_field_names`，**不在这里另写一份**：
+    2026-09-09 之前这里有一份自己的截断逻辑，于是同比类指标的这一节
+    印出两行同名不同值（`· 营业收入 0` / `· 营业收入 1500000000`），
+    而本节的全部作用就是让人能重算一遍 —— 对不上字段就等于没有这一节。
     """
-    names = {}
-    for sf in getattr(defn, "source_fields", []) or []:
-        if sf.id and sf.line_item:
-            names[sf.id] = str(sf.line_item).split("——")[0].split("(")[0].strip()
+    names = short_field_names(defn)
     out: list = []
     for path in sorted(inputs):
         label = names.get(path, path)
@@ -746,7 +831,7 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
             )
         L.append("")
 
-    L.append(_A_WHERE)
+    L.append(_A_WHERE_REFUSED if answer.refused else _A_WHERE)
     src = answer.evidence.get("data_source")
     if src and str(src).startswith("fixture:"):
         # 说清它是**合成夹具** —— 把合成数据说成真实数据，比数据本身更严重（`D-010`）
@@ -768,6 +853,11 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
         L.extend(wrap("· （这一步还没走到数据源）"))
     if answer.entity and answer.period:
         L.extend(wrap("· 取的是 " + str(answer.entity) + " 的 " + str(answer.period) + " 年那一行"))
+    # 主体是查表查到的时候要说 —— 读者得能核「它认成的是不是我问的那家」。
+    # 题面里直接写了六位代码时不印：那一步没有任何可核的东西。
+    ent_by = str(answer.evidence.get("entity_resolved_by") or "")
+    if ent_by.startswith("公司简称"):
+        L.extend(wrap("· 主体不是题面里直接给的代码，是拿" + ent_by + "查表查到的"))
     if answer.metric_version is not None:
         L.extend(wrap("· 口径定义版本 " + str(answer.metric_version)))
     L.append("")
@@ -803,6 +893,23 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
             L.extend(wrap("· " + name, indent="      "))
         L.append("")
 
+    ents = answer.entity_snapshot
+    if ents:
+        # `G4`：说「认不出这家公司」时，把当时认得出的那几家摆出来。
+        # 没有这一节，那句话读者无法证伪 —— 与 `G3` 是同一条理由。
+        L.append(_A_ENTITIES)
+        L.extend(
+            wrap(
+                "· 当时能认出 " + str(ents.get("entity_count")) + " 家公司的简称，"
+                "全列在下面 —— 可以直接核「我问的那家在不在里面」。"
+                "不在里面时，给六位股票代码同样能问。",
+                indent="    ",
+            )
+        )
+        for name in [str(n) for n in (ents.get("names") or [])]:
+            L.extend(wrap("· " + name, indent="      "))
+        L.append("")
+
     blocks: list = []
     if defn is not None:
         blocks.extend(appendix_blocks(defn, flag_descriptions))
@@ -812,11 +919,24 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
             ("这次读到的字段取值", [(k, str(v)) for k, v in sorted(answer.inputs.items())])
         )
     if snap:
-        # 附录给**完整**清单（含英文标识符）与它的指纹 ——
-        # 正文那份只列了中文，附录这份才是「可以逐条对」的那份。
-        pairs = [("这份清单的指纹", str(snap.get("sha256")))]
-        pairs += [("可用的叫法", str(n)) for n in (snap.get("names") or [])]
-        blocks.append(("指标清单快照", pairs))
+        # 附录只补**正文没有的那一半**（英文标识符），不把中文再印一遍。
+        #
+        # ⚠️ 原来这里印的是**完整**清单。`h2-02` 的盲审三个人**全都**提到了它：
+        #    「为了说明『你问的不在库里』，它把同一份清单印了两遍……几百行下来
+        #    真正的信息只有一句『没有这个指标』」「翻起来很累」「一页翻下去几乎全是重复」。
+        #    ⇒ 一份没人愿意读完的证据，与没有证据的差别在缩小。
+        #
+        # 🔴 **指纹仍然覆盖完整清单**，所以它要靠「正文的中文 + 附录的英文」
+        #    两半合起来才复算得出 —— 这一点必须写在页面上，否则读者会以为
+        #    附录这一段自己就能对上指纹。
+        names = [str(n) for n in (snap.get("names") or [])]
+        非中文 = [n for n in names if not any(ord(c) > 0x2E80 for c in n)]
+        pairs = [
+            ("这份清单的指纹", str(snap.get("sha256"))),
+            ("指纹覆盖的范围", "正文列的中文说法 + 下面这些标识符，共 " + str(len(names)) + " 个"),
+        ]
+        pairs += [("英文标识符", n) for n in 非中文]
+        blocks.append(("指标清单快照（中文那半在正文里，不重复印）", pairs))
     blocks.append(("这次执行", _execution_pairs(answer)))
     L.extend(render_appendix(blocks))
     return "\n".join(L)
@@ -834,6 +954,7 @@ def _execution_pairs(answer: Answer) -> list:
         # 就成了唯一的信号，而缺一行是最容易被读漏的那种信号。
         ("指标名怎么定下来的", str(ev.get("metric_resolved_by"))),
         ("命中的别名", str(ev.get("matched_alias"))),
+        ("主体怎么定下来的", str(ev.get("entity_resolved_by"))),
     ]
     if answer.refused and answer.refusal:
         pairs.append(("拒答理由码", str(answer.refusal.get("code"))))

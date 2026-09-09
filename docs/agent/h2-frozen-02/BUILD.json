@@ -1,0 +1,7 @@
+{
+  "blind": false,
+  "suite": "frozen-02",
+  "seed": 20260909,
+  "n": 21,
+  "note": "blind=true 表示出包时跑分结果没有离开 build_packets，执行者印不出 W 与逐题结果。它管不住另起一个进程跑 eval.run —— 那条要靠「出包 → 复核 → 才跑才报」这条规矩。见 N-75。"
+}

@@ -1,0 +1,35 @@
+id: Q-C3-008
+category: C3
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 收入归零但上期有数，同比是 −100%，可算且必须算。
+
+question: |
+  云岭材料（900103）2023 年的营业收入同比增长率是多少？
+
+expected:
+  metric_id: revenue_growth_yoy
+  metric_version: 2
+  value: -1.0
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  fixture: synthetic-02
+  rationale: >
+    （0 − 1500000000）/ 1500000000 = −1.0，即 −100%。
+    本题与 Q-C3-001 用同一家公司同一年，但结论相反：
+    毛利率因分母为零而未定义，同比增长率的分母是上期收入（1500000000，非零），
+    本期收入为 0 只影响分子。定义里三条未定义条件
+    （上期缺失 / 上期小于等于 0 / 本期缺失）一条都不成立。
+    ⇒ 这题考的是「不该拒的时候不要拒」。把零分母的直觉扩大到本题即为失败，
+    而那种失败在拒答理由里读起来会非常正当。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 计算层：把 Q-C3-001 的零分母判断错误地扩大到分母非零的同比指标

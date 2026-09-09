@@ -101,6 +101,40 @@ _SCHEMA_IN_PROSE = {
 }
 
 
+def short_field_names(defn) -> dict:
+    """字段 id → 给人读的中文名。**三处渲染共用这一份映射。**
+
+    `line_item` 常带「—— 本期金额」这类**列限定**，读公式时是干扰，默认去掉。
+    ⚠️ **但只在去掉之后仍然互不相同时才去。**
+
+    `revenue_growth_yoy` 的两个取数字段分别是「营业收入 —— 本期金额」与
+    「营业收入 —— 上期比较金额（本期报表列示，即重述后数）」。去掉列限定之后
+    两者**都叫「营业收入」**，于是：
+
+    - 公式渲染成「(营业收入 - 营业收入) / 营业收入」，读起来像恒等于零；
+    - `D-038 G1` 那一节出现两行**同名不同值**（`· 营业收入 0` / `· 营业收入 1500000000`），
+      读者无法把哪个值对上哪个字段 —— G1 那一节的**全部作用**就是让人能重算一遍。
+
+    列限定在这里**正是区别本身**，不是干扰。
+
+    2026-09-09 实测：`h2-frozen-02` 的同比题两处都中招。`h2-02` 的复核者当时
+    是靠附录里的英文字段 id 才把它认出来的（原话：「我是靠下面的英文字段名
+    才确认缺的是上期比较金额」），而那个附录已按同一轮盲审意见精简掉
+    —— **拐杖撤了，坑还在**。
+    """
+    full = {
+        sf.id: str(sf.line_item).strip()
+        for sf in (getattr(defn, "source_fields", None) or [])
+        if sf.id and sf.line_item
+    }
+    short = {k: v.split("——")[0].split("(")[0].strip() for k, v in full.items()}
+    counts: dict = {}
+    for v in short.values():
+        counts[v] = counts.get(v, 0) + 1
+    # 撞名的那一组整组退回全称 —— 只退撞名的那几个，不撞的仍然读着清爽。
+    return {k: (short[k] if counts[short[k]] == 1 else full[k]) for k in full}
+
+
 def _prose(defn: MetricDefinition, text) -> str:
     """定义里的散文 → 财务读者读得下去的散文。**只换指称，不动一个论断。**
 
@@ -124,13 +158,9 @@ def _prose(defn: MetricDefinition, text) -> str:
     编一个出来，读者就没法发现禁的到底是哪一个。
     """
     out = str(text)
-    fields = sorted(
-        (sf for sf in defn.source_fields if sf.id and sf.line_item),
-        key=lambda sf: -len(sf.id),
-    )
-    for sf in fields:
-        name = str(sf.line_item).split("——")[0].split("(")[0].strip()
-        out = out.replace(sf.id, f"「{name}」")
+    names = short_field_names(defn)
+    for fid in sorted(names, key=len, reverse=True):
+        out = out.replace(fid, f"「{names[fid]}」")
     for key, where in sorted(_SCHEMA_IN_PROSE.items(), key=lambda kv: -len(kv[0])):
         out = out.replace(key, where)
     return _plain(out)
@@ -150,14 +180,10 @@ def _formula_in_chinese(defn: MetricDefinition) -> str | None:
     text = " ".join(str(defn.formula).split())
     # 长的 id 先换，否则 `is.operating_revenue_current` 会被
     # `is.operating_revenue` 这类前缀先咬掉一截。
-    fields = sorted(
-        (sf for sf in defn.source_fields if sf.id and sf.line_item),
-        key=lambda sf: -len(sf.id),
-    )
-    for sf in fields:
-        # 行项目原文常带「—— 本期金额」这类列限定，读公式时是干扰，去掉。
-        name = str(sf.line_item).split("——")[0].split("(")[0].strip()
-        text = text.replace(sf.id, name)
+    names = short_field_names(defn)
+    for fid in sorted(names, key=len, reverse=True):
+        # 列限定去不去由 `short_field_names` 定：去掉之后会撞名的那一组保留全称。
+        text = text.replace(fid, names[fid])
     return text if "." not in text.replace(" ", "") else None
 
 

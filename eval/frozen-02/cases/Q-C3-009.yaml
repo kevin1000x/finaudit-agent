@@ -1,0 +1,37 @@
+id: Q-C3-009
+category: C3
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 本行以万元列示，比率类指标不受影响——考证据页披不披露单位。
+
+question: |
+  长庚重工（900105）2022 年的毛利率是多少？
+
+expected:
+  metric_id: gross_profit_margin
+  metric_version: 2
+  value: 0.23
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  fixture: synthetic-02
+  rationale: >
+    （320000 − 246400）/ 320000 = 0.23。
+    🔴 该夹具行以「万元」列示，与其余各行的「元」差 4 个数量级。
+    毛利率是比率，量纲相消，所以正确答案与单位无关——这是刻意选比率而非绝对额的原因
+    （绝对额题的正解取决于按哪个单位报数，那是一道没有唯一解的题，
+    按 EVAL_CASES §2.2 属构造错误，本套件不设，理由见 FREEZE.md）。
+    
+    本题真正考的是证据页：取数出处必须让读者看出这一行是万元列示。
+    看不出来的话，读者无法判断系统是「正确地忽略了单位」还是「根本没注意到单位」——
+    两者在这道题的最终数字上不可区分。同一家公司 2023 年的毛利率是 0.25，也不相同。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 数据层：跨单位取数未在证据链中暴露单位

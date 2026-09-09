@@ -1,0 +1,33 @@
+id: Q-C1-006
+category: C1
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 非经常性损益为负时，扣非归母净利润大于归母净利润。
+
+question: |
+  瑞捷科技（900102）2023 年的扣非归母净利润是多少？
+
+expected:
+  metric_id: net_profit_attributable_excl_nonrecurring
+  metric_version: 2
+  value: 170000000
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  fixture: synthetic-02
+  rationale: >
+    150000000 −（−20000000）= 170000000。
+    该公司当年非经常性损益净额为负（大额非经常性损失），
+    于是扣非后的利润高于扣非前。这与「扣非一定更小」的直觉相反，
+    但按定义公式直算即得，不需要任何特判。
+    若实现里写了「取两者较小值」或对负数做了截断，本题会暴露它。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 计算层：对非经常性损益为负的情形做了方向性假设

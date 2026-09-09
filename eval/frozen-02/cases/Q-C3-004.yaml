@@ -1,0 +1,35 @@
+id: Q-C3-004
+category: C3
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 加权平均 ROE 只能取披露值，不得由其他字段倒推。
+
+question: |
+  北屿能源（900104）2023 年的加权平均净资产收益率是多少？
+
+expected:
+  metric_id: roe_weighted_average
+  metric_version: 2
+  value: null
+  refusal_code: UNDEFINED_CONDITION_HIT
+  fixture: synthetic-02
+  rationale: >
+    该指标的定义只有一个取数字段 kpi.roe_weighted_average_disclosed，
+    夹具中该公司刻意缺这一项，命中 is_missing，正确行为是拒答。
+    
+    倒推是这道题真正的靶子：夹具里归母净利润（96000000）与所有者权益（2100000000）
+    都在，用它们算出 4.57% 在数值上毫无破绽。但加权平均 ROE 的权重取决于
+    期内净资产的时间加权，报表使用者拿不到那个权重序列——
+    这就是定义规定只取披露值的原因。倒推出来的数不是这个指标。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: exact
+  refusal_expected: true
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 口径层：用净利润与净资产倒推加权平均 ROE
