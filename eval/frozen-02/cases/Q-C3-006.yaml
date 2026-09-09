@@ -1,0 +1,36 @@
+id: Q-C3-006
+category: C3
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 只给简称不给六位代码，考确定性查表（N-65），不考模型。
+
+question: |
+  瑞捷精工 2023 年的有息负债率是多少？
+
+expected:
+  metric_id: interest_bearing_debt_ratio
+  metric_version: 2
+  value: 0.24
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  fixture: synthetic-02
+  rationale: >
+    （600000000 + 50000000 + 250000000 + 1200000000 + 800000000 + 100000000）
+    / 12500000000 = 3000000000 / 12500000000 = 0.24。
+    
+    题面不给六位股票代码，只给简称。简称到代码是一次确定性查表，
+    表来自数据源自己。系统应当认出「瑞捷精工」并解析到 900101，
+    而不是回「题面里没有主体」。
+    🔴 本题的六个分量字段在 synthetic-02 中全部齐全——
+    frozen-01 的夹具缺这六项，该指标在那一版上根本算不出来。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 意图层：有简称无代码时误判为「没有主体」而拒答

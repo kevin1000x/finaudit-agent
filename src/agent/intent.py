@@ -228,6 +228,9 @@ def parse_intent(question: str, registry: Registry, ask_model=None, entity_names
                 "题面里那个公司名，我只认出了它的「一部分」 —— 它前面还连着别的字，"
                 "很可能是另一家名字更长的公司。不猜。请给六位股票代码，"
                 "或者把公司名单独隔开写。",
+                # `L-9` 的责任方标识：**是简称表这一环拒的**。
+                # 证据页据此挂上「当时认得出哪些公司」那一节 —— 见 answer.py 的 `G4`。
+                source="intent:entity_table",
             )
         # 代码取不到值的表项直接丢 —— 否则 `str(None)` 会变成一个
         # 叫「None」的主体，证据页上印「取的是 None 的 2023 年那一行」。
@@ -253,6 +256,9 @@ def parse_intent(question: str, registry: Registry, ask_model=None, entity_names
                 RefusalCode.INTENT_INCOMPLETE,
                 "题面里没有认得出的公司。给一个六位股票代码，"
                 "或者一个我们确实有数据的公司简称 —— 两样都没有时不猜。",
+                # 同上：责任方是简称表。**这句话没有这一节就不可证伪** ——
+                # 读者无从知道「认得出的」到底是哪几家（`G4`）。
+                source="intent:entity_table",
             )
         return Refusal(RefusalCode.INTENT_INCOMPLETE, "题面里没有主体（六位股票代码）")
     if len(entities) > 1:

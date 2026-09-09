@@ -1,0 +1,284 @@
+# **合成数据。不来自任何真实公司、任何年报、AKShare 或其他第三方源。**
+#
+# 公司代码与名称均为虚构，数值为构造陷阱而手写。**不得当作事实引用，不得用于任何实证结论。**
+# 把合成数据说成真实数据，是比数据本身更严重的问题（D-010 / D-013）。
+#
+# 为什么再造一份而不复用 synthetic-01：
+#   1. **`N-19` 的判据要求 C2 靶子的分量字段齐全。** synthetic-01 缺 6 个有息负债分量、
+#      缺 `notes.nonrecurring_pl_net_attributable_to_parent`、缺 `notes.consolidation_scope_change`
+#      —— 于是 4 个 C2 靶子里有 2–3 个「指标未定义」与「数据缺失」两个原因混在一起，
+#      拒答证明不了口径纪律。本夹具把这些分量**全部补齐**，让拒答只可能有一个原因。
+#   2. **`N-46` 第 2 条**：synthetic-01 有 6 处 `notes.business_combination_type: 无`，
+#      是 `D-028` 取消哨兵值之前的写法。`D-012` 不许改冻结集，所以那 6 处只能留着；
+#      本夹具按 `D-028` 的现行语义写：**集合值，空集表示本期无企业合并，不写「无」**。
+#      900105 一行同时列出两类合并，正是 `D-028` 背景里万华 2019 的那种真实形态。
+#   3. **复核者未污染。** frozen-01 的 15 道题与其证据页复核者已全部读过（`h2-01`）。
+#      同人同题重测测的是记忆 —— 换公司、换数值、换陷阱形态是这次重测成立的前提。
+#
+# 效力边界：基于本夹具的数值结论**只证明计算逻辑正确，不证明数据抽取正确**。
+# 抽取正确性属于 Phase 2 的 PDF 抽取器，与本夹具无关。
+
+meta:
+  fixture_id: synthetic-02
+  nature: 合成数据（虚构公司与数值）
+  currency: CNY
+  unit: 元
+  note: >
+    除 900105 · 2022 一行显式标注 unit 为万元外，其余各行均以「元」列示。
+    该行存在的目的是让证据页有机会暴露单位——本套件不为它设「单位换算」的计分题，
+    理由见 FREEZE.md「刻意没做的四件事」第 2 条。
+
+# --------------------------------------------------------------------------
+# 陷阱一：同名不同实体。两家公司简称共享前缀「瑞捷」，股票代码不同，是不同主体。
+# --------------------------------------------------------------------------
+entities:
+  - stock_code: "900101"
+    short_name: 瑞捷精工
+    full_name: 瑞捷精密工业股份有限公司（虚构）
+  - stock_code: "900102"
+    short_name: 瑞捷科技
+    full_name: 瑞捷智能科技股份有限公司（虚构）
+  - stock_code: "900103"
+    short_name: 云岭材料
+    full_name: 云岭新材料股份有限公司（虚构）
+  - stock_code: "900104"
+    short_name: 北屿能源
+    full_name: 北屿清洁能源股份有限公司（虚构，当年新上市）
+  - stock_code: "900105"
+    short_name: 长庚重工
+    full_name: 长庚重型装备股份有限公司（虚构）
+
+rows:
+  # ----- 瑞捷精工 900101 · 2023：字段最齐的一行。所有 C2 靶子的分量都在这里 -----
+  - stock_code: "900101"
+    fiscal_year: 2023
+    period_type: annual
+    is.operating_revenue_current: 8000000000
+    is.operating_revenue_prior_as_presented: 6400000000
+    is.operating_cost: 5600000000
+    is.operating_profit: 900000000
+    is.net_profit: 780000000
+    is.net_profit_attributable_to_parent: 700000000
+    is.selling_expense: 400000000
+    is.administrative_expense: 320000000
+    is.financial_expense: 80000000
+    bs.total_assets: 12500000000
+    bs.total_liabilities: 7500000000
+    bs.total_equity: 5000000000
+    bs.minority_interests: 400000000
+    bs.total_current_assets: 5000000000
+    bs.total_current_liabilities_period_end: 2500000000
+    bs.inventory: 1120000000
+    bs.accounts_receivable: 1600000000
+    bs.accounts_payable: 1400000000
+    bs.cash_and_equivalents: 900000000
+    bs.short_term_borrowings: 600000000
+    bs.trading_financial_liabilities: 50000000
+    bs.non_current_liabilities_due_within_one_year: 250000000
+    bs.long_term_borrowings: 1200000000
+    bs.bonds_payable: 800000000
+    bs.lease_liabilities: 100000000
+    cfs.net_cash_flow_from_operating_activities: 1050000000
+    cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets: 600000000
+    notes.nonrecurring_pl_net_attributable_to_parent: 60000000
+    notes.restatement_flag: false
+    # D-028：集合值。本期发生一笔非同一控制下企业合并。
+    notes.business_combination_type: [非同一控制下]
+    notes.consolidation_scope_change: true
+    notes.reporting_period_months: 12
+    kpi.roe_weighted_average_disclosed: 15.80
+
+  # ----- 瑞捷科技 900102 · 2023：与上一家共享简称前缀，数值刻意全不相同 -----
+  # 陷阱：非经常性损益为**负**，于是扣非归母净利润**大于**归母净利润。
+  # 这是真实存在的形态（当年有大额非经常性损失），按公式直算即可，不需要任何特判。
+  - stock_code: "900102"
+    fiscal_year: 2023
+    period_type: annual
+    is.operating_revenue_current: 2500000000
+    is.operating_revenue_prior_as_presented: 2000000000
+    is.operating_cost: 2000000000
+    is.operating_profit: 120000000
+    is.net_profit: 150000000
+    is.net_profit_attributable_to_parent: 150000000
+    is.selling_expense: 100000000
+    is.administrative_expense: 120000000
+    is.financial_expense: 30000000
+    bs.total_assets: 5000000000
+    bs.total_liabilities: 3250000000
+    bs.total_equity: 1750000000
+    bs.minority_interests: 0
+    bs.total_current_assets: 1600000000
+    bs.total_current_liabilities_period_end: 2000000000
+    bs.inventory: 400000000
+    bs.accounts_receivable: 500000000
+    bs.accounts_payable: 600000000
+    bs.cash_and_equivalents: 200000000
+    bs.short_term_borrowings: 400000000
+    bs.trading_financial_liabilities: 0
+    bs.non_current_liabilities_due_within_one_year: 100000000
+    bs.long_term_borrowings: 500000000
+    bs.bonds_payable: 0
+    bs.lease_liabilities: 50000000
+    cfs.net_cash_flow_from_operating_activities: 180000000
+    cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets: 100000000
+    notes.nonrecurring_pl_net_attributable_to_parent: -20000000
+    notes.restatement_flag: false
+    # D-028：空集 = 本期无企业合并。**不写「无」**——那是取消掉的哨兵值。
+    notes.business_combination_type: []
+    notes.consolidation_scope_change: false
+    notes.reporting_period_months: 12
+    kpi.roe_weighted_average_disclosed: 7.60
+
+  # ----- 云岭材料 900103 · 2023：陷阱二，零分母与负分子。当年停产 -----
+  # 营业收入与营业成本均为 0，归母净利润为负。多条 undefined_conditions 在这一行成立。
+  - stock_code: "900103"
+    fiscal_year: 2023
+    period_type: annual
+    is.operating_revenue_current: 0
+    is.operating_revenue_prior_as_presented: 1500000000
+    is.operating_cost: 0
+    is.operating_profit: -260000000
+    is.net_profit: -240000000
+    is.net_profit_attributable_to_parent: -240000000
+    is.selling_expense: 20000000
+    is.administrative_expense: 90000000
+    is.financial_expense: 110000000
+    bs.total_assets: 2000000000
+    bs.total_liabilities: 1800000000
+    bs.total_equity: 200000000
+    bs.minority_interests: 0
+    bs.total_current_assets: 500000000
+    bs.total_current_liabilities_period_end: 1200000000
+    bs.inventory: 180000000
+    bs.accounts_receivable: 150000000
+    bs.accounts_payable: 260000000
+    bs.cash_and_equivalents: 60000000
+    bs.short_term_borrowings: 700000000
+    bs.trading_financial_liabilities: 0
+    bs.non_current_liabilities_due_within_one_year: 200000000
+    bs.long_term_borrowings: 400000000
+    bs.bonds_payable: 0
+    bs.lease_liabilities: 20000000
+    cfs.net_cash_flow_from_operating_activities: -120000000
+    cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets: 30000000
+    notes.nonrecurring_pl_net_attributable_to_parent: -15000000
+    notes.restatement_flag: false
+    notes.business_combination_type: []
+    notes.consolidation_scope_change: false
+    notes.reporting_period_months: 12
+    kpi.roe_weighted_average_disclosed: -85.70
+
+  # ----- 北屿能源 900104 · 2023：陷阱三，缺失期。当年新上市，无上期比较数 -----
+  # 另刻意缺 kpi.roe_weighted_average_disclosed：该指标只能取披露值，不得倒推。
+  - stock_code: "900104"
+    fiscal_year: 2023
+    period_type: annual
+    is.operating_revenue_current: 1200000000
+    # is.operating_revenue_prior_as_presented 刻意缺失：首次披露无比较期
+    is.operating_cost: 780000000
+    is.operating_profit: 130000000
+    is.net_profit: 96000000
+    is.net_profit_attributable_to_parent: 96000000
+    is.selling_expense: 60000000
+    is.administrative_expense: 84000000
+    is.financial_expense: 12000000
+    bs.total_assets: 3000000000
+    bs.total_liabilities: 900000000
+    bs.total_equity: 2100000000
+    bs.minority_interests: 0
+    bs.total_current_assets: 1500000000
+    bs.total_current_liabilities_period_end: 600000000
+    bs.inventory: 300000000
+    bs.accounts_receivable: 240000000
+    bs.accounts_payable: 195000000
+    bs.cash_and_equivalents: 400000000
+    bs.short_term_borrowings: 150000000
+    bs.trading_financial_liabilities: 0
+    bs.non_current_liabilities_due_within_one_year: 50000000
+    bs.long_term_borrowings: 250000000
+    bs.bonds_payable: 0
+    bs.lease_liabilities: 30000000
+    cfs.net_cash_flow_from_operating_activities: 150000000
+    cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets: 220000000
+    notes.nonrecurring_pl_net_attributable_to_parent: 6000000
+    notes.restatement_flag: false
+    notes.listing_first_disclosure_flag: true
+    notes.business_combination_type: []
+    notes.consolidation_scope_change: false
+    notes.reporting_period_months: 12
+    # kpi.roe_weighted_average_disclosed 刻意缺失
+
+  # ----- 长庚重工 900105 · 2023：少数股东权益占比显著，且两类企业合并并存 -----
+  - stock_code: "900105"
+    fiscal_year: 2023
+    period_type: annual
+    is.operating_revenue_current: 4000000000
+    is.operating_revenue_prior_as_presented: 3200000000
+    is.operating_cost: 3000000000
+    is.operating_profit: 280000000
+    is.net_profit: 200000000
+    is.net_profit_attributable_to_parent: 160000000
+    is.selling_expense: 160000000
+    is.administrative_expense: 200000000
+    is.financial_expense: 80000000
+    bs.total_assets: 6250000000
+    bs.total_liabilities: 4000000000
+    bs.total_equity: 2250000000
+    bs.minority_interests: 450000000
+    bs.total_current_assets: 2000000000
+    bs.total_current_liabilities_period_end: 1600000000
+    bs.inventory: 600000000
+    bs.accounts_receivable: 800000000
+    bs.accounts_payable: 750000000
+    bs.cash_and_equivalents: 250000000
+    bs.short_term_borrowings: 800000000
+    bs.trading_financial_liabilities: 0
+    bs.non_current_liabilities_due_within_one_year: 200000000
+    bs.long_term_borrowings: 900000000
+    bs.bonds_payable: 0
+    bs.lease_liabilities: 100000000
+    cfs.net_cash_flow_from_operating_activities: 260000000
+    cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets: 180000000
+    notes.nonrecurring_pl_net_attributable_to_parent: 10000000
+    notes.restatement_flag: true
+    # D-028 的核心形态：两类企业合并在同一年真实并存（万华 2019 实证）。
+    # 旧的单值枚举在这里**三个值没有一个是对的**。
+    notes.business_combination_type: [同一控制下, 非同一控制下]
+    notes.consolidation_scope_change: true
+    notes.reporting_period_months: 12
+    kpi.roe_weighted_average_disclosed: 7.40
+
+  # ----- 长庚重工 900105 · 2022：陷阱四，本行以**万元**列示 -----
+  # 与其余各行差 4 个数量级。比率类指标不受影响（量纲相消），
+  # 绝对额类指标受影响 —— 本套件不为后者设计分题，见 FREEZE.md。
+  - stock_code: "900105"
+    fiscal_year: 2022
+    period_type: annual
+    unit: 万元
+    is.operating_revenue_current: 320000
+    is.operating_revenue_prior_as_presented: 250000
+    is.operating_cost: 246400
+    is.operating_profit: 18000
+    is.net_profit: 15000
+    is.net_profit_attributable_to_parent: 12000
+    is.selling_expense: 12000
+    is.administrative_expense: 15000
+    is.financial_expense: 5000
+    bs.total_assets: 500000
+    bs.total_liabilities: 330000
+    bs.total_equity: 170000
+    bs.minority_interests: 30000
+    bs.total_current_assets: 160000
+    bs.total_current_liabilities_period_end: 130000
+    bs.inventory: 50000
+    bs.accounts_receivable: 65000
+    bs.accounts_payable: 60000
+    bs.cash_and_equivalents: 20000
+    cfs.net_cash_flow_from_operating_activities: 20000
+    cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets: 15000
+    notes.nonrecurring_pl_net_attributable_to_parent: 800
+    notes.restatement_flag: false
+    notes.business_combination_type: []
+    notes.consolidation_scope_change: false
+    notes.reporting_period_months: 12
+    kpi.roe_weighted_average_disclosed: 7.10

@@ -62,6 +62,7 @@ SPLIT = re.compile(r"={60,}\n(H2-\d+)\n={60,}")
 from agent.answer import (  # noqa: E402
     _A_ANSWER as H_ANSWER,
     _A_INPUTS as H_INPUTS,
+    _A_ENTITIES as H_ENTITIES,
     _A_REFUSED as H_REFUSED,
     _A_REGISTRY as H_REGISTRY,
     _A_WHERE as H_WHERE,
@@ -183,8 +184,22 @@ def check_one(tag: str, body: str) -> list[str]:
             gaps.append("说「没有这个指标」却没给「" + H_REGISTRY + "」清单（D-038 G3）—— 不可证伪")
     elif kind == "incomplete":
         why = _section(body, H_REFUSED) or ""
-        if not any(w in why for w in ("主体", "期间")):
+        # `N-65` 之后，认不出公司那句话刻意不再说「主体」而说「公司」
+        #（原措辞让盲审以为系统连问的是哪家都没读出来）。
+        # ⇒ 「公司」同样是**点了名**的，不是放松判据。
+        if not any(w in why for w in ("主体", "公司", "期间")):
             gaps.append("说题面不全，却没点名缺的是哪一项")
+        # `G4`（2026-09-09，frozen-02 照出来的）：说「**认**不出」的时候，
+        # 光点名还不够 —— 读者不知道系统认得出的是哪几家，那句话**不可证伪**。
+        # 与 `G3` 完全同构。
+        # ⚠️ 只对「认不出」这一类要求，不对「出现多个主体 / 多家公司」要求：
+        #    后者已经把找到的那几个逐个列在理由里了，本来就可证伪。
+        # ⚠️ 这个「认」字判据**依赖上游措辞**（`EVAL_CASES` §5.3 / `L-50` 点名过的那类）。
+        #    耐久的修法是把 `Refusal.source` 印进页面再按它判 —— 尚未做，记在这里。
+        if ("认得出" in why or "认出" in why) and _section(body, H_ENTITIES) is None:
+            gaps.append(
+                "说认不出这家公司，却没给「" + H_ENTITIES + "」清单（G4）—— 不可证伪"
+            )
     elif kind == "no_row":
         if _where(body) is None:
             gaps.append("说数据源里没有这一行，却没说清是哪个数据源")

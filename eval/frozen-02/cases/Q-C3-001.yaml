@@ -1,0 +1,32 @@
+id: Q-C3-001
+category: C3
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 零分母，且分子同为零，考 0/0 的处理。
+
+question: |
+  云岭材料（900103）2023 年的毛利率是多少？
+
+expected:
+  metric_id: gross_profit_margin
+  metric_version: 2
+  value: null
+  refusal_code: UNDEFINED_CONDITION_HIT
+  fixture: synthetic-02
+  rationale: >
+    该公司当年停产，夹具中 is.operating_revenue_current 为 0，命中定义里
+    「is.operating_revenue_current <= 0」这条未定义条件，正确行为是拒答。
+    注意营业成本同为 0：若实现先算分子再判分母，会得到 0/0 并返回 NaN 或 0，
+    两者都是错误答案而不是拒答。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: exact
+  refusal_expected: true
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 计算层：零分母未拒答，返回 NaN / 0 / 无穷大

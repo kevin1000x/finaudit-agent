@@ -50,6 +50,7 @@ from semantic_layer.explain import (
     render_appendix,
     render_explanation,
     rule,
+    short_field_names,
     wrap,
 )
 from semantic_layer.resolve import (
@@ -361,6 +362,9 @@ class Answer:
     inputs: dict = field(default_factory=dict)
     #: `D-038 G3`：`{"metric_count", "names", "sha256"}`，只在「说没有这个指标」时带
     registry_snapshot: Any = None
+    #: `G4`（2026-09-09，`D-038` 同一条原理的第四处）：
+    #: `{"entity_count", "names", "sha256"}`，只在「说认不出这家公司」时带。
+    entity_snapshot: Any = None
 
     @property
     def refused(self) -> bool:
@@ -385,7 +389,32 @@ class Answer:
             "registry_snapshot": (
                 dict(self.registry_snapshot) if self.registry_snapshot else None
             ),
+            "entity_snapshot": (
+                dict(self.entity_snapshot) if self.entity_snapshot else None
+            ),
         }
+
+
+def entity_snapshot(entity_names) -> dict:
+    """当时**认得出哪些公司**（`G4`）。
+
+    与 `registry_snapshot` 同一条原理，作用在主体这一维：
+    没有它，「题面里没有认得出的公司」是一句**不可证伪**的断言 ——
+    读者知道系统拒了，但不知道它到底认得出哪几家，因而没法判断拒得对不对。
+
+    🔴 **这一处是 frozen-02 照出来的**（2026-09-09）：
+    `scripts/check_h2_selfcontained.py` 在新题包上报 `H2-05 incomplete` 有缺口，
+    而 frozen-01 里**没有**任何一道前缀歧义题，所以这一类页面此前从未被检到。
+
+    `sha256` 哈希的是排好序的名字表：证明「这一页列的就是当时那份表」，
+    **不**证明那份表是对的 —— 与 `registry_snapshot` 的限制完全相同。
+    """
+    names = sorted(str(n) for n in (entity_names or {}))
+    return {
+        "entity_count": len(names),
+        "names": names,
+        "sha256": _sha256_text(json.dumps(names, ensure_ascii=False)),
+    }
 
 
 def registry_snapshot(registry: Registry) -> dict:
@@ -454,7 +483,7 @@ def _shown(value) -> str:
 
 
 def _refused(intent_or_q, digest, refusal, evidence: dict, gate: str,
-             inputs=None, snapshot=None) -> Answer:
+             inputs=None, snapshot=None, entities=None) -> Answer:
     """拒答也留**同一套**字段。少记字段是最容易犯的，而拒答最需要能复核。
 
     ⚠️ **拒答也有 `execution_hash`。** 拒答是**正常业务结果**不是降级（`D-003`），
@@ -488,6 +517,7 @@ def _refused(intent_or_q, digest, refusal, evidence: dict, gate: str,
         gate=gate,
         inputs=dict(inputs or {}),
         registry_snapshot=snapshot,
+        entity_snapshot=entities,
     )
 
 
@@ -548,7 +578,21 @@ def answer_question(
             if intent.code is RefusalCode.METRIC_NOT_DEFINED
             else None
         )
-        return _refused(question, digest, intent, dict(base), "not_reached", snapshot=snapshot)
+        # `G4`（2026-09-09）：同一条原理作用在**主体**这一维。
+        # 判据是 `Refusal.source`（`L-9` 的责任方标识），**不是拒答措辞** ——
+        # 按措辞匹配正是 `EVAL_CASES` §5.3 / `L-50` 点名禁的那种判据，
+        # `N-65` 改一次措辞就会让它静默失效。
+        # 同样遵守「证据要相关，不是要多」：只有**简称表这一环拒的**才挂，
+        # 「题面里没有期间」那类不挂。
+        ents = (
+            entity_snapshot(getattr(source, "entity_names", None))
+            if intent.source == "intent:entity_table"
+            else None
+        )
+        return _refused(
+            question, digest, intent, dict(base), "not_reached",
+            snapshot=snapshot, entities=ents,
+        )
 
     # `D-003`：「这个指标名是查表查到的还是模型给的」是复核者要问的第一个问题 ——
     # `Intent` 的抬头原文就是这么写的。这条信息在 `Intent` 里躺了很久没被带进 `Answer`；
@@ -702,6 +746,8 @@ _A_INPUTS = "这个数是拿哪几个数算出来的"
 _A_WHY_HIT = "凭什么说满足了这一条"
 #: `D-038 G3` —— 说「没有这个指标」时，当时有哪些
 _A_REGISTRY = "我们当时有哪些指标"
+#: `G4` —— 说「认不出这家公司」时，当时认得出哪些
+_A_ENTITIES = "我们当时认得出哪些公司"
 #: 只在**模型真的介入过**的那一页出现。见 `render_answer` 里那段注释。
 _A_BY_MODEL = "这次的指标名是模型归一出来的"
 
@@ -711,11 +757,13 @@ def _input_lines(defn, inputs: dict) -> list:
 
     中文名来自 `source_fields[].line_item`（定义自己写的），
     **换不动就原样留着 id，不编** —— 与 `explain._prose` 同一条规矩。
+
+    ⚠️ 取名走 `explain.short_field_names`，**不在这里另写一份**：
+    2026-09-09 之前这里有一份自己的截断逻辑，于是同比类指标的这一节
+    印出两行同名不同值（`· 营业收入 0` / `· 营业收入 1500000000`），
+    而本节的全部作用就是让人能重算一遍 —— 对不上字段就等于没有这一节。
     """
-    names = {}
-    for sf in getattr(defn, "source_fields", []) or []:
-        if sf.id and sf.line_item:
-            names[sf.id] = str(sf.line_item).split("——")[0].split("(")[0].strip()
+    names = short_field_names(defn)
     out: list = []
     for path in sorted(inputs):
         label = names.get(path, path)
@@ -842,6 +890,23 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
             )
         )
         for name in cjk:
+            L.extend(wrap("· " + name, indent="      "))
+        L.append("")
+
+    ents = answer.entity_snapshot
+    if ents:
+        # `G4`：说「认不出这家公司」时，把当时认得出的那几家摆出来。
+        # 没有这一节，那句话读者无法证伪 —— 与 `G3` 是同一条理由。
+        L.append(_A_ENTITIES)
+        L.extend(
+            wrap(
+                "· 当时能认出 " + str(ents.get("entity_count")) + " 家公司的简称，"
+                "全列在下面 —— 可以直接核「我问的那家在不在里面」。"
+                "不在里面时，给六位股票代码同样能问。",
+                indent="    ",
+            )
+        )
+        for name in [str(n) for n in (ents.get("names") or [])]:
             L.extend(wrap("· " + name, indent="      "))
         L.append("")
 

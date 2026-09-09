@@ -1,0 +1,31 @@
+id: Q-C1-003
+category: C1
+frozen_at: "2026-09-09T14:13:01Z"
+
+# 「三费」在语料里是合计口径，不是三个单项。
+
+question: |
+  长庚重工（900105）2023 年的三费占比是多少？
+
+expected:
+  metric_id: period_expense_ratio
+  metric_version: 2
+  value: 0.11
+  tolerance: {abs: 1.0e-6, rel: 1.0e-9}
+  fixture: synthetic-02
+  rationale: >
+    （160000000 + 200000000 + 80000000）/ 4000000000 = 0.11。
+    本夹具中 900101 与 900102 的期间费用率均为 0.10，与本题的 0.11 不同——
+    数值刻意错开，答错公司不会碰巧得到正确答案。
+
+required_evidence:
+  - data_source
+  - metric_definition_version
+  - execution_hash
+
+judging:
+  correctness: tolerance
+  refusal_expected: false
+
+# 判分时不可见，仅用于事后失败归因分析（EVAL_CASES §3）
+attribution_hint: 口径层：三费范围取错，或取错主体

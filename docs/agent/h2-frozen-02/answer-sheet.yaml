@@ -1,0 +1,68 @@
+# H2 复核答卷。每题填 verdict，取值域见下；note 可写一句为什么（选填）。
+# 留空 = 没填。**「没填」和「填了无法判断」是两件事**，
+# 混同会让 EVAL_CASES §4.3 那道反向检验失真 —— 所以留空时拒绝算数。
+取值域: [对, 错, 无法判断]
+verdicts:
+  - id: H2-01
+    verdict:
+    note: ""
+  - id: H2-02
+    verdict:
+    note: ""
+  - id: H2-03
+    verdict:
+    note: ""
+  - id: H2-04
+    verdict:
+    note: ""
+  - id: H2-05
+    verdict:
+    note: ""
+  - id: H2-06
+    verdict:
+    note: ""
+  - id: H2-07
+    verdict:
+    note: ""
+  - id: H2-08
+    verdict:
+    note: ""
+  - id: H2-09
+    verdict:
+    note: ""
+  - id: H2-10
+    verdict:
+    note: ""
+  - id: H2-11
+    verdict:
+    note: ""
+  - id: H2-12
+    verdict:
+    note: ""
+  - id: H2-13
+    verdict:
+    note: ""
+  - id: H2-14
+    verdict:
+    note: ""
+  - id: H2-15
+    verdict:
+    note: ""
+  - id: H2-16
+    verdict:
+    note: ""
+  - id: H2-17
+    verdict:
+    note: ""
+  - id: H2-18
+    verdict:
+    note: ""
+  - id: H2-19
+    verdict:
+    note: ""
+  - id: H2-20
+    verdict:
+    note: ""
+  - id: H2-21
+    verdict:
+    note: ""
