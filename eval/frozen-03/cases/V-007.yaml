@@ -1,0 +1,25 @@
+id: V-007
+category: V2
+frozen_at: "2026-09-10T22:02:11Z"
+
+# 第二支口径未声明：「销售毛利率」是别名，正式名是「毛利率」。
+
+conclusion: |
+  600519 2023 年销售毛利率 91.96%。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年销售毛利率 91.96%
+      verdict: AMBIGUOUS_BASIS
+  rationale: >
+    第二支口径未声明：「销售毛利率」是别名，正式名是「毛利率」。⚠️ 这一题同时暴露那条判据**刻意宽**的一面 —— 「销售毛利率」在实务里歧义远小于「净利率」，照样被标。宁可多标一次真话，不漏标一次替人选过的口径。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

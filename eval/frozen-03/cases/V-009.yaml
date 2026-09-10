@@ -1,0 +1,25 @@
+id: V-009
+category: V2
+frozen_at: "2026-09-10T22:02:11Z"
+
+# 公司整个不在覆盖面里。
+
+conclusion: |
+  000651 2023 年流动比率 1.05。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 000651 2023 年流动比率 1.05
+      verdict: NOT_COVERED
+  rationale: >
+    公司整个不在覆盖面里。「核不了」是**正当输出**（D-041 §3）——覆盖面窄是刻意的，换来的是每个能核的数都有人签过字。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

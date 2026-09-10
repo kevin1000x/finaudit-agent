@@ -62,9 +62,14 @@ jobs:
       # 冻结校验放在 Linux runner 上跑，顺带验证 D-012 的物理保障：
       # .gitattributes 强制 LF 入库，SHA-256 必须跨平台稳定。
       # 这一条在本地（Windows）跑不出来——CRLF 一旦混进去，只有这里会红。
+      # ⚠️ **每冻结一套新题就往下面加一行。** 独立复核（2026-09-11）查出
+      #    `frozen-02` 与 `frozen-03` 当时都不在这一步里 —— 它们的哈希只在
+      #    有人手工跑评测时才被校一次，而这一条恰恰是**只有 Linux runner 才红**的那种。
       - name: 冻结校验（D-012，同时验证跨平台哈希稳定）
         run: |
           cd eval/frozen-01 && sha256sum -c SHA256SUMS \
+            && cd ../frozen-02 && sha256sum -c SHA256SUMS \
+            && cd ../frozen-03 && sha256sum -c SHA256SUMS \
             && cd ../../docs/agent/poc-01 && sha256sum -c SHA256SUMS
 
   # ---------------------------------------------------------------

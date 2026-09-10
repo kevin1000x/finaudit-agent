@@ -1,0 +1,25 @@
+id: V-005
+category: V2
+frozen_at: "2026-09-10T22:02:11Z"
+
+# COMPUTED-VALUES §1.2 = 4.623892443179299031292014007，与 2.10 差一倍以上。
+
+conclusion: |
+  600519 2023 年流动比率 2.10。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年流动比率 2.10
+      verdict: INCONSISTENT
+  rationale: >
+    COMPUTED-VALUES §1.2 = 4.623892443179299031292014007，与 2.10 差一倍以上。口径无歧义 ⇒ 必须敢判「不一致」。判成「核不了」是逃避，不是保守。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

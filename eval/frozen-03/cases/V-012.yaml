@@ -1,0 +1,28 @@
+id: V-012
+category: V3
+frozen_at: "2026-09-10T22:02:11Z"
+
+# 两件事：① 顿号不切 —— 「营业收入、营业成本」是一条声明的两个主语；② 🔴 主体与期间写在**一句不可核的话**里，也必须捡起来给后面用。
+
+conclusion: |
+  600519 2023 年的营业收入、营业成本都在增长，速动比率 3.67。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年的营业收入、营业成本都在增长
+      verdict: NOT_CHECKABLE
+    - text: 速动比率 3.67
+      verdict: CONSISTENT
+      inherited: "600519/2023"
+  rationale: >
+    两件事：① 顿号不切 —— 「营业收入、营业成本」是一条声明的两个主语；② 🔴 主体与期间写在**一句不可核的话**里，也必须捡起来给后面用。捡不起来，第二条会被说成「核不了」，而那是**错的**不是保守：它把一条本来能核的声明说成了核不了。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

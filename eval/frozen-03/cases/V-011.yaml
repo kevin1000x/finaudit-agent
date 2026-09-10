@@ -1,0 +1,28 @@
+id: V-011
+category: V3
+frozen_at: "2026-09-10T22:02:11Z"
+
+# 承接上下文：第二条自己没写主体与期间。
+
+conclusion: |
+  600519 2023 年毛利率 91.96%，期间费用率 8.52%。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年毛利率 91.96%
+      verdict: CONSISTENT
+    - text: 期间费用率 8.52%
+      verdict: CONSISTENT
+      inherited: "600519/2023"
+  rationale: >
+    承接上下文：第二条自己没写主体与期间。COMPUTED-VALUES §1.6 = 0.919649372413579757379092352（差 0.0000494 < 0.00005）、§1.7 = 0.08523388089246972163777（差 0.0000339 < 0.00005）。**两条都压在容差边缘**，与 V-004 同一个用意。承接了就必须印出来（D-041 §2）—— 承接错了读者要能一眼看见。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

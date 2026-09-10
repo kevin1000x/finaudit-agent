@@ -102,16 +102,17 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 | | |
 |---|---|
 | 指标定义 | **20 / 20** 合规，`advisory_only` 19.0%，未分类 0 |
-| 测试 | **978 passed**（2026-09-07 实跑；耗时区间 148–307s —— 非确定性字段，不是判据） |
+| 测试 | **1189 passed**（2026-09-11 实跑，328s；耗时是非确定性字段，不是判据） |
 | 门禁 | **7 道**（第七道 `tests/test_plan_waves.py`）：pytest / `semantic_layer scan` / `validate` / `check_xrefs` / `check_reading_ledger`（08-23）/ **`check_gates`**（08-24，门禁的门禁）+ CI `gates.yml`；**供应链 `verify_deps.py` 单独跑，不串进提交链**（它走网络） |
-| 生产代码 | `src/semantic_layer/` **11 模块**；`src/extractor/` **12 模块**；`src/agent/` **4 模块**；`src/service/` **3 模块**（09-06 新增，**零 Web 框架依赖**） |
+| 生产代码 | `src/semantic_layer/` **11 模块**；`src/extractor/` **12 模块**；`src/agent/` **5 模块**（09-11 新增 `verify.py`）；`src/service/` **3 模块**（**零 Web 框架依赖**） |
 | 映射表 | PDF 侧 5 份 **30 / 30**（相等断言）；AKShare 对照侧 3 份 **24 / 30**（**子集**断言，`C-13`） |
 | 依赖 | `pyyaml` / `pdfplumber` + `akshare`（`crosscheck` extra，不进主依赖）。🔴 供应链门禁在 akshare 下载量一项上**红着**，是 `D-036` 裁过的已知状态 |
-| 评测集 | frozen-01 冻结 @ `2026-08-15T14:47:51Z`，21 文件哈希 |
-| 系统臂 | 口径 **7/11**、拒答 **4/4**、答案 **5/8**、证据链 **15/15（其中 8 题按收窄键集计）**；C4/C5 共 5 题 `NOT_RUN`（准则检索 / 图谱确实没有路径） |
+| 评测集 | frozen-01 @ `2026-08-15T14:47:51Z`（21 文件）｜ frozen-02 ｜ **frozen-03 @ `2026-09-10T22:02:11Z`（14 文件，核查层，`D-041` §5）** |
+| 系统臂 | 口径 **8/11**、拒答 **4/4**、答案 **6/8**、证据链 **15/15（其中 7 题按收窄键集计）**；C4/C5 共 5 题 `NOT_RUN`（准则检索 / 图谱确实没有路径）。⚠️ 此前这一格记的是 7/11 与 5/8，与权威读数 `EVAL-REPORT-01.md` 对不上 —— **是这一格陈旧，不是分数变了**，2026-09-11 实跑逐格核对后校准（又一次 `N-35`） |
 | 对照臂 | 裸 LLM 两个模型臂（`deepseek-v4-pro` / `v4-flash`），报告在 `eval/runs/baseline/`（gitignored） |
-| OpenSpec | 3 个变更已归档，`specs/` 9 条 Requirement |
-| 决策 | D-001…**D-039** |
+| ~~OpenSpec~~ | **已删除（`D-042`，2026-09-11）**。9 条 Requirement 与 3 个归档变更移到 `docs/spec/`，内容一字未改 |
+| 决策 | D-001…**D-042** |
+| 核查层（`frozen-03`） | **14/14 通过**，`model_wired: false`。🔴 **这是回归不是检验** —— 出题人就是写实现的人，见 `eval/frozen-03/FREEZE.md` §限定。不得转述成「核查准确率 100%」 |
 | 沉淀登记册 | 82 条（2026-09-04 `scripts/backlog_status.py` 实跑）：已落地 63 / **部分落地 3** / BLOCKED 9 / 已关闭 4 / 依据 3 |
 | 外部沉淀 | `references/` **26 份 26,734 行**（cninfo 1451 / harness 14,093 / hello-agents 11,144） |
 

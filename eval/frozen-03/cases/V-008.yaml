@@ -1,0 +1,25 @@
+id: V-008
+category: V2
+frozen_at: "2026-09-10T22:02:11Z"
+
+# 万华化学**在**覆盖面里，但只有 2019 年。
+
+conclusion: |
+  万华化学 2023 年资产负债率 62%。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 万华化学 2023 年资产负债率 62%
+      verdict: NOT_COVERED
+  rationale: >
+    万华化学**在**覆盖面里，但只有 2019 年。「有这家公司、没有这一年」必须落成 NOT_COVERED 而不是拿另一年的数顶上。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

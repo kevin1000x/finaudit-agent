@@ -10,7 +10,15 @@ cd docs/agent/poc-01 && sha256sum -c SHA256SUMS
 
 # 评测（Phase 1 起可用）
 python -m eval.run --suite frozen-01 --report reports/
+
+# 核查层评测（frozen-03，D-041 §5）。冻结校验与上面那条共用同一份实现。
+python -m eval.freeze --suite frozen-03 --check   # 只跑前置门禁
+python -m eval.verify_run --suite frozen-03       # 冻结校验 + 判分
 ```
+
+⚠️ **引用 `frozen-03` 的读数时必须一并抄出 `model_wired`**：为 `false` 时那是
+「关掉说法归一之后」的分数，不是线上那套系统的分数（`N-78`）。
+⚠️ 它是**回归不是检验** —— 出题人就是写实现的人，限定见 `eval/frozen-03/FREEZE.md` §限定。
 
 （评测命令在 Phase 1 实现前不存在，不要假装跑过。）
 

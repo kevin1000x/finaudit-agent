@@ -1,0 +1,25 @@
+id: V-004
+category: V2
+frozen_at: "2026-09-10T22:02:11Z"
+
+# 考「亿元」折算与**有量纲**指标。
+
+conclusion: |
+  600519 2023 年自由现金流 639.73 亿元。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年自由现金流 639.73 亿元
+      verdict: CONSISTENT
+  rationale: >
+    考「亿元」折算与**有量纲**指标。COMPUTED-VALUES §1.8 = 63,973,491,832.30 元；「639.73 亿元」= 63,973,000,000，容差 = 半个末位 = 0.005 亿 = 500,000，差 491,832.30 < 500,000 ⇒ 一致。**这一题刻意压在容差边缘**：容差规则若改成拍一个固定 1e-6，它会翻成不一致。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

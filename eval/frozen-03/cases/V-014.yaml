@@ -1,0 +1,25 @@
+id: V-014
+category: V2
+frozen_at: "2026-09-10T22:02:11Z"
+
+# 「个百分点」说的是**差**，不是水平值。
+
+conclusion: |
+  600519 2023 年资产负债率同比下降 0.5 个百分点。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年资产负债率同比下降 0.5 个百分点
+      verdict: NOT_COVERED
+  rationale: >
+    「个百分点」说的是**差**，不是水平值。本系统这一层只算得出某一年的水平值，拿 0.005 去跟 0.1798 比会得出一个看起来完全正常的错判定 ⇒ 一律不比。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

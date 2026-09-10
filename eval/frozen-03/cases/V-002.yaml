@@ -1,0 +1,25 @@
+id: V-002
+category: V1
+frozen_at: "2026-09-10T22:02:11Z"
+
+# 题面里有 600519 与 2023 两串数字，**它们分别被 _ENTITY 与 _PERIOD 消耗掉了**。
+
+conclusion: |
+  600519 2023 年的期间费用率是多少
+
+expected:
+  read_as: QUESTION
+  refused: false
+  claims:
+    []
+  rationale: >
+    题面里有 600519 与 2023 两串数字，**它们分别被 _ENTITY 与 _PERIOD 消耗掉了**。遮罩若失效，这一题会被误读成待核声明 —— 这是那条遮罩规则的负控制。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

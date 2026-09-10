@@ -27,6 +27,101 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 REQUIRED_KEYS = ["id", "category", "question", "expected", "required_evidence", "judging"]
 
+#: 核查套件（`frozen-03`，`D-041`）的题面不是一个问句，是**一段结论**。
+#: ⇒ 必填字段里 `question` 换成 `conclusion`，其余不变。
+VERIFY_REQUIRED_KEYS = [
+    "id", "category", "conclusion", "expected", "required_evidence", "judging"
+]
+
+#: 🔴 **五态在这里被硬编码一次，不是从实现里读出来的。**
+#: `D-041` §3 把「五态是封闭集」写进了决策；一道只会跟着实现走的门禁
+#: 挡不住「实现加了第六态」——它会照单全收。下面 `_check_closed_verdicts()`
+#: 把这份清单与实现比对，**不一致就拒绝冻结**，方向是拦住实现，不是迁就它。
+VERDICTS = (
+    "CONSISTENT",
+    "INCONSISTENT",
+    "AMBIGUOUS_BASIS",
+    "NOT_COVERED",
+    "NOT_CHECKABLE",
+)
+
+READ_AS = ("QUESTION", "STATEMENT")
+
+
+def is_verify_suite(cases: list) -> bool:
+    """这套题是不是核查套件。判据是**题面自己的类别**，不是目录名。"""
+    return any(str((c or {}).get("category") or "").startswith("V") for c in cases)
+
+
+def _check_closed_verdicts() -> list:
+    """实现里的判定集必须与上面那份清单**逐个相同**。
+
+    多一个少一个都拒绝冻结：`frozen-03` 的全部意义就是给这一层装评测，
+    而一个能被实现单方面扩张的期望集等于没有期望集。
+    """
+    from agent.verify import Verdict
+
+    实现 = tuple(v.name for v in Verdict)
+    if set(实现) != set(VERDICTS):
+        return [
+            "五态封闭集被改动了（`D-041` §3）："
+            f"实现里是 {sorted(实现)}，冻结门禁认的是 {sorted(VERDICTS)}。"
+            "要改这个集合，先改 `D-041`，再改这里 —— 不是反过来。"
+        ]
+    return []
+
+
+def _pregate_verify_case(path, case: dict) -> list:
+    """一份核查题面的前置门禁。"""
+    problems: list[str] = []
+    expected = case.get("expected") or {}
+
+    read_as = expected.get("read_as")
+    if read_as not in READ_AS:
+        problems.append(f"{path.name}：expected.read_as 要是 {READ_AS} 之一，得到 {read_as!r}")
+
+    claims = expected.get("claims")
+    if claims is None or not isinstance(claims, list):
+        problems.append(f"{path.name}：expected.claims 要是一个列表")
+        return problems
+
+    # 读成提问就不该有逐条判定，读成声明就必须有 —— 两者互斥，写反了是题面自己错了。
+    if read_as == "QUESTION" and claims:
+        problems.append(f"{path.name}：read_as 是 QUESTION，不该有 claims")
+    if read_as == "STATEMENT" and not claims:
+        problems.append(f"{path.name}：read_as 是 STATEMENT，claims 不能为空")
+
+    # 🔴 期望里的每条声明**必须真的出自题面**。
+    #    出不来的期望是永远不可能命中的期望 —— 那种题不是难，是坏。
+    正文 = " ".join(str(case.get("conclusion") or "").split())
+    # 🔴 **用真的切分器切**，不是子串包含。
+    #    独立复核（2026-09-11）指出：原来写的是 `text not in 正文`，于是
+    #    `text: 毛利率` 这种**切不出来**的期望能过门禁 —— 而 FREEZE.md 把这一条
+    #    列成「这道门的要害」。措辞比实现强，就是一句不成立的话。
+    from agent.verify import split_segments
+
+    真的切出来的 = set(split_segments(正文))
+    for i, claim in enumerate(claims):
+        if not isinstance(claim, dict):
+            problems.append(f"{path.name}：claims[{i}] 不是映射")
+            continue
+        text = claim.get("text")
+        verdict = claim.get("verdict")
+        if not text:
+            problems.append(f"{path.name}：claims[{i}] 缺 text")
+        elif " ".join(str(text).split()) not in 真的切出来的:
+            problems.append(
+                f"{path.name}：claims[{i}].text 不是这段话切出来的任何一段 —— "
+                "期望的切分必须真的能从这段话切出来（切出来的是：{})".format(
+                    "｜".join(sorted(真的切出来的))
+                )
+            )
+        if verdict not in VERDICTS:
+            problems.append(
+                f"{path.name}：claims[{i}].verdict {verdict!r} 不在五态封闭集里"
+            )
+    return problems
+
 
 def _registry():
     from semantic_layer.resolve import Registry
@@ -46,6 +141,7 @@ def pregate(suite_dir: Path) -> list[str]:
 
     registry = _registry()
     seen_ids: dict[str, str] = {}
+    _loaded: list = []
 
     for path in paths:
         # 1. 是合法 YAML —— 这一条正是 POC-01 的教训
@@ -57,9 +153,11 @@ def pregate(suite_dir: Path) -> list[str]:
         if not isinstance(case, dict):
             problems.append(f"{path.name}：顶层不是映射")
             continue
+        _loaded.append(case)
 
-        # 2. 必填字段齐全
-        for key in REQUIRED_KEYS:
+        # 2. 必填字段齐全。核查套件的题面是一段结论，不是一个问句。
+        是核查题 = str(case.get("category") or "").startswith("V")
+        for key in VERIFY_REQUIRED_KEYS if 是核查题 else REQUIRED_KEYS:
             if key not in case:
                 problems.append(f"{path.name}：缺必填字段 {key}")
 
@@ -74,6 +172,14 @@ def pregate(suite_dir: Path) -> list[str]:
         seen_ids[cid] = path.name
 
         expected = case.get("expected") or {}
+
+        # 4z. 核查题走自己那套判据（读成什么 / 切分 / 五态），不走下面那几条。
+        if 是核查题:
+            problems.extend(_pregate_verify_case(path, case))
+            fixture = expected.get("fixture")
+            if fixture and not (suite_dir / "fixtures" / f"{fixture}.yaml").is_file():
+                problems.append(f"{path.name}：引用的夹具不存在：fixtures/{fixture}.yaml")
+            continue
 
         # 4a. C2 的靶子必须**真的**不存在 —— 靶子是软柿子就等于没考
         if cat == "C2":
@@ -101,6 +207,9 @@ def pregate(suite_dir: Path) -> list[str]:
         fixture = expected.get("fixture")
         if fixture and not (suite_dir / "fixtures" / f"{fixture}.yaml").is_file():
             problems.append(f"{path.name}：引用的夹具不存在：fixtures/{fixture}.yaml")
+
+    if is_verify_suite(_loaded):
+        problems.extend(_check_closed_verdicts())
 
     return problems
 

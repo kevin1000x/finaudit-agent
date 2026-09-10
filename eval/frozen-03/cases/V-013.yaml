@@ -1,0 +1,25 @@
+id: V-013
+category: V3
+frozen_at: "2026-09-10T22:02:11Z"
+
+# 整段一个数都没有 ⇒ 读成提问 ⇒ 走问答路径 ⇒ 拒答。
+
+conclusion: |
+  贵州茅台的品牌护城河很深，盈利能力持续增强。
+
+expected:
+  read_as: QUESTION
+  refused: true
+  claims:
+    []
+  rationale: >
+    整段一个数都没有 ⇒ 读成提问 ⇒ 走问答路径 ⇒ 拒答。**不许因为「它显然是个观点」就自作主张读成待核声明**：判据只有一条，就是有没有那个数（D-041 §1）。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

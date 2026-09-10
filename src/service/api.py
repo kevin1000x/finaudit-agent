@@ -32,6 +32,7 @@ if str(REPO_ROOT / "src") not in sys.path:  # pragma: no cover - 部署环境各
     sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from agent.answer import FixtureSource, answer_question, render_answer  # noqa: E402
+from agent.verify import read_input, render_report  # noqa: E402
 from semantic_layer.__main__ import _flag_descriptions  # noqa: E402
 from semantic_layer.resolve import Registry  # noqa: E402
 
@@ -40,11 +41,13 @@ from . import model  # noqa: E402
 
 __all__ = [
     "MAX_QUESTION_BYTES",
+    "MAX_VERIFY_BYTES",
     "TOKEN_ENV",
     "TOKEN_HEADER",
     "answer_endpoint",
     "authorized",
     "coverage_endpoint",
+    "verify_endpoint",
     "needs_token",
     "presented_token",
     "serve",
@@ -132,6 +135,16 @@ def authorized(presented, token) -> bool:
 #: 问题字符串的上限。**不是安全边界，是礼貌边界** ——
 #: 意图解析对超长输入不会崩，只会拒答；这条只是不让一次请求拖着几 MB 的正文走。
 MAX_QUESTION_BYTES = 2000
+
+#: 核查入口那一段话的上限。**比问题宽，因为它本来就是一段话**，
+#: 不是一个问句 —— 一段券商 AI 的结论段落轻易过 2000 字节。
+#:
+#: ⚠️ **这一条原来的注释写错了**，说超长输入「只会切出很多条 `NOT_CHECKABLE`」。
+#: 独立复核（2026-09-11）实测：8000 字节切出 **533 段**，而**带数的每一段都要
+#: 完整走一遍取数 + 求值**，接上模型时还是 533 次模型调用。
+#: ⇒ 真正的闸门是 `agent.verify.MAX_CHECKABLE_CLAIMS`（每请求可核声明条数）；
+#: 这个字节数只是不让一次请求拖着几 MB 的正文走。
+MAX_VERIFY_BYTES = 8000
 
 
 @lru_cache(maxsize=1)
@@ -344,6 +357,53 @@ def answer_endpoint(payload) -> tuple:
     return 200, body
 
 
+def verify_endpoint(payload) -> tuple:
+    """`POST /verify`。**这是 `D-041` 的那一个输入框。** 返回 `(状态码, 响应体)`。
+
+    与 `answer_endpoint` 的关系：**这一个是上层，那一个是下层，两个都留着。**
+
+    - `/verify` 收一段话，自己判它是提问还是待核声明（`D-041` §1），
+      是提问就原样走下层那条路，**问答能力没有消失，它就在核查里面**；
+    - `/answer` 不动。`frozen-01` / `frozen-02` 的评测臂打的就是它，
+      而 `D-012` 不许动已冻结的那半 —— 换掉它等于换掉评测臂脚下的地面。
+      上面这半由 `frozen-03` 单独覆盖（`D-041` §5）。
+
+    4xx 的判据与 `/answer` 逐字相同：只有「请求体不是带 `text` 字符串的对象」
+    与「字符串太长」两种。认不出指标、没有这家公司、核不了 —— 全是
+    **200 + 一份说清为什么的核查报告**（`D-003`）。
+    """
+    if not isinstance(payload, dict):
+        return 400, {"detail": "请求体要是一个 JSON 对象，且带一个 text 字段"}
+    # `D-010` 边界补充：**只收一段话**。不收文件、不收结构化载荷、不落盘。
+    # 多给的字段一律不看 —— 不解释、不报错，也不接。
+    text = payload.get("text")
+    if not isinstance(text, str) or not text.strip():
+        return 400, {"detail": "text 要是一个非空字符串"}
+    # `surrogatepass` 的理由与 `answer_endpoint` 那一处逐字相同，不重复。
+    if len(text.encode("utf-8", "surrogatepass")) > MAX_VERIFY_BYTES:
+        return 400, {"detail": "text 太长（上限 " + str(MAX_VERIFY_BYTES) + " 字节）"}
+
+    provider = _provider()
+    asker = model.Asker(provider, _aliases()) if provider is not None else None
+
+    report = read_input(
+        " ".join(text.split()), _registry(), source=_pick_source(), ask_model=asker
+    )
+    body = {
+        "report": report.to_dict(),
+        # 逐字是 `render_report()` 的输出。**不另写一版**（`D-032`）。
+        "page": render_report(report, _registry(), _flags()),
+    }
+    # 与 `/answer` 同一条理由：「配了模型没接通」与「本来就没配模型」
+    # 会给出一模一样的结果，而那两件事对复核者不是一回事。
+    if asker is not None and asker.error:
+        body["model_note"] = (
+            "配了指标归一模型，但这次没问上（" + str(asker.error) + "）。"
+            "上面的判定只用了别名表 —— 模型接通时，同一个说法可能能被认出来。"
+        )
+    return 200, body
+
+
 def coverage_endpoint() -> tuple:
     """`GET /coverage`。**先让人看清能问什么，再让他问。**"""
     return 200, cov.summary()
@@ -358,8 +418,10 @@ def coverage_endpoint() -> tuple:
 # 监听 `$PORT`、绑 `0.0.0.0`。所以这个 stdlib 运行器就够用，
 # **不需要为了上线引进一个 Web 框架**（服务端依赖闭包实测只有 PyYAML 一个）。
 #
-# ⚠️ 它是单线程的。这对本项目成立，因为一次请求就是读几个 YAML 加一次十进制算术；
-# 但**这句话哪天不成立了，就该换运行器，而不是往这里加线程池** ——
+# ⚠️ 它是单线程的。**`/verify` 让「一次请求就是读几个 YAML 加一次算术」
+# 这句话差点不成立**：一段话会被切成若干条声明，每一条都完整走一遍
+# 取数 + 求值（独立复核 2026-09-11 实测一次请求 533 条）。
+# ⇒ 闸门加在 `agent.verify.MAX_CHECKABLE_CLAIMS` 上（现为 24），**不是**往这里加线程池 ——
 # 加线程池等于开始在这一层维护并发状态，而无状态是 `D-021` 豁免三的前提。
 
 
@@ -414,7 +476,10 @@ def serve(host: str | None = None, port: int | None = None):  # pragma: no cover
             if self.path.rstrip("/").endswith("/coverage"):
                 self._send(*coverage_endpoint())
             else:
-                self._send(404, {"detail": "只有 GET /coverage 与 POST /answer"})
+                self._send(
+                    404,
+                    {"detail": "只有 GET /coverage、POST /verify 与 POST /answer"},
+                )
 
         def do_POST(self):
             if not self._ok():
@@ -426,7 +491,11 @@ def serve(host: str | None = None, port: int | None = None):  # pragma: no cover
             except Exception:
                 self._send(400, {"detail": "请求体不是合法 JSON"})
                 return
-            self._send(*answer_endpoint(payload))
+            # `D-041`：`/verify` 是那一个输入框；`/answer` 留着，评测臂打的是它。
+            if self.path.rstrip("/").endswith("/verify"):
+                self._send(*verify_endpoint(payload))
+            else:
+                self._send(*answer_endpoint(payload))
 
         def log_message(self, *args):
             # 不打访问日志。**问题字符串是用户输入**，打进日志就等于开始留存它，

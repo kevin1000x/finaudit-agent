@@ -1,0 +1,25 @@
+id: V-001
+category: V1
+frozen_at: "2026-09-10T22:02:11Z"
+
+# 没有一个没被主体/期间消耗掉的数值 ⇒ 读成提问。
+
+conclusion: |
+  贵州茅台 2023 年的速动比率是多少？
+
+expected:
+  read_as: QUESTION
+  refused: false
+  claims:
+    []
+  rationale: >
+    没有一个没被主体/期间消耗掉的数值 ⇒ 读成提问。问答能力不因形态改变而消失，它就在核查里面（D-041 §1）。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

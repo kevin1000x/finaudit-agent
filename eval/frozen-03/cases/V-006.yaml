@@ -1,0 +1,25 @@
+id: V-006
+category: V2
+frozen_at: "2026-09-10T22:02:11Z"
+
+# 🔴 数值是对的（COMPUTED-VALUES §1.1 = 0.17984324139…，容差 0.00005，差 0.0000432），**但仍然不判「一致」**：用户写的是「负债率」，而这个指标的正式名是「资产负债率」。
+
+conclusion: |
+  600519 2023 年负债率 17.98%。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年负债率 17.98%
+      verdict: AMBIGUOUS_BASIS
+  rationale: >
+    🔴 数值是对的（COMPUTED-VALUES §1.1 = 0.17984324139…，容差 0.00005，差 0.0000432），**但仍然不判「一致」**：用户写的是「负债率」，而这个指标的正式名是「资产负债率」。系统替他做了一次口径解释，那次解释必须让他看见。判定理由里要同时出现「对得上」—— 不给结论与给一个带限定的结论是两回事。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

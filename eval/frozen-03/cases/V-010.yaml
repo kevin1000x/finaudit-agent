@@ -1,0 +1,29 @@
+id: V-010
+category: V3
+frozen_at: "2026-09-10T22:02:11Z"
+
+# REPLAN-20260911 §2.1 的原例，三条三种判定。
+
+conclusion: |
+  贵州茅台2023年净利率50.6%，同比提升1.2个百分点，盈利能力持续增强。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 贵州茅台2023年净利率50.6%
+      verdict: AMBIGUOUS_BASIS
+    - text: 同比提升1.2个百分点
+      verdict: NOT_COVERED
+    - text: 盈利能力持续增强
+      verdict: NOT_CHECKABLE
+  rationale: >
+    REPLAN-20260911 §2.1 的原例，三条三种判定。⚠️ **本题不是盲出的**，见 FREEZE.md §限定 —— 出题人在写这份题面之前已经在开发中对这段文字跑过一次系统。单列，不许把它算进「未被输出污染」那一档。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact
