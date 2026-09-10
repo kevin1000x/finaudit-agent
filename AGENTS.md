@@ -68,7 +68,8 @@
   - `cninfo-analyzer-web`（TypeScript）是上面那个的 **Web 前端**，已克隆到 `../cninfo-analyzer-web`，用于演示
   - `privacy-preserving-agent-poc`（PRIVATE）就是 `data secret`，**D-004 禁止读取、复制、引用**
 - 仓库：`kevin1000x/finaudit-agent`，默认分支 `main`，remote 走 HTTPS + `gh` 凭据助手
-- **可见性：PRIVATE。** D-005 约束至 Phase 4。改为公开是**决策变更**，必须先修订 D-005，不得顺手 `gh repo edit --visibility public`
+- **可见性：转 PUBLIC 已裁定**（`D-005` 修订二，2026-09-10）。⚠️ **裁定 ≠ 已经转了** —— 转的动作由操作者本人执行；在他按下之前仓库仍是 PRIVATE。**执行者任何时候都不得代按** `gh repo edit --visibility public`：不可逆且对外。
+  转公开之后**不变的**：密钥只走 secret 永不进仓库；`data/raw/` 不进版本控制；`D-010`（只用公开数据）与 `D-004`（不碰 `data secret`）都不解除
 - `.gitattributes` 强制 LF 入库：冻结文件的 SHA-256 必须跨平台稳定，这是 D-012 的物理保障，不要改
 
 ## 当前状态
