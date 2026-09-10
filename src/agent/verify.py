@@ -666,13 +666,19 @@ def read_input(text: str, registry, source=None, ask_model=None) -> VerifyReport
     return VerifyReport(text=normalized, read_as=ReadAs.STATEMENT, claims=claims)
 
 
-#: 判定 → 行首那个记号。与 `.planning/REPLAN-20260911.md` §2.1 的样例一致。
+#: 判定 → 行首那个记号。
+#:
+#: 🔴 **`NOT_COVERED` 不用 ❌。** `REPLAN-20260911.md` §2.1 的样例里用的是 ❌，
+#: 而同一份文件又写着「『核不了』是正当输出，不是失败」—— **两句话对不上**。
+#: 把它漆成一个红叉，等于把一个**刻意选的取舍**（覆盖面窄，换来每个数都有人签字）
+#: 卖成一个缺陷。前端 `VerdictList.tsx` 的 chip 色调同理（neutral，不是 warn）。
+#: ❌ 只留给 `INCONSISTENT` —— 那才是这一页真正要抬出来的发现。
 _MARK = {
     Verdict.CONSISTENT: "✅",
     Verdict.INCONSISTENT: "❌",
     Verdict.AMBIGUOUS_BASIS: "⚠️",
-    Verdict.NOT_COVERED: "❌",
-    Verdict.NOT_CHECKABLE: "⬜",
+    Verdict.NOT_COVERED: "—",
+    Verdict.NOT_CHECKABLE: "·",
 }
 
 

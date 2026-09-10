@@ -696,3 +696,21 @@ def test_模型归一过就一律算口径未声明(registry, source):
     assert 一.claims[0].verdict is Verdict.AMBIGUOUS_BASIS
     assert 二.claims[0].verdict is Verdict.AMBIGUOUS_BASIS
     assert "是**模型**把它归到了" in 一.claims[0].reason
+
+
+def test_核不了不用红叉(registry, source):
+    """🔴 「核不了」是正当输出，不是失败 —— 行首记号不能把它漆成缺陷。
+
+    `REPLAN` §2.1 的样例用的是 ❌，而同一份文件又写着「核不了是正当输出」，
+    **两句话对不上**。红叉只留给 `INCONSISTENT`。
+    """
+    from agent.verify import _MARK
+
+    assert _MARK[Verdict.NOT_COVERED] != "❌"
+    assert _MARK[Verdict.NOT_CHECKABLE] != "❌"
+    assert _MARK[Verdict.INCONSISTENT] == "❌"
+
+    页 = render_report(
+        read_input("000651 2023 年流动比率 1.05。", registry, source=source), registry
+    )
+    assert "❌" not in 页
