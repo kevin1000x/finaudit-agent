@@ -82,11 +82,21 @@ def _plain(text) -> str:
     return " ".join(str(text).replace("**", "").split())
 
 
+#: `derivation.note` 在页面上叫什么。**一处定义，两处引用**（散文指路与
+#: `enforced_by` 各用一次），此前是两份各写各的字面量。
+#:
+#: 🔴 它此前叫「加总范围说明」，那是 `N-68` 第 2 条里最难查的一次扑空：
+#: **内容渲染了，名字却是错的**。`note` 是一个通用槽位，里面写什么由定义自己决定 ——
+#: `inventory_turnover_days` 写的是天数基数取 365，`quick_ratio` 写的是只扣存货。
+#: 把通用槽位叫成它某一次的内容，等于替读者预判他要找什么，
+#: 而读者按那个名字找不到，会以为是这条引用指错了地方。
+_DERIVATION_NOTE_LABEL = "上面「这是什么」末尾那段口径说明"
+
 #: 散文里出现的 schema 键名 → 本视图里那一节叫什么。
 #: **不是翻译，是指路**：读者手上只有这一页，`undefined_conditions` 对他没有指称。
 #: 长键在前，否则 `derivation` 会先咬掉 `derivation.note` 的一截。
 _SCHEMA_IN_PROSE = {
-    "derivation.note": "上面「这是什么」里的加总范围说明",
+    "derivation.note": _DERIVATION_NOTE_LABEL,
     "missing_representation": "「取数出处」里各行的缺失表示",
     "undefined_conditions": "「什么时候不给答案」那一节",
     "allow_from_components": "「能不能由分项推导」的声明",
@@ -243,7 +253,7 @@ def _resolve_ref(
         # 有中文就用中文；没有就留原名 —— **不编**。
         return f"可比性标记「{desc}」" if desc else f"可比性标记「{name}」"
     if ref == "derivation.note":
-        return "上面「这是什么」里的加总范围说明"
+        return _DERIVATION_NOTE_LABEL
     if ref == "derivation.allow_from_components":
         return "上面「这是什么」里关于「能不能由分项推导」的声明"
     # `source_fields.<key>` 指的是「取数出处」那一节里各行的某一栏。
@@ -262,11 +272,25 @@ def _resolve_ref(
     return ref
 
 
+#: `sign_convention` 的两个取值 → 给财务读者的说法。
+#: 下划线枚举名原样打出来就是给人看代码（`D-032`），所以这里必须换。
+#: 换不动的原样返回 —— **不编**，编一个好看的说法出来读者就发现不了它没被声明。
+_SIGN_CONVENTION_CN = {
+    "收益记正_损失记负": "收益记正、损失记负",
+    "绝对值列报": "绝对值列报（正数）",
+}
+
+
 def _source_lines(defn: MetricDefinition) -> list[str]:
-    """「取数出处」：每个字段一行，**只用定义自己写的 `line_item` 与 `statement`**。
+    """「取数出处」：每个字段一行 —— 报表、行项目，**以及符号约定**。
 
     这一节替代的是此前正文里那条字段 id 表达式。读者要知道的是
     「这个数去年报的哪张表哪一行取」，而不是它在 schema 里叫什么。
+
+    🔴 **符号约定是 2026-09-10 补的**（`N-68` 第 2 条）。此前这一节按文档字符串
+    「只用 `line_item` 与 `statement`」渲染，而全仓有 **8 条**陷阱写着
+    `enforced_by: source_fields.sign_convention` —— 它们指向的那一栏
+    **一个字都没渲染到页面上**。盲审复核者照着指引翻回去扑了空。
     """
     out: list[str] = []
     for sf in defn.source_fields:
@@ -280,6 +304,12 @@ def _source_lines(defn: MetricDefinition) -> list[str]:
         text = name or "（这一行没写行项目名）"
         text = f"{where} · {text}" if where else text
         out.extend(_wrap(f"· {text}", indent="      "))
+        # 单起一行，不缀在行项目名后面：缀上去会被 `_wrap` 从
+        # 「绝对值列／报（正数）」中间劈开，而中文折行没有连字符提示。
+        sign = getattr(sf, "sign_convention", None)
+        if sign:
+            cn = _SIGN_CONVENTION_CN.get(str(sign), str(sign))
+            out.extend(_wrap(f"符号约定：{cn}", indent="          "))
     return out
 
 
@@ -389,6 +419,20 @@ def render_explanation(
         L.append("")
         L.append("    取数出处（都在年报里，可照着核）")
         L.extend(src)
+    # 「能不能由分项推导」：9 条陷阱写着 `enforced_by: derivation.allow_from_components`，
+    # 而这条声明此前**从没渲染到页面上** —— 又一处指向空处的指引（`N-68` 第 2 条）。
+    # 两个方向都要印：印「可以」而不印「不可以」，读者就没法区分
+    # 「声明了不可以」与「这份定义压根没声明」。
+    if isinstance(defn.derivation, dict) and "allow_from_components" in defn.derivation:
+        allow = defn.derivation["allow_from_components"]
+        L.append("")
+        L.extend(
+            _wrap(
+                "能不能由分项加总推出：可以。"
+                if allow
+                else "能不能由分项加总推出：不可以，只取上面那几行本身。"
+            )
+        )
     note = defn.derivation.get("note") if isinstance(defn.derivation, dict) else None
     if note:
         L.append("")
