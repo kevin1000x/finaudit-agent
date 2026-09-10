@@ -64,7 +64,7 @@ EXCLUDED_PREFIXES = {
     # 会话交接文档：写给下一轮读的快照，会大量引用当时的状态。
     "claudedocs/": "会话交接快照，非权威文档",
     # 归档的变更提案：已经归档，按定义不再跟着代码走。
-    "openspec/changes/archive/": "已归档的变更提案",
+    "docs/spec/archive/": "已归档的变更提案",
 }
 
 #: **文档里点名、但代码里没有**的符号 —— 逐条登记并写明「实际是什么」。
@@ -92,7 +92,7 @@ KNOWN_ABSENT_SYMBOLS = {
     # —— 被淘汰的候选字段 id ——
     # （`notes.nonrecurring_pl_total_pretax` 曾登记在此，2026-08-31 由
     #   `test_对照表里没有过期条目` 判为过期并移除：它只出现在
-    #   `openspec/changes/archive/`，而那条路径已在 `EXCLUDED_PREFIXES` 里。）
+    #   `docs/spec/archive/`，而那条路径已在 `EXCLUDED_PREFIXES` 里。）
     "notes.listing_first_disclosure_flag": "被淘汰的候选字段：在夹具里却不属于任何定义的 `source_fields`",
     "notes.nonrecurring_pl_net": "POC-01 期的旧名，现为 `notes.nonrecurring_pl_net_attributable_to_parent`",
 }

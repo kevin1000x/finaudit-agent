@@ -1,4 +1,4 @@
-"""把 openspec/specs/semantic-layer/metric-definition/spec.md 的 9 条 Requirement
+"""把 docs/spec/semantic-layer/metric-definition/spec.md 的 9 条 Requirement
 逐条落成可执行规则。规则码前缀 R1…R9 与红测矩阵一一对应。
 
 设计立场：**只报告，不抛异常**。一份残缺定义要能一次拿到全部 Finding，

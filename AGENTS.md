@@ -14,7 +14,9 @@
 2. `DECISIONS.md` — 已接受决策 D-001…，提任何设计变更前先查
 3. `EVAL_CASES.md` — 评测协议、问题集、失败归因分层、判定门
 4. `.planning/` — GSD 阶段状态（ROADMAP / STATE / phases），**只汇总与路由，不覆盖上面三份**
-5. `openspec/` — 变更提案（proposal / tasks / design），单个变更的落地契约
+5. `docs/spec/` — **已生效的行为契约**（`semantic-layer/metric-definition/spec.md` 的 9 条 Requirement）
+   与已归档的三个变更提案。⚠️ **OpenSpec 已于 2026-09-11 删除**（`D-042`）——
+   这里保留的是它写下的**事实**，不是它的流程；新变更不再走提案，走 `DECISIONS.md`。
 
 `docs/agent/` 是阶段 Artifact（IDEA / RESEARCH / ARCHITECTURE / POC / PROGRESS / VERIFICATION），是跨阶段接口，不是规格。
 
@@ -35,19 +37,19 @@
 | 规划一个阶段 | GSD `/gsd-plan-phase` → `.planning/phases/` |
 | 执行一个阶段 | GSD `/gsd-execute-phase` |
 | 做一个小改动 | GSD `/gsd-quick` |
-| 提一个功能变更提案 | OpenSpec `/opsx:propose` → `openspec/changes/` |
-| 实现已批准的提案 | OpenSpec `/opsx:apply` |
+| 提一个功能变更提案 | ~~OpenSpec~~ **已删除**（`D-042`）⇒ 写进 `DECISIONS.md`，再用 GSD 推阶段 |
 | 写实现代码 | Superpowers `test-driven-development` skill |
 | 调 bug | Superpowers `systematic-debugging` skill |
 | 独立复核 | Superpowers `requesting-code-review` + fresh context |
 | 声明完成前 | Superpowers `verification-before-completion` skill |
 
-三套方法论的分工（D-009）：
+**两套**方法论的分工（`D-009`，2026-09-11 经 `D-042` 做减法后）：
 - **GSD** 拥有阶段状态与进度（`.planning/`）
 - **Superpowers** 提供行为门禁（设计澄清、TDD、完成前验证、独立评审）
-- **OpenSpec** 提供单个变更的规格契约（proposal → tasks → apply → archive）
+- ~~**OpenSpec**~~ **已删除** —— 27 天零使用，`D-009` 自己的反转触发条件早已满足。
+  放弃了什么能力、什么条件下拿回来，逐条写在 `D-042`。
 
-三者不得为同一件事创建重复的权威文档。
+两者不得为同一件事创建重复的权威文档。
 
 ## 环境
 

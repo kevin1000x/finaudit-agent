@@ -95,7 +95,8 @@ L0  数据层            年报 PDF 下载与抽取（自建，D-013 / Phase 1.5
 
 ### 5.1 L1 语义层
 
-> 本节的**行为契约**是 `openspec/specs/semantic-layer/metric-definition/spec.md` 的 9 条 Requirement。
+> 本节的**行为契约**是 `docs/spec/semantic-layer/metric-definition/spec.md` 的 9 条 Requirement。
+> （2026-09-11 由 `openspec/specs/` 移来，`D-042`。**内容一字未改** —— 删的是工具链，不是它写下的事实。）
 > 本节是人读的字段说明，二者一一对应、不重复权威（D-009）。冲突时以本文件为准。
 >
 > 字段集于 2026-08-10 由 OpenSpec 变更 `extend-metric-definition-schema` 扩展。
@@ -301,7 +302,7 @@ POC-01 的 3 份定义停留在 `version: 1`，**不迁移、不改写**，作�
 （`POC.md` 的 kill criterion 禁止「改定义直到通过」；`SHA256SUMS` 冻结校验须始终通过）。
 
 新 schema 下的定义**从 `version: 2` 起**。红测已确认：v1 与 v2 之间没有任何一条 Requirement
-是共同满足的（27 格矩阵 `PASS` 为 0，见 `openspec/changes/extend-metric-definition-schema/conformance-checklist.md`），
+是共同满足的（27 格矩阵 `PASS` 为 0，见 `docs/spec/archive/2026-08-15-extend-metric-definition-schema/conformance-checklist.md`），
 因此跨版本比较在技术上也确实无意义。
 
 ### 5.2 L3 可信执行层

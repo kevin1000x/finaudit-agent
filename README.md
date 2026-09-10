@@ -30,7 +30,7 @@ finaudit-agent/
 ├── DECISIONS.md         D-001…D-012、未解决问题 U-01…U-03
 ├── EVAL_CASES.md        评测协议、问题集结构、失败归因分层、阶段门
 ├── .planning/           GSD 阶段状态（PROJECT / ROADMAP / STATE）
-├── openspec/            OpenSpec 变更契约（config / changes / specs / archive）
+├── docs/spec/           已生效的行为契约（9 条 Requirement）+ 三个归档变更
 ├── docs/agent/          阶段 Artifact
 │   ├── IDEA.md          DISCOVER ✅
 │   ├── RESEARCH.md      RESEARCH ✅
@@ -39,7 +39,6 @@ finaudit-agent/
 │   ├── poc-01/          POC-01 全部证据（冻结哈希 / 定义 / 题目 / 两份原始回答 / 比对判定）
 │   ├── PROGRESS.md      跨会话状态
 │   └── VERIFICATION.md  验收证据矩阵（模板）
-├── .claude/  .agents/   OpenSpec 生成的 skills 与命令
 └── .gitignore           非公开数据的物理隔离（D-010）
 ```
 

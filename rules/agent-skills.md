@@ -4,7 +4,7 @@
 
 ### Issue tracker
 
-GitHub Issues on `kevin1000x/finaudit-agent`（私有），用 `gh` CLI。与 `.planning/`（阶段）、`openspec/changes/`（规格变更）职责不重叠：**改规格 → OpenSpec；推阶段 → GSD；其余 → issue。** 见 `docs/agents/issue-tracker.md`。
+GitHub Issues on `kevin1000x/finaudit-agent`（私有），用 `gh` CLI。与 `.planning/`（阶段）职责不重叠：**推阶段 → GSD；其余 → issue。**（~~改规格 → OpenSpec~~ 已随 `D-042` 删除。） 见 `docs/agents/issue-tracker.md`。
 
 ### Triage labels
 
