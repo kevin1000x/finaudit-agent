@@ -103,7 +103,7 @@ POC-02（图谱必要性 H3）仍未执行，前置条件是 Phase 2 的 H2 判�
 |---|---|
 | 指标定义 | **20 / 20** 合规，`advisory_only` 19.0%，未分类 0 |
 | 测试 | **1189 passed**（2026-09-11 实跑，328s；耗时是非确定性字段，不是判据） |
-| 门禁 | **7 道**（第七道 `tests/test_plan_waves.py`）：pytest / `semantic_layer scan` / `validate` / `check_xrefs` / `check_reading_ledger`（08-23）/ **`check_gates`**（08-24，门禁的门禁）+ CI `gates.yml`；**供应链 `verify_deps.py` 单独跑，不串进提交链**（它走网络） |
+| 门禁 | **6 道**（第六道 `tests/test_plan_waves.py`）：pytest / `semantic_layer scan` / `validate` / `check_xrefs` / **`check_gates`**（门禁的门禁）+ CI `gates.yml`；**供应链 `verify_deps.py` 单独跑，不串进提交链**（它走网络）。⚠️ 阅读台账那道**已于 2026-09-11 随 `references/` 移出**（`D-043`），链上从 7 减到 6 |
 | 生产代码 | `src/semantic_layer/` **11 模块**；`src/extractor/` **12 模块**；`src/agent/` **5 模块**（09-11 新增 `verify.py`）；`src/service/` **3 模块**（**零 Web 框架依赖**） |
 | 映射表 | PDF 侧 5 份 **30 / 30**（相等断言）；AKShare 对照侧 3 份 **24 / 30**（**子集**断言，`C-13`） |
 | 依赖 | `pyyaml` / `pdfplumber` + `akshare`（`crosscheck` extra，不进主依赖）。🔴 供应链门禁在 akshare 下载量一项上**红着**，是 `D-036` 裁过的已知状态 |

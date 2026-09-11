@@ -24,7 +24,7 @@
 | `rules/commands.md` | 常用命令（含冻结校验、门禁） | 要跑验证时 |
 | `rules/agent-skills.md` | issue tracker / triage labels / domain docs / Hook 分工 | 要建 issue 或配 hook 时 |
 | `rules/repo-context.md` | 与秋招资料库的关系 | 需要外部背景时 |
-| `references/` | 三个外部项目的可借鉴点，**每份标注读到什么程度** | 做 Phase 2 架构、PDF 抽取、前端、评测设计之前 |
+| `../finaudit-workshop/references/` | 三个外部项目的可借鉴点，**每份标注读到什么程度**。⚠️ **2026-09-11 移出本仓**（`D-043`），在仓外同级目录 | 做架构、PDF 抽取、前端、评测设计之前 |
 
 ## 三条最容易违反的
 

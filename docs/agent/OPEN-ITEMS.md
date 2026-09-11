@@ -2190,8 +2190,10 @@ T-1 归并时发现**四条已经落地的东西，`references/` 里的标注仍
   是把 `_flags.yaml` 也数进去了，定义只有 20 份，在此更正）**而没有锁**。
   两处都**保持非递归**（`references/` 与 `metrics/` 按约定是扁平的，建子目录是约定变更），
   改的是「非递归这件事本身被断言住」：
-  - `check_gates.iter_reference_docs()` 从 R5 里提出来单独成函数，
-    锁在 `tests/test_gates.py::test_references的扫描范围没有被子目录绕过`
+  - ~~`check_gates.iter_reference_docs()` 从 R5 里提出来单独成函数，
+    锁在 `tests/test_gates.py::test_references的扫描范围没有被子目录绕过`~~
+    —— **R5 与 `references/` 已于 2026-09-11 一并移出本仓**（`D-043`），
+    该函数与那两条锁都不在了。留档不删：这一条记的是当时的事实。
   - `metrics` 侧锁在 `tests/test_conformance.py::test_metrics的扫描范围没有被子目录绕过`，
     两侧过滤都走 `definition.is_definition_file()`（**唯一权威判据，没有另写下划线判断**）
   - 基准集合是**递归 glob**，独立于被检查物 —— `pitfalls` 第 19 条

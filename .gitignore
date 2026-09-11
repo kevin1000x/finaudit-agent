@@ -43,3 +43,11 @@ eval/runs/
 # 子 agent 的独立工作树（`isolation: worktree`）。它们是 gitlink，
 # 一旦被 `git add -A` 暂存就会以「子模块」的形状进库。
 .claude/worktrees/
+
+# 外部项目的阅读笔记与它的门禁。**刻意不上传**（`D-043`，2026-09-11）。
+# 它们是作者自己的学习记录，不是这个项目的产物 —— 26,840 行，占全仓 markdown 四成，
+# 而一个来看这个项目的人不需要读它们。README 的「借鉴」一节说明了读过什么。
+# 本地保留，继续用。
+references/
+scripts/check_reading_ledger.py
+tests/test_reading_ledger.py

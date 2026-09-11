@@ -131,49 +131,6 @@ def test_两条pattern匹配到同一个文件时不重复扫(tmp_path, monkeypa
     assert len(cg.iter_test_modules()) == 1
 
 
-def test_references的扫描范围没有被子目录绕过():
-    """🔴 R5 读 `references/` 用的是**非递归** glob（`N-42` 的第 8 处，2026-09-05）。
-
-    非递归本身是有意的（`references/` 按约定是扁平的，见 `cg.iter_reference_docs`），
-    但在这条测试之前它**既没有锁也没有说明**：谁往 `references/x/y.md` 放一份产物，
-    R5 就找不到里面的 `L-nn` 回标，而**门禁照样绿**。
-
-    ⚠️ **基准集合必须独立于被检查物**（`rules/pitfalls.md` 第 19 条）。
-    这里的基准是 `rglob` —— 它不经过 `cg.REFERENCES_GLOB`，
-    所以有人把那个常量改窄时这条会红。**不许拿门禁自己报的数当基准。**
-
-    这条红了的正确处置：要么把那份产物挪回 `references/` 根下，
-    要么明确变更约定并同时改 `REFERENCES_GLOB` 与本条 —— **不要只改一个**。
-    """
-    flat = cg.iter_reference_docs()
-    deep = sorted((cg.REPO / cg.REFERENCES_DIR).rglob("*.md"))
-    strays = [p.relative_to(cg.REPO).as_posix() for p in deep if p not in flat]
-    assert flat == deep, (
-        f"这些 markdown 落在 `{cg.REFERENCES_DIR.as_posix()}/` 的子目录里，"
-        f"R5 的非递归 glob 看不见它们：{strays}"
-    )
-    assert len(flat) >= 27, f"只扫到 {len(flat)} 份 references 产物，glob 可能被窄化了"
-
-
-def test_子目录里的references产物会让上一条红(tmp_path, monkeypatch):
-    """负控制：把缺陷造出来，证明上一条真的会红。
-
-    ⚠️ 造的是**目录结构**，不是断言的输入 —— 直接断言 `[] != [x]` 只能证明
-    Python 的 `!=` 还能用，证明不了 `iter_reference_docs` 漏了那个文件。
-    """
-    monkeypatch.setattr(cg, "REPO", tmp_path)
-    refs = tmp_path / cg.REFERENCES_DIR
-    (refs / "sub").mkdir(parents=True)
-    (refs / "top.md").write_text("L-1", encoding="utf-8")
-    (refs / "sub" / "buried.md").write_text("L-2", encoding="utf-8")
-
-    flat = cg.iter_reference_docs()
-    deep = sorted(refs.rglob("*.md"))
-    assert [p.name for p in flat] == ["top.md"]
-    assert [p.name for p in deep] == ["buried.md", "top.md"]
-    assert flat != deep, "视野缺口没有被这条比较暴露出来"
-
-
 # --------------------------------------------------------------------------
 # R1 —— 每个 test_* 必须能失败
 # --------------------------------------------------------------------------
@@ -601,71 +558,6 @@ def test_剥注释不误伤真实命令():
     stripped = cg._strip_yaml_comments("      - run: python scripts/check_x.py  # 说明\n")
     assert "python scripts/check_x.py" in stripped
     assert "说明" not in stripped
-
-
-# --------------------------------------------------------------------------
-# R5 —— 已落地的条目必须在 references/ 里留下可追溯的回标
-#
-# 台账 N-35 当初判定「『已含』无法机械判定」，留了「宁可不做，靠清单纪律」。
-# 那个判断在 2026-08-24 被推翻两次：规则刚写下，同一天落地的五条一条没回标。
-# 前提也不成立了——回标时把 L-nn 写进 references，比对就退化成一次 grep。
-# --------------------------------------------------------------------------
-
-
-def test_真实仓库的已落地条目都回标了():
-    assert cg.check_landed_items_are_back_annotated() == []
-
-
-def test_落地但未回标必须报红(monkeypatch, tmp_path):
-    """负向：这是 R5 唯一要防的东西，且它实际发生过（五条落地零条回标）。"""
-    (tmp_path / "docs" / "agent").mkdir(parents=True)
-    (tmp_path / "references").mkdir()
-    (tmp_path / "docs" / "agent" / "LANDING-BACKLOG.md").write_text(
-        "| # | 内容 | 来源 | 目的地 | 状态 |\n"
-        "| L-9 | 某条 | X | Y | ~~OPEN~~ → **已落地 2026-08-24** |\n"
-        "| L-10 | 另一条 | X | Y | OPEN |\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "references" / "a.md").write_text("正文里没有提到任何编号。\n", encoding="utf-8")
-    monkeypatch.setattr(cg, "REPO", tmp_path)
-
-    problems = cg.check_landed_items_are_back_annotated()
-    assert len(problems) == 1
-    assert "L-9" in problems[0]
-    assert "L-10" not in problems[0], "仍是 OPEN 的条目不该被要求回标"
-
-
-def test_回标了就通过(monkeypatch, tmp_path):
-    (tmp_path / "docs" / "agent").mkdir(parents=True)
-    (tmp_path / "references").mkdir()
-    (tmp_path / "docs" / "agent" / "LANDING-BACKLOG.md").write_text(
-        "| L-9 | 某条 | X | Y | **已落地 2026-08-24** |\n", encoding="utf-8"
-    )
-    (tmp_path / "references" / "a.md").write_text(
-        "~~未落地~~ → 已落地（登记册 `L-9`）。\n", encoding="utf-8"
-    )
-    monkeypatch.setattr(cg, "REPO", tmp_path)
-    assert cg.check_landed_items_are_back_annotated() == []
-
-
-def test_编号比对不被粘连误伤(monkeypatch, tmp_path):
-    """`L-9` 不得被 `L-90` 满足——与 check_xrefs 同款的粘连问题。"""
-    (tmp_path / "docs" / "agent").mkdir(parents=True)
-    (tmp_path / "references").mkdir()
-    (tmp_path / "docs" / "agent" / "LANDING-BACKLOG.md").write_text(
-        "| L-9 | 某条 | X | Y | **已落地** |\n", encoding="utf-8"
-    )
-    (tmp_path / "references" / "a.md").write_text("回标了 `L-90`。\n", encoding="utf-8")
-    monkeypatch.setattr(cg, "REPO", tmp_path)
-    problems = cg.check_landed_items_are_back_annotated()
-    assert len(problems) == 1, "L-90 不该满足 L-9"
-
-
-def test_R5的输入缺失时不得静默通过(monkeypatch, tmp_path):
-    monkeypatch.setattr(cg, "REPO", tmp_path)
-    problems = cg.check_landed_items_are_back_annotated()
-    assert len(problems) == 1
-    assert "不得静默通过" in problems[0]
 
 
 # --------------------------------------------------------------------------

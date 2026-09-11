@@ -35,18 +35,11 @@ F-2 此前**只有识别方法，没有执行机制**——本脚本是它的执
 `echo` 仍写「四道门」、实际跑四条——**三者不一致，没有任何检查会发现**。
 注册表里本来就有命令行字面量，这一条把那个回归钉死。
 
-**R5 —— 已落地的条目必须在 `references/` 里留下可追溯的回标。**
-`LANDING-BACKLOG` §5 中状态为「已落地 / 部分落地 / 已关闭」的每个 `L-nn`，
-它的编号必须在 `references/` 里至少出现一次。
-
-台账 N-35 当初判定「难点是『已含』无法机械判定——不像交叉引用那样有编号可比对」，
-于是留了「宁可不做，改为靠清单纪律」。**那个判断在 2026-08-24 被推翻了两次**：
-同一天里，规则刚写下（「落地后必须同时回标」），T-2 / T-3 落地的五条一条都没回标。
-**靠人记得，在写下规则的当天就失败了。**
-
-而「无法机械判定」这个前提本身也不成立了：回标时把 `L-nn` 写进 `references/` 正文，
-比对就退化成一次 grep——**和交叉引用是同一个形状**。
-这不检查回标内容对不对，只检查**有没有回标**；见「明确抓不到什么」。
+~~**R5 —— 已落地的条目必须在 `references/` 里留下可追溯的回标。**~~
+**已随 `references/` 一并移出本仓（`D-043`，2026-09-11）。** 那个目录是作者自己的
+外部阅读笔记，不是这个项目的产物，转公开时不上传；R5 的检查对象随之不存在。
+⚠️ **这是一次真的减法，不是「暂时关掉」** —— 放弃了什么、什么条件下拿回来，
+逐条写在 `D-043`，不在这里重复。
 
 **R6 —— 恒真断言本身就是问题，逐条查。**（2026-08-31 新增，台账 `N-40` 判据 2）
 R3 只是让恒真断言**不计入** R1 的可失败点，管的是「这个函数整体能不能红」。
@@ -86,8 +79,8 @@ harness 对这种情况给了正解（**`invariants.md:59`**，逐字见
   保证不了「把守卫删掉它就会红」。**那件事没有已知的机械判据**——
   harness 给的也是一条**人执行的程序**（造回归 → 看红 → 回退），
   已写进 `rules/commands.md`，**本脚本不能替代它**。
-- **抓不到「断言了，但断言的不是它声称证明的事」。** 这正是本项目从三个外部项目
-  收集到的那条模式，`references/` 里有四个实例。断言内容的正确性无法机械判定。
+- **抓不到「断言了，但断言的不是它声称证明的事」。** 这是本项目从三个外部项目
+  收集到的那条模式（四个实例，笔记不在本仓）。断言内容的正确性无法机械判定。
 - **抓不到间接断言。** 若测试把断言封进一个 helper（`_expect_red(...)`），
   R1 会误报。目前仓库里没有这种写法；出现时应显式登记进 `INDIRECT_ASSERT_HELPERS`，
   **而不是放宽 R1**——放宽会让 R1 退化。
@@ -111,10 +104,6 @@ harness 对这种情况给了正解（**`invariants.md:59`**，逐字见
 - **R4 只查字面量出现，不查它在 CI 里是否真的会被执行。** 命令若被写进一个
   永远不满足 `if:` 条件的 step，或被 `continue-on-error: true` 吞掉退出码，
   R4 照样通过。**它挡的是「忘了加」，不是「加了但没生效」。**
-- **R5 只查「有没有回标」，不查「回标写得对不对」。** 在 `references/` 里随手写一句
-  `L-9 已落地` 就能骗过它。它挡的是**遗漏**——而遗漏正是实际发生过的那件事
-  （五条落地，零条回标）；**它挡不住敷衍**。
-  也不检查回标位置对不对：`L-nn` 出现在哪份产物、哪一节，R5 一律不管。
 
 ## 豁免
 
@@ -196,11 +185,6 @@ GATES: tuple[Gate, ...] = (
         negative_control="test_checker_flags_unknown_id_end_to_end",
     ),
     Gate(
-        entry="python scripts/check_reading_ledger.py",
-        test_module="test_reading_ledger.py",
-        negative_control="test_大文件声称全文而正文零出现_必须报红",
-    ),
-    Gate(
         entry="python scripts/verify_deps.py",
         test_module="test_verify_deps_license.py",
         negative_control="test_pymupdf_is_rejected_via_classifier",
@@ -269,15 +253,8 @@ NO_ASSERT_PREFIX = "NO-ASSERT-BY-DESIGN:"
 # R4 的检查对象。改路径要同步 `rules/commands.md` 的 CI 一节。
 CI_WORKFLOW = pathlib.Path(".github") / "workflows" / "gates.yml"
 
-# R5 的检查对象。
-BACKLOG = pathlib.Path("docs") / "agent" / "LANDING-BACKLOG.md"
-REFERENCES_DIR = pathlib.Path("references")
 
-#: R5 读 `references/` 用的 glob。**非递归是有意的**，见 `iter_reference_docs`。
-REFERENCES_GLOB = "*.md"
 
-# 登记册里表示「这条已经做掉了」的状态词。R5 只对这些行生效。
-_LANDED_STATES = ("已落地", "部分落地", "已关闭")
 
 # 能让测试变红的 pytest 入口。
 # **`xfail` 不在此列**：`pytest.xfail(reason)` 是命令式地把本次测试标成 xfailed 并
@@ -732,63 +709,6 @@ def check_gates_are_wired_into_ci() -> list[str]:
     return problems
 
 
-def iter_reference_docs() -> list[pathlib.Path]:
-    """R5 要读的 `references/` 产物。**扫描范围本身就是判据的一部分。**
-
-    ## 为什么保持非递归，而不是顺手改成 `rglob`
-
-    `references/` 按 `references/README.md` 的约定是**扁平的**：一份产物一个文件。
-    建子目录是一次约定变更，得有人明说为什么 —— 悄悄把 `rglob` 换上去，
-    等于用实现替操作者做了这个决定。
-
-    ⚠️ **但「非递归」必须被锁住，不能只靠这段注释。**
-    2026-09-05 之前它既没有锁也没有说明：有人往 `references/x/y.md` 放一份产物，
-    R5 找不到里面的 `L-nn` 回标，**门禁照样绿**。
-    锁在 `tests/test_gates.py::test_references的扫描范围没有被子目录绕过`：
-    基准是**递归 glob**（独立于本函数，`pitfalls` 第 19 条），
-    两个集合一旦分叉就红，并在报错里说清是哪几份文件落在子目录里。
-    ⇒ 与 `N-42` 同族：门禁看不见的东西，在证据里与「不存在」不可区分。
-    """
-    return sorted((REPO / REFERENCES_DIR).glob(REFERENCES_GLOB))
-
-
-def check_landed_items_are_back_annotated() -> list[str]:
-    """R5：登记册里已落地的条目，编号必须在 `references/` 里出现过。
-
-    只查存在性——见 docstring 的「明确抓不到什么」。
-    """
-    backlog = REPO / BACKLOG
-    refs_dir = REPO / REFERENCES_DIR
-    if not backlog.exists():
-        return [f"{BACKLOG.as_posix()} 不存在 —— R5 无法执行，不得静默通过"]
-    if not refs_dir.is_dir():
-        return [f"{REFERENCES_DIR.as_posix()}/ 不存在 —— R5 无法执行，不得静默通过"]
-
-    landed: list[str] = []
-    row = re.compile(r"^\| (L-\d+) \|")
-    for line in backlog.read_text(encoding="utf-8").splitlines():
-        m = row.match(line)
-        if not m:
-            continue
-        # 取状态列（最后一列）
-        cell = line.strip().rstrip("|").rsplit("|", 1)[-1].strip()
-        if any(s in cell for s in _LANDED_STATES):
-            landed.append(m.group(1))
-
-    annotated: set[str] = set()
-    for path in iter_reference_docs():
-        annotated.update(re.findall(r"(?<![0-9A-Za-z-])(L-\d+)(?![0-9A-Za-z-])",
-                                    path.read_text(encoding="utf-8")))
-
-    missing = [x for x in landed if x not in annotated]
-    if not missing:
-        return []
-    return [
-        f"这些条目在登记册里已标为落地，但 `{REFERENCES_DIR.as_posix()}/` 里找不到它们的编号 "
-        f"—— 落地了没回标，`未落地` 标注会继续骗下一个读它的人：{', '.join(missing)}"
-    ]
-
-
 def main() -> int:
     problems: list[str] = []
     declared: dict[str, str] = {}
@@ -799,14 +719,9 @@ def main() -> int:
     problems.extend(check_reasons_are_not_templated(declared))
     problems.extend(check_gates_have_negative_controls())
     problems.extend(check_gates_are_wired_into_ci())
-    problems.extend(check_landed_items_are_back_annotated())
 
     scanned = [p.name for p in iter_test_modules()]
     print(f"扫描 {len(scanned)} 个测试模块，{len(GATES)} 道已登记门禁。")
-    print(
-        f"R5 扫描 {len(iter_reference_docs())} 份 `{REFERENCES_DIR.as_posix()}/{REFERENCES_GLOB}`"
-        f"（**非递归**，子目录会被 tests/test_gates.py 拦下 —— 见 iter_reference_docs）。"
-    )
     print(f"已登记豁免 {len(EXEMPT_TESTS)} 条，间接断言 helper {len(INDIRECT_ASSERT_HELPERS)} 条（均应为 0）。")
     print(f"`{NO_ASSERT_PREFIX}` 声明 {len(declared)} 条 —— **它长起来就等于 R1 在退化**。")
     if NOT_GATES:
