@@ -78,8 +78,15 @@ def test_dangling_reference_is_detected(tmp_path, monkeypatch):
 
 
 def test_checker_flags_unknown_id_end_to_end(tmp_path):
-    """端到端：把一个假编号写进受检文件，跑真脚本，必须非零退出且指出该编号。"""
-    victim = REPO / "docs" / "agent" / "OPEN-ITEMS.md"
+    """端到端：把一个假编号写进受检文件，跑真脚本，必须非零退出且指出该编号。
+
+    ⚠️ 靶子原本是 `docs/agent/OPEN-ITEMS.md`，那份台账已于 2026-09-11 移出本仓
+    （`D-044`）。**换靶子，不是删这条** —— 它是 `check_xrefs` 在 `GATES`
+    注册表里具名的负控制，删掉等于这道门再没有东西证明它会红。
+    新靶子取 `EVAL_CASES.md`：它同样在受检范围内，且**不是任何命名空间的定义文件**
+    （往定义文件里写 `D-nnn` 会把它定义出来，那就测不到悬空了）。
+    """
+    victim = REPO / "EVAL_CASES.md"
     original = victim.read_text(encoding="utf-8")
     reg = check_xrefs.build_registry()
     biggest = max(int(i.split("-")[1]) for i in reg["D-decision"])
@@ -112,13 +119,20 @@ def test_collision_allowlist_is_empty():
 
 
 def test_reintroducing_D_prefix_in_ledger_is_a_collision():
-    """台账若重新出现 D- 前缀条目，碰撞检查必须拦住。"""
+    """台账若重新出现 D- 前缀条目，碰撞检查必须拦住。
+
+    ⚠️ 台账命名空间已随工作记录移出本仓（`D-044`），所以「现状里没有 D- 前缀」
+    那一半没有对手了，删掉。**保留的是这一半**：台账哪天回到这个仓库、
+    并且带着 `D-` 前缀，碰撞检查仍要拦住它 —— 门禁防的是未来，不只是现状。
+    """
     reg = check_xrefs.build_registry()
-    assert not any(i.startswith("D-") for i in reg["ledger"]), \
-        "台账里又出现了 D- 前缀条目，与 DECISIONS.md 的命名空间重叠"
+    assert "ledger" not in reg, (
+        "台账命名空间回到本仓了 —— 那就把上面那句删掉的断言加回来："
+        "现状里不许出现 D- 前缀条目。"
+    )
 
     faked = dict(reg)
-    faked["ledger"] = set(reg["ledger"]) | {"D-1"}
+    faked["ledger"] = {"N-13", "D-1"}
     problems = check_xrefs.check_collisions(faked)
     assert problems, "台账重新引入 D-1 却没有被判为碰撞"
     assert "D-001" in problems[0]
@@ -130,14 +144,18 @@ def test_reintroducing_D_prefix_in_ledger_is_a_collision():
 
 
 def test_zero_padding_separates_namespaces():
-    """`D-0xx` 属决策、`N-x` 属台账。两个正则不得互相误吃。"""
+    """`D-0xx` 属决策，三位零填充是它与台账 `D-x` 的唯一区别。
+
+    ⚠️ 台账那一侧的断言随命名空间一起移出（`D-044`）。留下来的这一半仍然要紧：
+    决策正则**必须坚持三位**，松成「D- 加任意位数」就会重新吃掉台账编号 ——
+    2026-08-18 改名前 `D-001`…`D-012` 与台账 `D-1`…`D-12` 全部撞号，
+    靠的正是零填充这一个字符。
+    """
     dec_re = check_xrefs.NAMESPACES["D-decision"][2]
-    led_re = check_xrefs.NAMESPACES["ledger"][2]
     assert dec_re.findall("见 D-013 与 D-014") == ["D-013", "D-014"]
     assert dec_re.findall("见 N-13") == []
-    assert led_re.findall("见 N-13 与 A-4") == ["N-13", "A-4"]
-    # 决策号不得被台账正则吃掉
-    assert led_re.findall("见 D-013") == []
+    # 一位/两位的台账形态不得被决策正则吃掉
+    assert dec_re.findall("见 D-1 与 D-12") == []
 
 
 def test_excluded_paths_are_not_scanned():

@@ -70,16 +70,6 @@ NAMESPACES = {
         re.compile(r"^- ~*\*\*(U-\d{2})\*\*", re.M),
         _ref(r"U-\d{2}"),
     ),
-    "ledger": (
-        "docs/agent/OPEN-ITEMS.md",
-        re.compile(r"^### ~*([ABNE]-\d{1,2})", re.M),
-        _ref(r"[ABN]-\d{1,2}"),
-    ),
-    "F": (
-        "rules/failure-modes.md",
-        re.compile(r"^## (F-\d+)", re.M),
-        _ref(r"F-\d+"),
-    ),
     # 独立复核的 findings。**单独一个命名空间，不许写成 `F-n`。**
     #
     # 2026-08-28 的教训：复核报告原文用 `F-1`…`F-10`，照抄进权威文档之后
@@ -120,8 +110,6 @@ KNOWN_COLLISIONS: set[tuple[str, str]] = set()
 
 # 不参与校验的文件：会引用编号但不是权威文档的地方
 EXCLUDED = (
-    "references/",            # 外部项目深读报告，会引用它们自己的编号
-    "claudedocs/",            # 历史 handoff，冻结的叙述
     "scripts/check_xrefs.py",  # 本文件，模式串定义处
     ".planning/phases/",      # PLAN/SUMMARY 里有 T-01-xx 等阶段内编号
 )
@@ -185,12 +173,18 @@ def build_registry() -> dict[str, set[str]]:
 
 
 def check_collisions(reg: dict[str, set[str]]) -> list[str]:
-    """跨命名空间的数值碰撞（D-014 vs D-14）。已登记的放行，新增的拦。"""
+    """跨命名空间的数值碰撞（D-014 vs D-14）。已登记的放行，新增的拦。
+
+    ⚠️ **2026-09-11（`D-044`）：台账命名空间已随工作记录移出本仓。**
+    这条检查因此**在本仓里没有对手了** —— 它保留下来，是因为碰撞要防的是
+    「把 `D-` 重新引入某个台账区」这个**未来**的回退；台账哪天回到这个仓库，
+    这条不用重写就继续生效。
+    ⇒ 台账不在时按空集处理，**不是跳过整条检查**：
+    两者的区别在于，前者仍会对「本仓内新增一个 `D-` 前缀的命名空间」报警。
+    """
     problems = []
     decisions = reg["D-decision"]
-    # 台账已无 D- 前缀（2026-08-18 改名为 N-）。此处仍然检查，
-    # 是为了拦住「把 D- 重新引入台账」这个回退——门禁要防的是未来，不只是现状。
-    ledger_d = {i for i in reg["ledger"] if i.startswith("D-")}
+    ledger_d = {i for i in reg.get("ledger", set()) if i.startswith("D-")}
     for d in sorted(decisions):
         n = int(d.split("-")[1])
         cand = f"D-{n}"

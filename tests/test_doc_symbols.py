@@ -89,18 +89,13 @@ KNOWN_ABSENT_SYMBOLS = {
     ),
     # —— 曾经存在，已被删除 ——
     "crosscheck.align_references": "**已删除**（复核 `RV-5`，2026-08-28 操作者裁决）",
-    "check_gates.iter_reference_docs": (
-        "**已随 `references/` 一并移出本仓**（`D-043`，2026-09-11）。"
-        "它是 R5 读阅读笔记用的非递归 glob；R5、它的 7 条测试、"
-        "`check_reading_ledger.py` 与 CI 链上那一条同批移出，六道门减为五道门。"
-        "台账 `OPEN-ITEMS.md` 那一条**留档不删** —— 它记的是当时的事实。"
-    ),
     # —— 被淘汰的候选字段 id ——
     # （`notes.nonrecurring_pl_total_pretax` 曾登记在此，2026-08-31 由
     #   `test_对照表里没有过期条目` 判为过期并移除：它只出现在
     #   `docs/spec/archive/`，而那条路径已在 `EXCLUDED_PREFIXES` 里。）
     "notes.listing_first_disclosure_flag": "被淘汰的候选字段：在夹具里却不属于任何定义的 `source_fields`",
-    "notes.nonrecurring_pl_net": "POC-01 期的旧名，现为 `notes.nonrecurring_pl_net_attributable_to_parent`",
+    # （`notes.nonrecurring_pl_net` 于 2026-09-11 同样被判为过期并移除：
+    #   它此前只出现在已移出本仓的工作记录里，`D-044`。）
 }
 
 #: `模块.符号` 里当 `符号` 是这些时，`模块.符号` 其实是**文件名**不是符号引用。

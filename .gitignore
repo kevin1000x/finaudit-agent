@@ -51,3 +51,15 @@ eval/runs/
 references/
 scripts/check_reading_ledger.py
 tests/test_reading_ledger.py
+
+# 工作记录。**刻意不上传**（`D-044`，2026-09-11）——
+# 会话日志、未决事项台账、登记册、交接、失败模式清单、与外部资料库的关系。
+# 它们是「活怎么干的」，不是「这个项目是什么」；对来看这个项目的人没有价值。
+# 本地在 ../finaudit-workshop/ 保留，继续用。
+claudedocs/
+docs/agent/PROGRESS.md
+docs/agent/OPEN-ITEMS.md
+docs/agent/LANDING-BACKLOG.md
+docs/agent/DELEGATED-DECISIONS.md
+rules/failure-modes.md
+rules/repo-context.md

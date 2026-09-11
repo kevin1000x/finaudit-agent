@@ -18,14 +18,16 @@
    与已归档的三个变更提案。⚠️ **OpenSpec 已于 2026-09-11 删除**（`D-042`）——
    这里保留的是它写下的**事实**，不是它的流程；新变更不再走提案，走 `DECISIONS.md`。
 
-`docs/agent/` 是阶段 Artifact（IDEA / RESEARCH / ARCHITECTURE / POC / PROGRESS / VERIFICATION），是跨阶段接口，不是规格。
+`docs/agent/` 是阶段 Artifact（IDEA / RESEARCH / ARCHITECTURE / POC / VERIFICATION / EVAL-REPORT + 各阶段证据），是跨阶段接口，不是规格。
+⚠️ 其中的**工作记录**（PROGRESS / OPEN-ITEMS / LANDING-BACKLOG / DELEGATED-DECISIONS）
+已于 2026-09-11 移出本仓到 `../finaudit-workshop/docs-agent/`（`D-044`）。
 
 ## 硬规则
 
 - **数据来源只允许公开数据**（巨潮资讯网年报、AKShare 公开财务指标）。任何雇主内部数据、实习期间接触的数据、客户数据一律禁止进入本仓库——包括脱敏后的。见 D-010。
 - **不复制 `data secret` 的代码、语料或评测结论。** 可以复用其机制思想（SHA-256 双校验、fail-closed、证据隔离），但两个项目的仓库、语料、结论完全隔离。见 D-004。
 - **证据链是第一类产物，不是日志。** 任何回答如果给不出证据链，视为失败，不视为"降级成功"。见 D-003。
-- **不设时间预算上限。** 每次会话在 `docs/agent/PROGRESS.md` changelog 记录**实际做了什么**（已发生的事实，不是计划）。范围决策依据产出与假设验证进度，不依据剩余小时数。见 D-008（2026-08-10 修订）。
+- **不设时间预算上限。** 每次会话在 `../finaudit-workshop/docs-agent/PROGRESS.md` changelog 记录**实际做了什么**（已发生的事实，不是计划）。⚠️ 该日志与未决事项台账**已移出本仓**（`D-044`）：它们是工作记录，不进公开仓。范围决策依据产出与假设验证进度，不依据剩余小时数。见 D-008（2026-08-10 修订）。
 - **阶段模式必须显式声明**：`DISCOVER / RESEARCH / ARCHITECT / POC / PLAN / IMPLEMENT / VERIFY / REVIEW`。不要在 RESEARCH 模式里写实现，不要在 IMPLEMENT 模式里改架构。
 - **完成必须有证据。** 不接受"应该可以了"。见 `PROJECT_SPEC.md` §完成定义。
 
