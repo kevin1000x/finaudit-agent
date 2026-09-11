@@ -88,8 +88,39 @@ jobs:
         with:
           python-version: "3.11"
 
+      # 🔴 `setuptools` 必须一起升级，不能只升 pip。
+      #
+      # 2026-09-11 实测：`setup-python` 的 3.11 由 `ensurepip` 带进来一份**旧**
+      # setuptools，它的 METADATA 里 `License` / `License-Expression` /
+      # `License :: ` classifier **三者皆无** ⇒ `scan_installed_licenses()`
+      # 判它「零许可证声明」并红。
+      #
+      # ⚠️ **门禁在这件事上是对的**：它的原则是「零声明 ≠ 不是 AGPL，
+      # 查不到就是查不到，不据此放行」。所以正解**不是**把 setuptools 加进豁免
+      # 名单 —— 那会让它对这个包不再检查任何东西，而输出照样是一句「通过」，
+      # 正是本仓反复记的那个形状。
+      #
+      # 正解是**消掉陈旧元数据**：新版 setuptools 声明 `License-Expression: MIT`
+      # （本地实测 84.0.0 有），升上去之后这道检查**真的检查了它并放行**。
+      # 🔴 **必须装 `crosscheck` extra，否则这道门根本检不到 akshare。**
+      #
+      # 2026-09-11 实测出来的：CI 此前装的是 `.[dev]`，而 `verify_deps.py` 检查的是
+      # **`pyproject.toml` 声明的全部依赖**（含各 extra）⇒ akshare 每次都落在
+      # `== akshare: 未安装，无从核验`，而 `check_package` 对「未安装」`return False`
+      # ⇒ 退出码 1。
+      #
+      # ⚠️ 要紧的不是它红，是**它红的原因不是它要查的那件事**。
+      # `D-036` 接受这道门红着，说的是「akshare 下载量跌破门槛」这个**有信息量**的红；
+      # 而 CI 上实际发生的是「没装所以没查」——两者在退出码上不可区分，
+      # 20/20 次运行全红之后，没有人分得清是哪一种。
+      # 这正是本脚本自己 docstring 里那句「长期红着的门等于没有门」。
+      #
+      # ⇒ 装上它，让这道门真的去查 akshare：够门槛就绿，跌破就红，
+      #    而那时的红是 `D-036` 想要的那一种。
       - name: Install
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --upgrade pip setuptools \
+            && python -m pip install -e ".[dev,crosscheck]"
 
       - name: 许可证禁列（AGPL 拒绝，含传递依赖）
         run: python scripts/verify_deps.py
