@@ -70,8 +70,16 @@
   - `cninfo-analyzer-web`（TypeScript）是上面那个的 **Web 前端**，已克隆到 `../cninfo-analyzer-web`，用于演示
   - `privacy-preserving-agent-poc`（PRIVATE）就是 `data secret`，**D-004 禁止读取、复制、引用**
 - 仓库：`kevin1000x/finaudit-agent`，默认分支 `main`，remote 走 HTTPS + `gh` 凭据助手
-- **可见性：转 PUBLIC 已裁定**（`D-005` 修订二，2026-09-10）。⚠️ **裁定 ≠ 已经转了** —— 转的动作由操作者本人执行；在他按下之前仓库仍是 PRIVATE。**执行者任何时候都不得代按** `gh repo edit --visibility public`：不可逆且对外。
-  转公开之后**不变的**：密钥只走 secret 永不进仓库；`data/raw/` 不进版本控制；`D-010`（只用公开数据）与 `D-004`（不碰 `data secret`）都不解除
+- **可见性：PUBLIC**（2026-09-11 执行完毕。`D-005` 修订二裁定，修订三记录执行）。
+  ⚠️ **原先这里写的是「执行者任何时候都不得代按 `gh repo edit --visibility public`」。**
+  那条已作废，因为**它要防的事已经发生完了**：2026-09-11 操作者第三次明确指示
+  （裁定 → 「可以转公开」→ 「同时执行 `gh repo edit --visibility public`」），
+  执行者据此执行。**留着一条刚被越过的禁令比没有禁令更糟** —— 下一个读它的人
+  会以为仓库还是私有的。⇒ 改成事实，那次执行记在 `D-005` 修订三。
+  🔴 **反方向的禁令仍然成立，而且更要紧**：**执行者不得擅自把它改回 PRIVATE，
+  也不得在没有同等明确指示时改动任何仓库的可见性。**
+  转公开之后**不变的**：密钥只走 secret 永不进仓库；`data/raw/` 不进版本控制；
+  `D-010`（只用公开数据）与 `D-004`（不碰 `data secret`）都不解除
 - `.gitattributes` 强制 LF 入库：冻结文件的 SHA-256 必须跨平台稳定，这是 D-012 的物理保障，不要改
 
 ## 当前状态

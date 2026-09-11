@@ -1,0 +1,86 @@
+# **真实年报抽取结果。由 `python -m extractor export` 生成，不要手改。**
+#
+# 手改这份文件等于绕过准入清单 —— 它存在的全部意义就是「只有核对过的数才到得了这里」。
+# 要加字段：先在 `data/verified/` 里核对并签署，再重跑导出。
+#
+# `kind: real` 是给渲染层看的：证据链里这一行会印年报出处与 PDF 哈希，
+# 而不是「合成夹具（虚构公司与数值）」那一句。**两者绝不能互相冒充。**
+
+meta:
+  fixture_id: "annual-report-600309-2019"
+  kind: real
+  short_name: "万华化学"
+  full_name: "万华化学集团股份有限公司"
+  fiscal_year: 2019
+  stock_code: "600309"
+  source_pdf_sha256: "87411c60fd8471d7b9cdfe4a0f127c660622634e34905d21ad5e1c539a682d12"
+  source_url: null
+  batch_id: "6bc06ef695964c1c"
+  signed_off: "2026-09-02 操作者签署：接受 §D.18 的 25 / 25（**只覆盖前 25 个字段**）"
+  verification_sections: ["D.18", "D.19"]
+  # 抽到了但**没经过人工核对**，因此没进这份文件。少答一道题，好过输出没人验过的数。
+  dropped: []
+
+rows:
+  - stock_code: "600309"
+    fiscal_year: 2019
+    bs.accounts_payable: "8024420861.29"
+    bs.accounts_receivable: "4433077609.63"
+    bs.bonds_payable: "0.00"
+    bs.inventory: "8586883294.06"
+    bs.lease_liabilities: "0.00"
+    bs.long_term_borrowings: "5962595245.57"
+    bs.minority_interests: "1567164415.90"
+    bs.non_current_liabilities_due_within_one_year: "3324127445.00"
+    bs.short_term_borrowings: "20034036150.27"
+    bs.total_assets: "96865322655.29"
+    bs.total_current_assets: "23483577397.65"
+    bs.total_current_liabilities_period_end: "44799566175.61"
+    bs.total_equity: "43931258971.63"
+    bs.total_liabilities: "52934063683.66"
+    bs.trading_financial_liabilities: "0.00"
+    cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets: "17814814580.17"
+    cfs.net_cash_flow_from_operating_activities: "25932941200.65"
+    is.administrative_expense: "1433850380.23"
+    is.financial_expense: "1079748165.38"
+    is.net_profit: "10593318819.77"
+    is.net_profit_attributable_to_parent: "10129985097.55"
+    is.operating_cost: "48997610501.85"
+    is.operating_revenue_current: "68050668650.78"
+    is.operating_revenue_prior_as_presented: "72837108238.47"
+    is.selling_expense: "2782908073.79"
+    notes.business_combination_type: ["COMMON_CONTROL_COMBINATION", "NON_COMMON_CONTROL_COMBINATION"]
+    notes.consolidation_scope_change: true
+    notes.restatement_flag: true
+
+# 每个字段是从哪一页哪一列来的。**证据链是第一类产物，不是日志**（`D-003`）——
+# 把页码留在一个跑完就丢的进程内存里，等于没有。
+provenance:
+  bs.accounts_payable: {page: 72, column_header: "2019年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.accounts_receivable: {page: 71, column_header: "2019年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.bonds_payable: {page: 72, column_header: "2019年12月31日", cell_state: "EMPTY_CELL", mapping_version: 1}
+  bs.inventory: {page: 71, column_header: "2019年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.lease_liabilities: {page: 72, column_header: "2019年12月31日", cell_state: "EMPTY_CELL", mapping_version: 1}
+  bs.long_term_borrowings: {page: 72, column_header: "2019年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.minority_interests: {page: 73, column_header: "2019年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.non_current_liabilities_due_within_one_year: {page: 72, column_header: "2019年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.short_term_borrowings: {page: 72, column_header: "2019年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.total_assets: {page: 72, column_header: "2019年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.total_current_assets: {page: 71, column_header: "2019年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.total_current_liabilities_period_end: {page: 72, column_header: "2019年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.total_equity: {page: 73, column_header: "2019年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.total_liabilities: {page: 72, column_header: "2019年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.trading_financial_liabilities: {page: 72, column_header: "2019年12月31日", cell_state: "EMPTY_CELL", mapping_version: 1}
+  cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets: {page: 79, column_header: "2019年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  cfs.net_cash_flow_from_operating_activities: {page: 79, column_header: "2019年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.administrative_expense: {page: 75, column_header: "2019年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.financial_expense: {page: 75, column_header: "2019年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.net_profit: {page: 76, column_header: "2019年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.net_profit_attributable_to_parent: {page: 76, column_header: "2019年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.operating_cost: {page: 75, column_header: "2019年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.operating_revenue_current: {page: 75, column_header: "2019年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.operating_revenue_prior_as_presented: {page: 75, column_header: "2018年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.selling_expense: {page: 75, column_header: "2019年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  notes.business_combination_type: {page: 169, column_header: null, cell_state: "VALUE_PRESENT", mapping_version: 1}
+  notes.consolidation_scope_change: {page: 169, column_header: null, cell_state: "VALUE_PRESENT", mapping_version: 1}
+  notes.restatement_flag: {page: 6, column_header: "调整后", cell_state: "VALUE_PRESENT", mapping_version: 1}

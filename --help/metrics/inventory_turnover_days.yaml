@@ -1,0 +1,92 @@
+metric_id: inventory_turnover_days
+display_name: 存货周转天数
+aliases:
+  - 存货周转期
+  - 库存周转天数
+version: 2
+
+grain:
+  entity: stock_code
+  period: fiscal_year
+  period_type: annual
+
+source_fields:
+  - id: bs.inventory
+    statement: 合并资产负债表
+    line_item: 存货 —— 期末余额
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+  # 分子用**营业成本**，不用营业收入 —— 存货按成本计价，用收入会系统性低估周转天数。
+  - id: is.operating_cost
+    statement: 合并利润表
+    line_item: 营业成本 —— 本期金额
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+formula: >
+  365 * bs.inventory / is.operating_cost
+
+# 分子含时点量（期末存货），分母是时段量（全年营业成本）。
+period_semantics: 混合
+
+derivation:
+  allow_from_components: false
+  note: >
+    **天数基数取 365**，理由是与会计年度实际天数一致，不依赖任何行业惯例。
+    采用 360 基数的口径与本定义结果相差约 1.4%，两者不可直接比较。
+    受限 DSL 不含算术，基数无法参与条件求值，因此在此显式声明。
+
+    存货固定取**期末**余额，不取期初期末平均。理由是字段清单只提供单值（POC-01 C9），
+    不是认为平均口径不对——常见财务数据库多用平均，与本定义存在系统性差异。
+    禁止用其他年度的期末值自行构造平均数：本定义的 grain 只锁定单个会计年度。
+
+standard_basis:
+  - name: 企业会计准则第 1 号——存货
+    issuer: 中华人民共和国财政部
+    article: 全文
+    version: "2006"
+  - name: 企业会计准则第 14 号——收入
+    issuer: 中华人民共和国财政部
+    article: 全文
+    version: "2017"
+
+flags: []
+
+undefined_conditions:
+  - expr: is_missing(is.operating_cost)
+    reason: 营业成本缺失
+  - expr: is.operating_cost <= 0
+    reason: 营业成本为零或为负，周转天数无经济含义
+  - expr: is_missing(bs.inventory)
+    reason: 存货缺失；不得按 0 处理
+  # 存货取值恰为 0 不拒答：零库存是真实可能的经营状态，周转天数为 0。
+
+common_pitfalls:
+  - text: >
+      **分子用营业成本，不用营业收入。** 存货按成本计价，用含毛利的收入作分母
+      会系统性低估周转天数，且数值仍然「看起来正常」。
+      本定义的取数出处只声明利润表的「营业成本」，不声明「营业收入」。
+    enforced_by: source_fields.id
+
+  - text: >
+      **天数基数为 365。** 采用 360 基数的口径与本定义结果相差约 1.4%，不可直接比较。
+    enforced_by: derivation.note
+
+  - text: >
+      **本定义采用期末时点存货，常见财务数据库多用期初期末平均。**
+      两者在存货规模当年大幅变动时差异显著，跨来源比较前须确认口径。
+    enforced_by: derivation.allow_from_components
+
+  - text: >
+      **存货缺失不等于存货为零。** 缺失时拒答；取值恰为 0 时正常计算（零库存是
+      真实可能的经营状态）。两条路径由 missing_representation 区分。
+    enforced_by: undefined_conditions.2
+
+  - text: >
+      营业成本为零或为负时拒答。
+    enforced_by: undefined_conditions.1
+
+  - text: >
+      跨行业比较无意义：定制生产与快消零售的合理周转天数相差一个数量级。
+    advisory_only: true

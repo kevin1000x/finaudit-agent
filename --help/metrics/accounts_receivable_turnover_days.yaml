@@ -1,0 +1,102 @@
+metric_id: accounts_receivable_turnover_days
+display_name: 应收账款周转天数
+aliases:
+  - 应收账款周转期
+  - 应收账款回收天数
+  - DSO
+version: 2
+
+grain:
+  entity: stock_code
+  period: fiscal_year
+  period_type: annual
+
+source_fields:
+  # 取**账面价值**（已扣坏账准备），即报表列示值。账面余额（未扣）是另一个口径。
+  - id: bs.accounts_receivable
+    statement: 合并资产负债表
+    line_item: 应收账款 —— 期末余额（账面价值，已扣坏账准备）
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+  # 应收账款周转天数的分子用**营业收入**（与存货周转天数用营业成本相反）。
+  - id: is.operating_revenue_current
+    statement: 合并利润表
+    line_item: 营业收入 —— 本期金额
+    sign_convention: 收益记正_损失记负
+    missing_representation: null
+
+formula: >
+  365 * bs.accounts_receivable / is.operating_revenue_current
+
+period_semantics: 混合
+
+derivation:
+  allow_from_components: false
+  note: >
+    **天数基数取 365**，理由是与会计年度实际天数一致，不依赖任何行业惯例。
+    采用 360 基数的口径与本定义结果相差约 1.4%，两者不可直接比较。
+
+    应收账款固定取**期末**账面价值，不取期初期末平均。理由是字段清单只提供单值
+    （POC-01 C9），不是认为平均口径不对——常见财务数据库多用平均，存在系统性差异。
+    禁止用其他年度的期末值自行构造平均数。
+
+    **取账面价值而非账面余额**：报表列示值就是账面价值（已扣坏账准备）。
+    用附注披露的账面余额（未扣）会得到偏长的周转天数，两个口径不可混比。
+    本定义不引入账面余额字段。
+
+standard_basis:
+  - name: 企业会计准则第 22 号——金融工具确认和计量
+    issuer: 中华人民共和国财政部
+    article: 第八章（金融资产减值）
+    version: "2017"
+  - name: 企业会计准则第 14 号——收入
+    issuer: 中华人民共和国财政部
+    article: 全文
+    version: "2017"
+
+flags: []
+
+undefined_conditions:
+  - expr: is_missing(is.operating_revenue_current)
+    reason: 营业收入缺失
+  - expr: is.operating_revenue_current <= 0
+    reason: 营业收入为零或为负，周转天数无经济含义
+  - expr: is_missing(bs.accounts_receivable)
+    reason: 应收账款缺失；不得按 0 处理
+
+common_pitfalls:
+  - text: >
+      **分子用营业收入，不用营业成本**（与存货周转天数相反）。
+      应收账款按售价形成，与收入配比。用错分子后数值仍然「看起来正常」。
+    enforced_by: source_fields.id
+
+  - text: >
+      **天数基数为 365。** 采用 360 基数的口径与本定义结果相差约 1.4%，不可直接比较。
+    enforced_by: derivation.note
+
+  - text: >
+      **本定义采用期末时点应收账款，常见财务数据库多用期初期末平均。**
+      两者在收入规模当年大幅变动时差异显著。
+    enforced_by: derivation.allow_from_components
+
+  - text: >
+      **取账面价值（已扣坏账准备），不取附注披露的账面余额。**
+      账面余额口径会得到偏长的周转天数，两者不可混比。
+    enforced_by: source_fields.line_item
+
+  - text: >
+      应收账款缺失时拒答，不得按 0 处理。
+    enforced_by: undefined_conditions.2
+
+  # 这是本批次少数几个**恰当**使用 advisory_only 的地方：它确实无法用现有字段修正。
+  - text: >
+      **固有偏差：营业收入不含增值税，而应收账款含税。** 两者口径不严格配比，
+      会使周转天数系统性偏长（增值税率越高偏差越大）。
+      这一偏差无法用现有字段修正，行业内横向比较时它大体抵消，跨税率比较时不抵消。
+    advisory_only: true
+
+  - text: >
+      应收账款保理或资产证券化会使期末余额下降而收入不变，
+      周转天数因此改善，但这是融资安排而非回款能力提升。本定义不识别该情形。
+    advisory_only: true

@@ -1,0 +1,85 @@
+metric_id: total_asset_turnover
+display_name: 总资产周转率
+aliases:
+  - 资产周转率
+  - 总资产周转次数
+version: 2
+
+grain:
+  entity: stock_code
+  period: fiscal_year
+  period_type: annual
+
+source_fields:
+  - id: is.operating_revenue_current
+    statement: 合并利润表
+    line_item: 营业收入 —— 本期金额
+    sign_convention: 收益记正_损失记负
+    missing_representation: null
+
+  - id: bs.total_assets
+    statement: 合并资产负债表
+    line_item: 资产总计 —— 期末余额
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+formula: >
+  is.operating_revenue_current / bs.total_assets
+
+# 与 01-04 的总资产收益率同构：分子时段、分母时点。
+period_semantics: 混合
+
+derivation:
+  allow_from_components: false
+  note: >
+    分母固定取**期末时点**资产总计，不取期初期末平均。理由与总资产收益率一致：
+    字段清单只提供单值（POC-01 C9）。常见财务数据库多用平均总资产，
+    与本定义存在系统性差异。禁止用其他年度的期末值自行构造平均数——
+    本定义的 grain 只锁定单个会计年度，跨期取数不在其可定位范围内。
+
+    分子固定取营业收入，禁止用营业总收入替代：后者含利息收入等项目，
+    与「资产创造收入的效率」这一指标含义不符。
+
+standard_basis:
+  - name: 企业会计准则第 14 号——收入
+    issuer: 中华人民共和国财政部
+    article: 全文
+    version: "2017"
+  - name: 企业会计准则第 30 号——财务报表列报
+    issuer: 中华人民共和国财政部
+    article: 第十五条、第十六条
+    version: "2014"
+
+flags: []
+
+undefined_conditions:
+  - expr: is_missing(bs.total_assets)
+    reason: 资产总计缺失
+  - expr: bs.total_assets <= 0
+    reason: 资产总计为零或为负，周转率无经济含义
+  - expr: is_missing(is.operating_revenue_current)
+    reason: 营业收入缺失
+
+common_pitfalls:
+  - text: >
+      **本定义采用期末时点分母，与采用平均总资产口径的结论不可直接比较。**
+      资产规模当年大幅变动（大额并购、资产处置）时两者差异显著。
+    enforced_by: derivation.allow_from_components
+
+  - text: >
+      **不得用营业总收入替代营业收入。** 后者含利息收入等项目，
+      与「资产创造收入的效率」这一含义不符。本定义的 source_fields 不声明营业总收入。
+    enforced_by: source_fields.id
+
+  - text: >
+      资产总计为零或为负时拒答。
+    enforced_by: undefined_conditions.1
+
+  - text: >
+      营业收入缺失时拒答。
+    enforced_by: undefined_conditions.2
+
+  - text: >
+      重资产与轻资产行业的总资产周转率不在同一量级，横向比较须限定行业。
+      在建工程占比高的公司周转率被暂时压低，那是投产前的正常状态。
+    advisory_only: true

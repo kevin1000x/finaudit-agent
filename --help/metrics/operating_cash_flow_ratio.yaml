@@ -1,0 +1,104 @@
+# v2 相对 POC-01 的 v1，重点补的是那三条**单方缺陷**（只有一位回答者指出的）：
+#   S2 别名过宽 —— 不再收录「现金流量比率」，那个说法也可指投资/筹资现金流
+#   S3 分子为 0 与缺失未区分 —— 现拆成两条路径，缺失拒答、为 0 正常算
+#   S4 报告期长度未约定 —— grain.period_type 写死 annual，并有 flag 承载
+
+metric_id: operating_cash_flow_ratio
+display_name: 经营现金流量比率
+aliases:
+  - 经营活动现金流量比率
+  - 经营现金流比率
+version: 2
+
+grain:
+  entity: stock_code
+  period: fiscal_year
+  period_type: annual
+
+source_fields:
+  # 经营活动现金流量净额**可以为负**，方向必须明确。
+  - id: cfs.net_cash_flow_from_operating_activities
+    statement: 合并现金流量表
+    line_item: 经营活动产生的现金流量净额 —— 本期金额
+    sign_convention: 收益记正_损失记负
+    missing_representation: null
+
+  - id: bs.total_current_liabilities_period_end
+    statement: 合并资产负债表
+    line_item: 流动负债合计 —— 期末余额
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+  - id: notes.reporting_period_months
+    statement: 财务报表附注
+    line_item: 本报告期涵盖的月份数
+    missing_representation: null
+    enum_values: [3, 6, 9, 12]
+
+formula: >
+  cfs.net_cash_flow_from_operating_activities
+  / bs.total_current_liabilities_period_end
+
+# 分子是时段量（全年现金流），分母是时点量（期末流动负债）。
+period_semantics: 混合
+
+derivation:
+  allow_from_components: false
+  note: >
+    禁止由「经营活动现金流入小计 − 经营活动现金流出小计」倒推经营活动现金流量净额：
+    报表已单独列示净额，倒推会在存在特殊调整项时静默产生差额。
+    分母固定取流动负债合计的期末余额，禁止取期初余额。
+
+standard_basis:
+  - name: 企业会计准则第 31 号——现金流量表
+    issuer: 中华人民共和国财政部
+    article: 第二章（经营活动现金流量的分类与列报）
+    version: "2006"
+  - name: 企业会计准则第 30 号——财务报表列报
+    issuer: 中华人民共和国财政部
+    article: 第十七条至第二十一条
+    version: "2014"
+
+flags:
+  - name: period_length_mismatch
+    trigger: notes.reporting_period_months != 12
+
+undefined_conditions:
+  - expr: is_missing(bs.total_current_liabilities_period_end)
+    reason: 流动负债合计期末余额缺失
+  - expr: bs.total_current_liabilities_period_end <= 0
+    reason: 流动负债合计为零或为负，本比率无经济含义
+  # 缺失与为 0 分两条路径：经营现金流量净额恰为 0 是真实可能的取值，不拒答。
+  - expr: is_missing(cfs.net_cash_flow_from_operating_activities)
+    reason: 经营活动现金流量净额缺失；不得按 0 处理
+
+common_pitfalls:
+  - text: >
+      **别名不收录「现金流量比率」。** 那个说法也可指投资活动或筹资活动的现金流量比率，
+      过宽的别名会让口径解析命中错误的指标（POC-01 S2）。
+    enforced_by: source_fields.id
+
+  - text: >
+      **经营现金流量净额缺失与为零是两回事。** 缺失时拒答；恰为 0 时正常计算，
+      那是「经营活动没有净现金流入」这一真实结论（POC-01 S3）。
+    enforced_by: undefined_conditions.2
+
+  - text: >
+      **半年报与季报的累计数不得直接与年度口径比较。** 分子是累计时段量，
+      分母是时点量，报告期长度不同时比值不可比（POC-01 S4）。
+      本定义的 grain.period_type 固定为 annual。
+    enforced_by: flags.period_length_mismatch
+
+  - text: >
+      经营活动现金流量净额可以为负，符号约定为收益记正_损失记负。
+      按绝对值处理会把现金净流出显示成偿债能力，方向性错误且不触发任何未定义条件。
+    enforced_by: source_fields.sign_convention
+
+  - text: >
+      分母为零或为负时拒答。
+    enforced_by: undefined_conditions.1
+
+  - text: >
+      本比率衡量经营现金对短期债务的覆盖程度，但不反映流动负债的到期分布。
+      同样的比率，负债集中在一个月内到期与均匀分布在一年内，风险不同。
+    advisory_only: true

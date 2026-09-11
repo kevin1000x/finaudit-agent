@@ -1,0 +1,86 @@
+# **真实年报抽取结果。由 `python -m extractor export` 生成，不要手改。**
+#
+# 手改这份文件等于绕过准入清单 —— 它存在的全部意义就是「只有核对过的数才到得了这里」。
+# 要加字段：先在 `data/verified/` 里核对并签署，再重跑导出。
+#
+# `kind: real` 是给渲染层看的：证据链里这一行会印年报出处与 PDF 哈希，
+# 而不是「合成夹具（虚构公司与数值）」那一句。**两者绝不能互相冒充。**
+
+meta:
+  fixture_id: "annual-report-600519-2023"
+  kind: real
+  short_name: "贵州茅台"
+  full_name: "贵州茅台酒股份有限公司"
+  fiscal_year: 2023
+  stock_code: "600519"
+  source_pdf_sha256: "2125ff97a452ea79b0d784e2432f7d224b6aecc330b644b593477d69e22f4ed1"
+  source_url: null
+  batch_id: "61e881c77f3d4771"
+  signed_off: "2026-08-31 操作者签署 `SC-2` = PASS（29 / 29 ≥ 24）"
+  verification_sections: ["D.16", "D.17"]
+  # 抽到了但**没经过人工核对**，因此没进这份文件。少答一道题，好过输出没人验过的数。
+  dropped: []
+
+rows:
+  - stock_code: "600519"
+    fiscal_year: 2023
+    bs.accounts_payable: "3093091103.67"
+    bs.accounts_receivable: "60373410.41"
+    bs.bonds_payable: "0.00"
+    bs.inventory: "46435185061.53"
+    bs.lease_liabilities: "266636234.04"
+    bs.long_term_borrowings: "0.00"
+    bs.minority_interests: "7987897687.39"
+    bs.non_current_liabilities_due_within_one_year: "57054879.48"
+    bs.short_term_borrowings: "0.00"
+    bs.total_assets: "272699660092.25"
+    bs.total_current_assets: "225172517821.28"
+    bs.total_current_liabilities_period_end: "48697611501.20"
+    bs.total_equity: "223656469294.82"
+    bs.total_liabilities: "49043190797.43"
+    bs.trading_financial_liabilities: "0.00"
+    cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets: "2619755888.79"
+    cfs.net_cash_flow_from_operating_activities: "66593247721.09"
+    is.administrative_expense: "9729389252.31"
+    is.financial_expense: "-1789503701.48"
+    is.net_profit: "77521476277.80"
+    is.net_profit_attributable_to_parent: "74734071550.75"
+    is.operating_cost: "11867273851.78"
+    is.operating_revenue_current: "147693604994.14"
+    is.operating_revenue_prior_as_presented: "124099843771.99"
+    is.selling_expense: "4648613585.82"
+    notes.business_combination_type: []
+    notes.consolidation_scope_change: true
+    notes.restatement_flag: true
+
+# 每个字段是从哪一页哪一列来的。**证据链是第一类产物，不是日志**（`D-003`）——
+# 把页码留在一个跑完就丢的进程内存里，等于没有。
+provenance:
+  bs.accounts_payable: {page: 60, column_header: "2023年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.accounts_receivable: {page: 59, column_header: "2023年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.bonds_payable: {page: 60, column_header: "2023年12月31日", cell_state: "EMPTY_CELL", mapping_version: 1}
+  bs.inventory: {page: 59, column_header: "2023年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.lease_liabilities: {page: 60, column_header: "2023年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.long_term_borrowings: {page: 60, column_header: "2023年12月31日", cell_state: "EMPTY_CELL", mapping_version: 1}
+  bs.minority_interests: {page: 61, column_header: "2023年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.non_current_liabilities_due_within_one_year: {page: 60, column_header: "2023年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.short_term_borrowings: {page: 59, column_header: "2023年12月31日", cell_state: "EMPTY_CELL", mapping_version: 1}
+  bs.total_assets: {page: 59, column_header: "2023年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.total_current_assets: {page: 59, column_header: "2023年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.total_current_liabilities_period_end: {page: 60, column_header: "2023年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.total_equity: {page: 61, column_header: "2023年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.total_liabilities: {page: 60, column_header: "2023年12月31日", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  bs.trading_financial_liabilities: {page: 59, column_header: "2023年12月31日", cell_state: "EMPTY_CELL", mapping_version: 1}
+  cfs.cash_paid_for_fixed_intangible_and_other_long_term_assets: {page: 67, column_header: "2023年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  cfs.net_cash_flow_from_operating_activities: {page: 67, column_header: "2023年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.administrative_expense: {page: 63, column_header: "2023年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.financial_expense: {page: 63, column_header: "2023年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.net_profit: {page: 64, column_header: "2023年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.net_profit_attributable_to_parent: {page: 64, column_header: "2023年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.operating_cost: {page: 63, column_header: "2023年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.operating_revenue_current: {page: 63, column_header: "2023年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.operating_revenue_prior_as_presented: {page: 63, column_header: "2022年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  is.selling_expense: {page: 63, column_header: "2023年度", cell_state: "VALUE_PRESENT", mapping_version: 1}
+  notes.business_combination_type: {page: 120, column_header: null, cell_state: "VALUE_PRESENT", mapping_version: 1}
+  notes.consolidation_scope_change: {page: 120, column_header: null, cell_state: "VALUE_PRESENT", mapping_version: 1}
+  notes.restatement_flag: {page: 5, column_header: "调整后", cell_state: "VALUE_PRESENT", mapping_version: 1}

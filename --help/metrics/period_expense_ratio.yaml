@@ -1,0 +1,135 @@
+# 核心口径分歧：**研发费用是否计入期间费用。**
+#
+# 财政部 2018 年修订一般企业财务报表格式（财会〔2018〕15 号）后，研发费用从管理费用中
+# 单独列示。此前年度的「管理费用」内含研发支出，此后年度不含——
+# 于是「期间费用」在 2018 年前后**不是同一个集合**，跨该次变更的年度直接比较是错的。
+#
+# 本定义的立场：固定取**不含研发费用的三费口径**（销售 + 管理 + 财务），
+# 并把研发费用写成显式排除项。这是 POC-01 C8「跨准则版本不可比没有承载体」的直接修复。
+
+metric_id: period_expense_ratio
+display_name: 期间费用率
+aliases:
+  - 三费占比
+  - 三费费用率
+  - 期间费用占营业收入比
+version: 2
+
+grain:
+  entity: stock_code
+  period: fiscal_year
+  period_type: annual
+
+source_fields:
+  - id: is.selling_expense
+    statement: 合并利润表
+    line_item: 销售费用 —— 本期金额
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+  - id: is.administrative_expense
+    statement: 合并利润表
+    line_item: 管理费用 —— 本期金额（2018 年格式修订后不含研发费用）
+    sign_convention: 绝对值列报
+    missing_representation: null
+
+  # 财务费用可为负（利息收入大于利息支出时），故按收益记正_损失记负而非绝对值列报。
+  - id: is.financial_expense
+    statement: 合并利润表
+    line_item: 财务费用 —— 本期金额（可为负）
+    sign_convention: 收益记正_损失记负
+    missing_representation: null
+
+  - id: is.operating_revenue_current
+    statement: 合并利润表
+    line_item: 营业收入 —— 本期金额
+    sign_convention: 收益记正_损失记负
+    missing_representation: null
+
+  - id: notes.restatement_flag
+    statement: 财务报表附注
+    line_item: 本期是否经追溯重述或会计政策变更调整
+    missing_representation: null
+    enum_values: [true, false]
+
+formula: >
+  (is.selling_expense + is.administrative_expense + is.financial_expense)
+  / is.operating_revenue_current
+
+period_semantics: 时段
+
+derivation:
+  allow_from_components: true
+  note: >
+    分子**就是**三个分项加总，这是本指标的定义方式而非缺失时的补救路径。
+    允许加总的分项恰为：销售费用、管理费用、财务费用。
+    **不得纳入**：研发费用（2018 年格式修订后单独列示，纳入会使跨该次修订的年度不可比）、
+    资产减值损失、信用减值损失、税金及附加、其他收益。
+    任一分项缺失时按 undefined_conditions 拒答，**不得按 0 补齐**——
+    缺失与「该项为零」是两回事，补 0 会得出一个偏低但看起来正常的费用率。
+
+standard_basis:
+  - name: 关于修订印发一般企业财务报表格式的通知（财会〔2018〕15 号）
+    issuer: 中华人民共和国财政部
+    article: 附件一 合并利润表格式及编制说明
+    version: "2018"
+  - name: 企业会计准则第 30 号——财务报表列报
+    issuer: 中华人民共和国财政部
+    article: 第十五条、第十六条
+    version: "2014"
+
+flags:
+  - name: restated
+    trigger: notes.restatement_flag == true
+  # 不声明 basis_version_mismatch：01-04 计划原写在此处声明它并给
+  # standard_basis.version != comparison_period.standard_basis.version 作 trigger，
+  # 但该标记已于 2026-08-15 按 OQ-04 改为 system 域（R4 禁止定义文件声明），
+  # 且那条 trigger 本身求不出值（standard_basis 是列表）。
+  # 跨版本判定由运行时 check_comparable() 按准则名配对负责；
+  # 本定义以下方陷阱的 enforced_by 指向该 system 域标记。
+
+undefined_conditions:
+  - expr: is_missing(is.operating_revenue_current)
+    reason: 营业收入缺失
+  - expr: is.operating_revenue_current <= 0
+    reason: 营业收入为零或为负，费用率无经济含义
+  - expr: is_missing(is.selling_expense)
+    reason: 销售费用缺失；不得按 0 处理
+  - expr: is_missing(is.administrative_expense)
+    reason: 管理费用缺失；不得按 0 处理
+  - expr: is_missing(is.financial_expense)
+    reason: 财务费用缺失；不得按 0 处理
+
+common_pitfalls:
+  - text: >
+      **研发费用不计入本口径。** 财会〔2018〕15 号修订报表格式后研发费用从管理费用中单独列示，
+      2018 年前后的「期间费用」不是同一个集合。跨该次修订的年度间本指标不可直接比较。
+    enforced_by: flags.basis_version_mismatch
+
+  - text: >
+      分子恰为销售、管理、财务三项费用之和，加总范围由 derivation.note 限定。
+      不得纳入减值损失、税金及附加、其他收益。
+    enforced_by: derivation.note
+
+  - text: >
+      三费中任一项缺失即拒答，**不得按 0 补齐**。补 0 会得出一个偏低但看起来正常的费用率——
+      这类静默错误正是本项目要消灭的。
+    enforced_by: undefined_conditions.2
+
+  - text: >
+      财务费用可为负（利息收入大于利息支出时），其符号约定为收益记正_损失记负，
+      与销售、管理费用的绝对值列报不同。按绝对值处理会高估期间费用率。
+    enforced_by: source_fields.sign_convention
+
+  - text: >
+      分母为零或为负时拒答。
+    enforced_by: undefined_conditions.1
+
+  - text: >
+      本期经追溯重述时，分子分母均建立在重述后数据上。
+    enforced_by: flags.restated
+
+  - text: >
+      不同商业模式（直销 vs 经销、自建渠道 vs 平台）的期间费用率结构差异大，
+      单一比率不足以判断费用管控能力。
+    advisory_only: true

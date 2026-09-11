@@ -1,0 +1,495 @@
+"""把一份指标定义讲给**人**听。
+
+## 它为什么存在（`N-20`，2026-09-03 实测）
+
+`01-08` 留了一个检查点：让一个**没参与编写**的人只读定义，回答两问 ——
+「触发条件读得懂吗」「陷阱里哪些有机械后果、哪些只是提示」。
+2026-09-03 操作者读了随机抽的两份，答**读不懂**。
+
+那条判据写得很硬：**读不懂时须回到定义的表达形式重新设计，不是补文档。**
+所以本模块**不是**一份说明文档，它是定义的**另一种表达形式** ——
+同一份内容，换一个给人看的排法。
+
+## 三条硬约束
+
+1. **只重排，不新增。** 本模块不得引入任何 YAML 里没有的说法。
+   每一行输出都能指回定义里的某个字段；加一句「解释性的补充」就变成了补文档，
+   而那正是判据点名禁止的。
+2. **机械后果与提示必须结构性分开**，不能靠读者去比对键名。
+   原来的区别只在一条陷阱写的是 `enforced_by` 还是 `advisory_only:  true` ——
+   七条陷阱要逐条比对才分得出来。这里拆成两个各自带标题的小节。
+3. **本定义声明过的字段标识符不出现在正文；机器那一版集中放到末尾的核对附录。**
+   （2026-09-04 收紧，`N-52` 第二轮。）此前是「中文在上、表达式紧跟在下」，
+   于是 `is.net_profit_attributable_to_parent - notes.nonrecurring_pl_net_...`
+   这种东西夹在每一节正文里。操作者的原话：**「你给财务人看这种技术说辞吗」**。
+   ⇒ 正文只用定义自己写的中文（`line_item` / `statement` / flag 的 `description`），
+   表达式全部下沉到附录，**一个字都不删** —— 删了就没法核对翻译对不对。
+   ⚠️ 附录不是「补充材料」，它是**可复核性的载体**：`D-032` 明写两版并存的理由。
+
+   🔴 **这一条此前写的是「正文里不出现字段标识符」，那句话当时不成立**
+   （2026-09-05 独立复核指出，实测 9 / 20 份定义、13 处）。
+   本模块的契约只能是上面这句**加了限定**的版本：定义作者写「禁止取 X」时，
+   X 按定义**不在** `source_fields` 里，没有中文名可换，
+   编一个出来读者就没法发现禁的到底是哪一个 —— 换不动的原样留着，**不编**。
+
+   同日操作者裁 `N-58` 选 (b)，**9 份定义的散文已改写，语料侧残留归零**
+   （实测 0 / 20 份、0 处；`D-034` 的口径指纹证明这次确实只碰了散文）。
+   ⚠️ **副作用要记着**：语料里不再有字段 id 之后，
+   `test_正文里不出现任何本定义声明过的字段标识符` 变成了**预防性**的守门人 ——
+   把下面 `_prose` 的字段替换整个拿掉，它照样绿。
+   守着这条契约的是**不依赖语料**的那条：`test_prose确实会把声明过的字段id换成中文`。
+
+⚠️ **这不替代读 YAML。** 它替代的是「只能读 YAML」。
+证据链指向的仍然是定义文件本身；本模块只是让人有能力去核对它。
+"""
+
+from __future__ import annotations
+
+from .definition import MetricDefinition
+
+__all__ = [
+    "render_explanation",
+    "appendix_blocks",
+    "render_appendix",
+    # 排版件公开出来，是为了让 `agent.answer` 走**同一段代码** ——
+    # 两处渲染长得一样，不能靠两边各写一份然后指望它们不漂移（`D-032`）。
+    "wrap",
+    "rule",
+]
+
+#: 输出里每一节的标题。**用问句，不用字段名** ——
+#: 读者带着问题来，小节标题应当是他的问题，不是我们的 schema。
+_H_WHAT = "这是什么"
+_H_REFUSE = "什么时候不给答案"
+_H_ENFORCED = "会改变结果的注意事项"
+_H_ADVISORY = "仅供参考，不影响计算"
+_H_BASIS = "依据"
+
+
+def rule(char: str = "─", width: int = 68) -> str:
+    return char * width
+
+
+_rule = rule
+
+
+def _plain(text) -> str:
+    """去掉 Markdown 的强调标记。
+
+    定义文件里的 `**不得纳入**` 是给读 YAML 的人加重语气用的；
+    在纯文本视图里它只是噪声。**只去标记，不动一个字**。
+    """
+    return " ".join(str(text).replace("**", "").split())
+
+
+#: `derivation.note` 在页面上叫什么。**一处定义，两处引用**（散文指路与
+#: `enforced_by` 各用一次），此前是两份各写各的字面量。
+#:
+#: 🔴 它此前叫「加总范围说明」，那是 `N-68` 第 2 条里最难查的一次扑空：
+#: **内容渲染了，名字却是错的**。`note` 是一个通用槽位，里面写什么由定义自己决定 ——
+#: `inventory_turnover_days` 写的是天数基数取 365，`quick_ratio` 写的是只扣存货。
+#: 把通用槽位叫成它某一次的内容，等于替读者预判他要找什么，
+#: 而读者按那个名字找不到，会以为是这条引用指错了地方。
+_DERIVATION_NOTE_LABEL = "上面「这是什么」末尾那段口径说明"
+
+#: 散文里出现的 schema 键名 → 本视图里那一节叫什么。
+#: **不是翻译，是指路**：读者手上只有这一页，`undefined_conditions` 对他没有指称。
+#: 长键在前，否则 `derivation` 会先咬掉 `derivation.note` 的一截。
+_SCHEMA_IN_PROSE = {
+    "derivation.note": _DERIVATION_NOTE_LABEL,
+    "missing_representation": "「取数出处」里各行的缺失表示",
+    "undefined_conditions": "「什么时候不给答案」那一节",
+    "allow_from_components": "「能不能由分项推导」的声明",
+    "common_pitfalls": "「会改变结果的注意事项」那一节",
+    "sign_convention": "「取数出处」里各行的符号约定",
+    "standard_basis": "「依据」那一节",
+    "source_fields": "「取数出处」那一节",
+    "advisory_only": "「仅供参考，不影响计算」那一节",
+    "enforced_by": "「由哪一条把关」",
+    "line_item": "「取数出处」里的行项目名",
+    "derivation": "上面「这是什么」那一节",
+}
+
+
+def short_field_names(defn) -> dict:
+    """字段 id → 给人读的中文名。**三处渲染共用这一份映射。**
+
+    `line_item` 常带「—— 本期金额」这类**列限定**，读公式时是干扰，默认去掉。
+    ⚠️ **但只在去掉之后仍然互不相同时才去。**
+
+    `revenue_growth_yoy` 的两个取数字段分别是「营业收入 —— 本期金额」与
+    「营业收入 —— 上期比较金额（本期报表列示，即重述后数）」。去掉列限定之后
+    两者**都叫「营业收入」**，于是：
+
+    - 公式渲染成「(营业收入 - 营业收入) / 营业收入」，读起来像恒等于零；
+    - `D-038 G1` 那一节出现两行**同名不同值**（`· 营业收入 0` / `· 营业收入 1500000000`），
+      读者无法把哪个值对上哪个字段 —— G1 那一节的**全部作用**就是让人能重算一遍。
+
+    列限定在这里**正是区别本身**，不是干扰。
+
+    2026-09-09 实测：`h2-frozen-02` 的同比题两处都中招。`h2-02` 的复核者当时
+    是靠附录里的英文字段 id 才把它认出来的（原话：「我是靠下面的英文字段名
+    才确认缺的是上期比较金额」），而那个附录已按同一轮盲审意见精简掉
+    —— **拐杖撤了，坑还在**。
+    """
+    full = {
+        sf.id: str(sf.line_item).strip()
+        for sf in (getattr(defn, "source_fields", None) or [])
+        if sf.id and sf.line_item
+    }
+    short = {k: v.split("——")[0].split("(")[0].strip() for k, v in full.items()}
+    counts: dict = {}
+    for v in short.values():
+        counts[v] = counts.get(v, 0) + 1
+    # 撞名的那一组整组退回全称 —— 只退撞名的那几个，不撞的仍然读着清爽。
+    return {k: (short[k] if counts[short[k]] == 1 else full[k]) for k in full}
+
+
+def _prose(defn: MetricDefinition, text) -> str:
+    """定义里的散文 → 财务读者读得下去的散文。**只换指称，不动一个论断。**
+
+    2026-09-04 量过：**16 / 20 份定义的散文里写着字段 id 或 schema 键名**
+    （`bs.total_current_liabilities_period_begin`、`按 undefined_conditions 拒答`……）。
+    正文的表达式下沉到附录之后，这些就是剩下的技术噪声，
+    而它们**不是渲染器加的，是定义文件自己写的**。
+
+    ⚠️ **2026-09-05 起字段 id 那一半在真实语料上没有活儿干了**（`N-58` (b)：
+    9 份定义的散文改写完毕，0 处字段 id 残留）。schema 键名那一半仍然有活
+    （实测 17 处）。字段那一半**不删**：它是本模块的契约，
+    由 `test_prose确实会把声明过的字段id换成中文` 用自造语料守着 ——
+    删了它，将来第 21 份定义往散文里写一个字段 id 就没人接。
+
+    两步替换，都用定义自己的词或本视图自己的小节名：
+    1. 字段 id → `source_fields[].line_item`（与 `_formula_in_chinese` 同一份映射）
+    2. schema 键名 → 本视图里那一节的标题
+
+    ⚠️ **换不动的原样留着，不编。** 最典型的是「不得使用某字段」里那个
+    **被禁用的**字段 —— 它按定义不会出现在 `source_fields` 里，于是没有中文名。
+    编一个出来，读者就没法发现禁的到底是哪一个。
+    """
+    out = str(text)
+    names = short_field_names(defn)
+    for fid in sorted(names, key=len, reverse=True):
+        out = out.replace(fid, f"「{names[fid]}」")
+    for key, where in sorted(_SCHEMA_IN_PROSE.items(), key=lambda kv: -len(kv[0])):
+        out = out.replace(key, where)
+    return _plain(out)
+
+
+def _formula_in_chinese(defn: MetricDefinition) -> str | None:
+    """把公式里的字段 id 换成定义自己写的中文行项目名。
+
+    ⚠️ **这仍然是重排，不是新增**：中文来自 `source_fields[].line_item`，
+    是定义文件自己写的。本函数不发明任何一个词。
+
+    换不动就返回 None —— **不猜**。一个换了一半的公式比原样更难读，
+    而且会让人以为剩下那半是特意保留的。
+    """
+    if not defn.formula:
+        return None
+    text = " ".join(str(defn.formula).split())
+    # 长的 id 先换，否则 `is.operating_revenue_current` 会被
+    # `is.operating_revenue` 这类前缀先咬掉一截。
+    names = short_field_names(defn)
+    for fid in sorted(names, key=len, reverse=True):
+        # 列限定去不去由 `short_field_names` 定：去掉之后会撞名的那一组保留全称。
+        text = text.replace(fid, names[fid])
+    return text if "." not in text.replace(" ", "") else None
+
+
+def wrap(text: str, indent: str = "    ", width: int = 64) -> list[str]:
+    """按显示宽度折行。中日韩字符占两格，其余占一格。
+
+    不用 `textwrap`：它按字符数算，中文行会短掉将近一半。
+
+    ⚠️ 不在 ASCII 词中间断行：早先断出过 `derivation.no / te` 与
+    `收益记正 / _损失记负`，把一个标识符劈成两半比不折行更难读。
+    """
+    import re
+
+    # 切成「整个 ASCII 词」与「单个宽字符」两种原子，只在原子之间断。
+    atoms = re.findall(r"[A-Za-z0-9_.（）()\[\]<>=+\-*/]+|\s+|.", " ".join(str(text).split()))
+    out: list[str] = []
+    line = ""
+    used = 0
+    for atom in atoms:
+        w = sum(2 if ord(c) > 0x2E80 else 1 for c in atom)
+        if used + w > width and line:
+            out.append(indent + line.rstrip())
+            line, used = "", 0
+            if atom.isspace():
+                continue
+        line += atom
+        used += w
+    if line.strip():
+        out.append(indent + line.rstrip())
+    return out
+
+
+_wrap = wrap
+
+
+def _resolve_ref(
+    defn: MetricDefinition, ref: str, flag_descriptions: dict | None = None
+) -> str:
+    """把 `enforced_by` 的 schema 路径换成读者认得的东西。
+
+    `report.py` 的 docstring 早就点明了这条代价：下标形式「重排列表会静默
+    指向别处」，所以报告里必须带出**被引用条目的原文**，而不是留一个数字。
+    「由哪一条把关：undefined_conditions.2」对读 YAML 的人尚可，对旁人是无意义的。
+
+    解不开就**原样返回**，不编 —— 编一个好看的说法出来，
+    读者就没法发现这条引用其实指错了地方。
+    """
+    if ref.startswith("undefined_conditions."):
+        _, _, idx = ref.partition(".")
+        if idx.isdigit() and int(idx) < len(defn.undefined_conditions):
+            cond = defn.undefined_conditions[int(idx)]
+            # 与正文里那一条**逐字一致**，否则读者对不上是哪一条。
+            return f"拒答条件「{_prose(defn, cond.reason)}」"
+    if ref.startswith("flags."):
+        name = ref.split(".", 1)[1]
+        desc = (flag_descriptions or {}).get(name)
+        # 有中文就用中文；没有就留原名 —— **不编**。
+        return f"可比性标记「{desc}」" if desc else f"可比性标记「{name}」"
+    if ref == "derivation.note":
+        return _DERIVATION_NOTE_LABEL
+    if ref == "derivation.allow_from_components":
+        return "上面「这是什么」里关于「能不能由分项推导」的声明"
+    # `source_fields.<key>` 指的是「取数出处」那一节里各行的某一栏。
+    # 直接把 schema 键名打出来（`字段声明里的 sign_convention`）等于给财务读者看代码。
+    _SF = {
+        "id": "上面「取数出处」列的那几行（取哪个字段是钉死的）",
+        "line_item": "上面「取数出处」里的行项目名",
+        "statement": "上面「取数出处」里的报表名",
+        "sign_convention": "上面「取数出处」里各行的符号约定",
+        "missing_representation": "上面「取数出处」里各行的缺失表示",
+    }
+    if ref.startswith("source_fields."):
+        key = ref.split(".", 1)[1]
+        if key in _SF:
+            return _SF[key]
+    return ref
+
+
+#: `sign_convention` 的两个取值 → 给财务读者的说法。
+#: 下划线枚举名原样打出来就是给人看代码（`D-032`），所以这里必须换。
+#: 换不动的原样返回 —— **不编**，编一个好看的说法出来读者就发现不了它没被声明。
+_SIGN_CONVENTION_CN = {
+    "收益记正_损失记负": "收益记正、损失记负",
+    "绝对值列报": "绝对值列报（正数）",
+}
+
+
+def _source_lines(defn: MetricDefinition) -> list[str]:
+    """「取数出处」：每个字段一行 —— 报表、行项目，**以及符号约定**。
+
+    这一节替代的是此前正文里那条字段 id 表达式。读者要知道的是
+    「这个数去年报的哪张表哪一行取」，而不是它在 schema 里叫什么。
+
+    🔴 **符号约定是 2026-09-10 补的**（`N-68` 第 2 条）。此前这一节按文档字符串
+    「只用 `line_item` 与 `statement`」渲染，而全仓有 **8 条**陷阱写着
+    `enforced_by: source_fields.sign_convention` —— 它们指向的那一栏
+    **一个字都没渲染到页面上**。盲审复核者照着指引翻回去扑了空。
+    """
+    out: list[str] = []
+    for sf in defn.source_fields:
+        name = _plain(sf.line_item) if sf.line_item else None
+        where = _plain(sf.statement) if sf.statement else None
+        if not name and not where:
+            continue
+        # 报表在前、行项目在后，读成一条出处引用。
+        # ⚠️ 不要用「——」把两者连起来：`line_item` 自己就常带「—— 期末余额」，
+        #    同一个分隔符并排三段，读者分不出哪一段是表名。
+        text = name or "（这一行没写行项目名）"
+        text = f"{where} · {text}" if where else text
+        out.extend(_wrap(f"· {text}", indent="      "))
+        # 单起一行，不缀在行项目名后面：缀上去会被 `_wrap` 从
+        # 「绝对值列／报（正数）」中间劈开，而中文折行没有连字符提示。
+        sign = getattr(sf, "sign_convention", None)
+        if sign:
+            cn = _SIGN_CONVENTION_CN.get(str(sign), str(sign))
+            out.extend(_wrap(f"符号约定：{cn}", indent="          "))
+    return out
+
+
+def appendix_blocks(defn: MetricDefinition, flag_descriptions: dict | None = None):
+    """附录里那些「中文 ↳ 执行版」的成对内容，供 `agent.answer` 并进它自己的附录。
+
+    公开它，是为了让「关掉附录」的调用方**有东西可收** ——
+    否则关掉就等于丢掉，而丢掉就没法核对翻译对不对。
+    """
+    return _appendix_pairs(defn, flag_descriptions)
+
+
+def _appendix_pairs(defn: MetricDefinition, flag_descriptions: dict | None):
+    """附录的内容：`[(小标题, [(中文, 实际执行的那一版), ...]), ...]`。
+
+    ⚠️ **它不是补充材料，是可复核性的载体**（`D-032`）——
+    只留中文，读的人就没法核对翻译对不对。所以这里一个表达式都不删。
+    """
+    blocks: list[tuple[str, list[tuple[str, str]]]] = []
+
+    if defn.formula:
+        chinese = _formula_in_chinese(defn) or "（这条公式换不成中文，见上）"
+        blocks.append(("公式", [(chinese, " ".join(str(defn.formula).split()))]))
+
+    ids = [(f"{_plain(sf.line_item)}" if sf.line_item else str(sf.id), str(sf.id))
+           for sf in defn.source_fields if sf.id]
+    if ids:
+        blocks.append(("取数出处的字段名", ids))
+
+    conds = [(_plain(c.reason) if c.reason else "（这一条没写理由）", str(c.expr))
+             for c in defn.undefined_conditions if c.expr]
+    if conds:
+        blocks.append(("拒答条件", conds))
+
+    flags = []
+    for f in defn.flags:
+        if not f.trigger:
+            continue
+        desc = (flag_descriptions or {}).get(f.name)
+        flags.append((f"{desc}（{f.name}）" if desc else str(f.name), str(f.trigger)))
+    if flags:
+        blocks.append(("可比性标记", flags))
+
+    return blocks
+
+
+APPENDIX_TITLE = "系统实际执行的表达式"
+APPENDIX_LEAD = (
+    "放在这里，是为了让人能核对上面每一句中文有没有译错 —— 这是本视图可复核性的落点。"
+    "看不懂可以跳过，它不影响读懂上面任何一句。"
+)
+
+
+def render_appendix(blocks) -> list[str]:
+    """把成对内容渲染成附录。`agent.answer` 并进自己的块之后调同一个函数 ——
+    **两处答案的附录长得一样，是因为它们走的是同一段代码。**
+    """
+    if not blocks:
+        return []
+
+    L = ["", _rule(), APPENDIX_TITLE]
+    L.extend(_wrap(APPENDIX_LEAD, indent="  "))
+    for title, pairs in blocks:
+        L.append("")
+        L.append(f"  {title}")
+        for chinese, machine in pairs:
+            L.extend(_wrap(chinese, indent="      "))
+            L.append(f"      ↳ {machine}")
+    return L
+
+
+def render_explanation(
+    defn: MetricDefinition,
+    flag_descriptions: dict | None = None,
+    with_appendix: bool = True,
+) -> str:
+    """一份定义 → 一页中文简介。**内容全部来自 `defn`，不新增。**
+
+    `flag_descriptions` 是 `metrics/_flags.yaml` 的 `name -> description`，
+    可以不给：不给就退回打 flag 的原名，**不编中文**。
+
+    `with_appendix=False` 只输出正文。**它不是「省略模式」** ——
+    调用方（`agent.answer`）要把本函数的正文原样嵌进一份更大的答案里，
+    而那份答案**只能有一个附录、且在最末尾**（`D-032` 收紧条第 2 条）。
+    嵌进去一个带自带附录的段落，等于把附录塞回正文中间，
+    正是 2026-09-04 操作者指出的那个毛病。
+    ⚠️ 关掉附录的调用方**有义务把这些表达式收进它自己的附录** ——
+    两版并存是可复核性的载体，不是本函数的装饰。
+    """
+    L: list[str] = []
+
+    title = defn.display_name or defn.metric_id or defn.path.name
+    L.append(f"{title}    {defn.metric_id or ''}    版本 {defn.version}")
+    if defn.aliases:
+        L.append(f"也叫：{'、'.join(str(a) for a in defn.aliases)}")
+    L.append(_rule())
+    L.append("")
+
+    # ── 这是什么 ──
+    L.append(_H_WHAT)
+    chinese = _formula_in_chinese(defn)
+    if chinese:
+        L.extend(_wrap(chinese))
+    # 机器那一版**不在这里** —— 它在末尾的核对附录里，一个字都没删。
+    src = _source_lines(defn)
+    if src:
+        L.append("")
+        L.append("    取数出处（都在年报里，可照着核）")
+        L.extend(src)
+    # 「能不能由分项推导」：9 条陷阱写着 `enforced_by: derivation.allow_from_components`，
+    # 而这条声明此前**从没渲染到页面上** —— 又一处指向空处的指引（`N-68` 第 2 条）。
+    # 两个方向都要印：印「可以」而不印「不可以」，读者就没法区分
+    # 「声明了不可以」与「这份定义压根没声明」。
+    if isinstance(defn.derivation, dict) and "allow_from_components" in defn.derivation:
+        allow = defn.derivation["allow_from_components"]
+        L.append("")
+        L.extend(
+            _wrap(
+                "能不能由分项加总推出：可以。"
+                if allow
+                else "能不能由分项加总推出：不可以，只取上面那几行本身。"
+            )
+        )
+    note = defn.derivation.get("note") if isinstance(defn.derivation, dict) else None
+    if note:
+        L.append("")
+        L.extend(_wrap(_prose(defn, note)))
+    L.append("")
+
+    # ── 什么时候不给答案 ──
+    # 只给中文：读者要的是「什么时候」，不是「怎么判」。判据在附录。
+    L.append(f"{_H_REFUSE}（满足任一条即拒答，不猜）")
+    if not defn.undefined_conditions:
+        L.append("    （本定义没有声明拒答条件）")
+    for cond in defn.undefined_conditions:
+        reason = _prose(defn, cond.reason) if cond.reason else "（这一条没写理由）"
+        L.extend(_wrap(f"· {reason}", indent="    "))
+    L.append("")
+
+    # ── 陷阱拆成两节 ──
+    # 这是本模块存在的第二个理由：原来这个区别只在键名上。
+    enforced = [p for p in defn.common_pitfalls if not p.advisory_only]
+    advisory = [p for p in defn.common_pitfalls if p.advisory_only]
+
+    L.append(f"{_H_ENFORCED}（{len(enforced)} 条）")
+    for p in enforced:
+        L.extend(_wrap(f"· {_prose(defn, p.text)}", indent="    "))
+        if p.enforced_by:
+            ref = _resolve_ref(defn, p.enforced_by, flag_descriptions)
+            L.extend(_wrap(f"由哪一条把关： {ref}", indent="        "))
+    L.append("")
+
+    L.append(f"{_H_ADVISORY}（{len(advisory)} 条）")
+    if not advisory:
+        L.append("    （无）")
+    for p in advisory:
+        L.extend(_wrap(f"· {_prose(defn, p.text)}", indent="    "))
+    L.append("")
+
+    # ── 依据 ──
+    L.append(_H_BASIS)
+    if not defn.standard_basis:
+        L.append("    （本定义没有声明准则依据）")
+    for b in defn.standard_basis:
+        # StandardBasis 是 dataclass，不是 dict —— 早先按 dict 取值时
+        # 整个 repr 被打进了输出，那正是这一节要消灭的东西。
+        name = getattr(b, "name", None) or str(b)
+        article = getattr(b, "article", None)
+        version = getattr(b, "version", None)
+        tail = "　".join(x for x in (article, str(version) if version else None) if x)
+        L.extend(_wrap(f"· {name}" + (f"　{tail}" if tail else ""), indent="    "))
+
+    # 标记：它们改变的是「能不能比」，不是「算不算得出」，所以单独放最后。
+    if defn.flags:
+        L.append("")
+        L.append("可比性标记（不影响算不算得出，影响能不能跨期比）")
+        for f in defn.flags:
+            desc = (flag_descriptions or {}).get(f.name)
+            L.extend(_wrap(f"· {desc or f.name}", indent="    "))
+
+    if with_appendix:
+        L.extend(render_appendix(_appendix_pairs(defn, flag_descriptions)))
+    return "\n".join(L)
