@@ -19,19 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Third-party notices
-===================
-
-This repository does not redistribute any third-party corpus or dictionary.
-
-- Financial statement data is derived from annual reports published on
-  CNINFO (http://www.cninfo.com.cn), China's statutory disclosure venue for
-  listed-company filings. Source PDFs are not committed to this repository;
-  extracted values carry the SHA-256 of the PDF they came from.
-- AKShare (https://github.com/akfamily/akshare, MIT) is used only as an
-  optional cross-check source, never as the authoritative one.
-- pdfplumber (MIT) is the PDF text/table layer. This project deliberately
-  avoids AGPL-licensed PDF components; see DECISIONS.md D-014.

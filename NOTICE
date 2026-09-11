@@ -1,0 +1,28 @@
+Third-party notices — finaudit-agent
+====================================
+
+This repository does not redistribute any third-party corpus or dictionary.
+
+Data
+----
+- Financial statement values are extracted from annual reports published on
+  CNINFO (http://www.cninfo.com.cn), China's statutory disclosure venue for
+  listed-company filings. Source PDFs are NOT committed to this repository;
+  each extracted value carries the SHA-256 of the PDF it came from, so any
+  figure can be re-derived from the public original.
+- AKShare (https://github.com/akfamily/akshare, MIT) is used only as an
+  optional cross-check source, never as the authoritative one. See
+  DECISIONS.md D-013.
+
+Libraries
+---------
+- pdfplumber (MIT) — PDF text and table extraction.
+  This project deliberately avoids AGPL-licensed PDF components; the
+  constraint is machine-enforced by scripts/verify_deps.py. See D-014.
+- PyYAML (MIT) — the only third-party import in the service runtime closure.
+
+Not included here
+-----------------
+- The Chinese financial sentiment dictionary (Jiang et al.) is referenced by
+  its own NOTICE in a separate project and is NOT distributed in this
+  repository.

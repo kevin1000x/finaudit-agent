@@ -182,4 +182,6 @@ python -m eval.verify_run --suite frozen-03  # 核查层评测
 
 ## 许可
 
-见 [`LICENSE`](LICENSE)。中文金融情感词典按其原始 NOTICE 引用，未在本仓分发。
+MIT，见 [`LICENSE`](LICENSE)。第三方数据与依赖的声明在 [`NOTICE`](NOTICE) ——
+年报 PDF 原文不进本仓，每个抽取值带着它来源 PDF 的 SHA-256，
+**任何一个数都能从公开原件重新推出来**。
