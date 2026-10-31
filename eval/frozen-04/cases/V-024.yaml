@@ -1,0 +1,31 @@
+id: V-024
+category: V3
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 三态混合 + 「个百分点」是差不是水平值。⚠️ 承继 V-010，连带承继它的限定。
+
+conclusion: |
+  贵州茅台2023年净利率50.6%，同比提升1.2个百分点，盈利能力持续增强。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 贵州茅台2023年净利率50.6%
+      verdict: AMBIGUOUS_BASIS
+      stated_text: 50.6%
+    - text: 同比提升1.2个百分点
+      verdict: NOT_COVERED
+      stated_text: 1.2个百分点
+    - text: 盈利能力持续增强
+      verdict: NOT_CHECKABLE
+  rationale: >
+    承继 V-010。第 1 条：「净利率」是 net_profit_margin_attributable 的别名，正式名是「归母净利率」⇒ 判据①命中（该定义自己把这次口径判断写成了散文）。第 2 条：「个百分点」说的是**差**，而本层只算得出某一年的水平值 ⇒ NOT_COVERED。第 3 条：没有数 ⇒ NOT_CHECKABLE。⚠️ **V-010 的限定原样继承**：它的题面出自 REPLAN-20260911 §2.1 的原例，出题人在开发中已经对那段文字跑过一次系统 ⇒ 它连 D-012 的字面都不满足，**不许把它算进「冻结前没见过输出」那一档**。保留它是因为三态混合这条覆盖不该丢，不是因为它干净。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

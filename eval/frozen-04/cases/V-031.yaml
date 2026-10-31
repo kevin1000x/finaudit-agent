@@ -1,0 +1,31 @@
+id: V-031
+category: V3
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 🔴 N-86 ③：第一道断言「这一维**不该**承接」的题。
+
+conclusion: |
+  600519 2023 年速动比率 3.67。万华化学的资产负债率 62%。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年速动比率 3.67
+      verdict: AMBIGUOUS_BASIS
+      stated_text: "3.67"
+    - text: 万华化学的资产负债率 62%
+      verdict: NOT_COVERED
+      stated_text: 62%
+      not_inherited:
+        - "600519"
+  rationale: >
+    🔴 **错误承接是这一层最危险的失效模式**（2026-09-11 独立复核抓出的三个 P0 全是它），而冻结题集里此前**一道都没有**反向判据 —— inherited 只能声明「该承接」。第 2 条自己写了主体（万华化学）、没写期间 ⇒ **期间该承，主体绝不能承**。承错了，报告会拿茅台的数去否定一条关于万华化学的声明，还印一句「承自前一句」当作交代 —— 一个看起来完全正常的错判定。判定是 NOT_COVERED（万华化学 2023 不在覆盖面里，与 V-022 同）；而这一题真正钉住的是 not_inherited：报告里的承接说明**不许出现 600519**。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

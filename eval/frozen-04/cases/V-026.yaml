@@ -1,0 +1,29 @@
+id: V-026
+category: V3
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 顿号不切 + 从一句不可核的话里捡上下文。承继 V-012，第 2 条标准答案已改正。
+
+conclusion: |
+  600519 2023 年的营业收入、营业成本都在增长，速动比率 3.67。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年的营业收入、营业成本都在增长
+      verdict: NOT_CHECKABLE
+    - text: 速动比率 3.67
+      verdict: AMBIGUOUS_BASIS
+      stated_text: "3.67"
+      inherited: "600519/2023"
+  rationale: >
+    ① 顿号不切 —— 「营业收入、营业成本」是一条声明的两个主语，切开会造出两条谁都不完整的碎片；② 🔴 主体与期间写在**一句不可核的话**里，也必须捡起来给后面用：捡不起来，第二条会被说成「核不了」，而那是**错的**不是保守。🔴 第 2 条的标准答案由 CONSISTENT 改为 AMBIGUOUS_BASIS，理由与 V-017 同（V-012 因此一并作废）。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

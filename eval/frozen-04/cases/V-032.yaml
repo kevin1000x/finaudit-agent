@@ -1,0 +1,25 @@
+id: V-032
+category: V2
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 比年度更细的期间 ⇒ 不核。整句的性质，与句子里有几个数无关。
+
+conclusion: |
+  600519 2023 年第 4 季度速动比率 3.67。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年第 4 季度速动比率 3.67
+      verdict: NOT_COVERED
+  rationale: >
+    20 份口径定义全部是年度口径（period_type: annual），拿一个全年的数去核一条季度声明会判出一个看起来正常的错结论 ⇒ 不核。⚠️ **这一题刻意不声明 stated_text**：这句话里「第 4 季度」的那个 4 排在 3.67 前面，于是本层抽出来的数是季度序号而不是 3.67（frozen-03 的 FREEZE.md §限定 4 记的就是这个实例）。判定不依赖它 —— 比年度更细的期间这一条排在 _judge 的最前面，是整句的性质。把那个 4 写进冻结期望会把一个**待改的行为**钉成标准答案；要钉它，钉在单测里。⇒ 本题只断言「不核」这一件事，并在这里把那个已知缺陷写下来，而不是假装它不存在。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

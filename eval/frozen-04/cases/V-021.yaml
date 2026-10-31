@@ -1,0 +1,26 @@
+id: V-021
+category: V2
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 🔴 只有判据①命中：别名比正式名更具体，而该指标的口径不是一次选择。
+
+conclusion: |
+  600519 2023 年销售毛利率 91.96%。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年销售毛利率 91.96%
+      verdict: AMBIGUOUS_BASIS
+      stated_text: 91.96%
+  rationale: >
+    承继 V-007。「销售毛利率」是 gross_profit_margin 的别名，正式名是「毛利率」⇒ 判据①命中。gross_profit_margin 在 _basis_choice 里是 **false**（它的散文里「不可比」全部是跨年度的 —— 财会〔2018〕15 号运输费重分类），所以判据②不命中。⇒ 这一题证明判据①**没有被 D-045 顶替掉**，它仍然是并联的一支。⚠️ 同时如实承认 N-84 指出的那个别扭：更具体的「销售毛利率」被标，而更不具体的「毛利率」（V-025 第 1 条）不标。判据①测的本来就是「用户打的字跟正式名不一样」，这是它的性质，不是这一题的缺陷。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

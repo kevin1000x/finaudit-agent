@@ -1,0 +1,26 @@
+id: V-019
+category: V2
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 不一致：流动比率真值 4.62，声明 2.10。
+
+conclusion: |
+  600519 2023 年流动比率 2.10。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年流动比率 2.10
+      verdict: INCONSISTENT
+      stated_text: "2.10"
+  rationale: >
+    承继 V-005。COMPUTED-VALUES §1.2 = 4.623892443179299031292014007，声明 2.10，容差 0.005 ⇒ 不一致。**流动比率不在 _basis_choice 的 true 里**（该定义的散文只有取数纪律与时点纪律，没有「同名另一口径不可比」的陈述）⇒ 这一题的判定不受 D-045 影响，它正是「改了判据之后还必须判得出不一致」的那一侧。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

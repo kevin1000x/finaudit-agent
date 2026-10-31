@@ -1,0 +1,26 @@
+id: V-029
+category: V2
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 🔴 「亿元」折算 + 容差边缘，一致侧。接替 V-004 的那份覆盖。
+
+conclusion: |
+  600519 2023 年营运资金 1,764.7491 亿元。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年营运资金 1,764.7491 亿元
+      verdict: CONSISTENT
+      stated_text: 1,764.7491 亿元
+  rationale: >
+    考三件事：「亿元」折算、**逗号分组**（1,764.7491 不许被切成 1 与 764.7491）、以及容差由声明精度自己定义。COMPUTED-VALUES §1.4 = 176,474,906,320.08 元；「1,764.7491 亿元」= 176,474,910,000，末位在 1e-4 亿 ⇒ 容差 = 半个末位 = 5,000，差 3,679.92 < 5,000 ⇒ 一致。**刻意压在容差的 73.6% 上**：容差规则若被改成拍一个固定 1e-6，这一题当场翻红。选 net_working_capital 是因为它在 _basis_choice 里是 false（散文里只有取数纪律与单位携带），于是「有量纲 + 容差边缘」这条覆盖不再与口径判据纠缠。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

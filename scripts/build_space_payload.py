@@ -190,9 +190,37 @@ def sweep(dest: Path) -> list[str]:
     return findings
 
 
+#: 用法行。**从模块 docstring 现读**，不另抄一份（同 `COPY` 清单那条理由）。
+USAGE = ".venv/Scripts/python scripts/build_space_payload.py <输出目录>"
+
+
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        print(__doc__.strip().splitlines()[-3].strip())
+    """🔴 **第一个位置参数是输出目录，所以不认的选项必须当场拒绝**（`N-88`）。
+
+    2026-09-11 实地发生过一次：`python scripts/build_space_payload.py --help`
+    —— 本脚本当时没有 `--help`，于是它把一整份 58 文件 / 830 KB 的载荷
+    **写进了一个名叫 `--help` 的目录**，一声不吭，还被下一条提交带进了仓库
+    （已删，`494d101`）。内容本身无害（那份载荷过了七类清扫），
+    但形状正是本仓反复栽的那一种：**一个看起来完全正常的成功**
+    —— 脚本打印了「可以推」，而人以为它在解释用法。
+
+    ⇒ 不接 `argparse`：这个脚本只有一个位置参数，接一个框架是为一行判据
+    引入一层。判据写死两条：参数个数不对、或者它以 `-` 开头 ⇒ 打印用法并退 2，
+    **一个字节都不许写**。`--help` / `-h` 同样走这条路（退 0，它是正当请求）。
+    """
+    if len(argv) == 2 and argv[1] in ("-h", "--help"):
+        print("用法：" + USAGE)
+        print("退出码 0 = 可以推；1 = 有发现，别推；2 = 参数不对，什么都没写。")
+        return 0
+    if len(argv) != 2 or argv[1].startswith("-"):
+        print("用法：" + USAGE, file=sys.stderr)
+        if len(argv) == 2:
+            print(
+                "🔴 拒绝把 " + argv[1] + " 当成输出目录 —— 它看起来是一个选项。"
+                "本脚本的第一个位置参数就是输出目录，而 2026-09-11 它真的"
+                "往一个名叫 `--help` 的目录里写了 58 个文件（`N-88`）。",
+                file=sys.stderr,
+            )
         return 2
     dest = Path(argv[1]).resolve()
     written = compose(dest)

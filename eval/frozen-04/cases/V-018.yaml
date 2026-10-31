@@ -1,0 +1,26 @@
+id: V-018
+category: V2
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 🔴 承继 V-004 并改正标准答案：自由现金流「常见变体至少有四种」。
+
+conclusion: |
+  600519 2023 年自由现金流 639.73 亿元。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年自由现金流 639.73 亿元
+      verdict: AMBIGUOUS_BASIS
+      stated_text: 639.73 亿元
+  rationale: >
+    🔴 V-004 的标准答案写的是 CONSISTENT，而 metrics/free_cash_flow.yaml 自己写着「**本指标无准则定义，跨来源不可比**…常见变体至少有四种，结果差异可达数倍」。一个口径差异可达数倍的指标，用户没说是哪一种时判「一致」，是把一次系统替他做的选择藏起来 ⇒ 按 D-012 修订二作废（构造错误）。⚠️ **V-004 原先承载的「亿元折算 + 容差边缘」已经移到 V-029 / V-030**（营运资金，口径不是一次选择），覆盖面没有因为这次作废而缺口。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

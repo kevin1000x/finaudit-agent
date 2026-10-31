@@ -138,7 +138,13 @@ def _verdicts(rep):
 
 
 def test_可核且一致(registry, source):
-    rep = read_input("600519 在 2023 年的资产负债率为 17.98%。", registry, source=source)
+    """⚠️ 靶子由「资产负债率」换成「毛利率」（`D-045`）。
+
+    `debt_to_asset_ratio` 的口径是一次选择（定义自己写着「与做了调整的口径
+    不可直接比较」）⇒ 它现在一律判「口径未声明」，拿它考「一致」考不到。
+    换的是靶子，**不是放宽期望** —— 「一致」这一态仍然必须真的走通。
+    """
+    rep = read_input("600519 在 2023 年的毛利率为 91.96%。", registry, source=source)
     assert _verdicts(rep) == [Verdict.CONSISTENT]
 
 
@@ -173,7 +179,7 @@ def test_五态全部可达(registry, source):
     """一个永远不会出现的判定与不存在的判定没有区别 —— 逐个走通。"""
     到过 = set()
     for text in (
-        "600519 在 2023 年的资产负债率为 17.98%。",
+        "600519 在 2023 年的毛利率为 91.96%。",   # `D-045`：换靶子，见 test_可核且一致
         "贵州茅台 2023 年归母净利率是 0.4525。",
         "贵州茅台 2023 年净利率 50.6%。",
         "000651 在 2023 年的资产负债率为 55%。",
@@ -270,21 +276,23 @@ def test_每条可核声明后面挂的是_render_answer_的逐字输出(registr
 
 
 def test_计数五个键恒在(registry, source):
-    got = read_input("600519 在 2023 年的资产负债率为 17.98%。", registry, source=source)
+    # `D-045`：换靶子，见 test_可核且一致
+    got = read_input("600519 在 2023 年的毛利率为 91.96%。", registry, source=source)
     assert set(got.counts()) == {v.name for v in Verdict}
     assert got.counts()["CONSISTENT"] == 1
     assert got.counts()["NOT_CHECKABLE"] == 0
 
 
 def test_序列化带上判定与它的含义(registry, source):
+    # `D-045`：换靶子，见 test_可核且一致
     d = read_input(
-        "600519 在 2023 年的资产负债率为 17.98%。", registry, source=source
+        "600519 在 2023 年的毛利率为 91.96%。", registry, source=source
     ).to_dict()
     claim = d["claims"][0]
     assert claim["verdict"] == "CONSISTENT"
     assert claim["verdict_meaning"]
     # 用户写的那个数原样带回去 —— 它是被判定的对象，读者要能看见判的是哪个数。
-    assert claim["stated_text"] == "17.98%"
+    assert claim["stated_text"] == "91.96%"
 
 
 # --------------------------------------------------------------------------
@@ -340,8 +348,9 @@ def test_用户文本不进任何缓存键(registry, source):
 
 def test_用户写的数不进取数只进比较(registry, source):
     """同一个问句，带不带那个数，系统算出来的必须是同一个数。"""
-    带 = read_input("600519 在 2023 年的资产负债率为 99%。", registry, source=source)
-    不带 = read_input("600519 在 2023 年的资产负债率是多少", registry, source=source)
+    # `D-045`：换靶子，见 test_可核且一致。换掉之后这一条才还考得到「不一致」。
+    带 = read_input("600519 在 2023 年的毛利率为 99%。", registry, source=source)
+    不带 = read_input("600519 在 2023 年的毛利率是多少", registry, source=source)
     assert 带.claims[0].answer.value == 不带.answer.value
     # 而判定当然不同 —— 99% 是错的。
     assert 带.claims[0].verdict is Verdict.INCONSISTENT
@@ -550,8 +559,12 @@ def test_后面的句子自己写了别的公司时主体不被覆盖(registry, 
     )
     第二条 = rep.claims[1]
     assert 第二条.inherited is None
-    # 万华化学 2019 的真值是 0.5465，不是茅台的 0.1798。
-    assert 第二条.verdict is Verdict.INCONSISTENT
+    # 🔴 万华化学 2019 的真值是 0.5465，不是茅台的 0.1798。
+    #    `D-045` 之后这一条的判定是「口径未声明」（资产负债率的口径是一次选择），
+    #    **而这一题考的不是判定，是「拿谁的数去比的」** ⇒ 判据下沉到取数本身：
+    #    直接断言 answer.value 就是万华的那个数。比原来那条断言更紧，不是更松。
+    assert 第二条.verdict is Verdict.AMBIGUOUS_BASIS
+    assert str(第二条.answer.value).startswith("0.5464")
     assert "0.5464" in 第二条.reason
 
 
@@ -714,3 +727,131 @@ def test_核不了不用红叉(registry, source):
         read_input("000651 2023 年流动比率 1.05。", registry, source=source), registry
     )
     assert "❌" not in 页
+
+
+# --------------------------------------------------------------------------
+# `D-045`：口径未声明的第二条判据（`N-84`）
+# --------------------------------------------------------------------------
+
+
+def test_正式名也定不下口径时判口径未声明(registry, source):
+    """🔴 `N-84` 的那个缺陷本身：`速动比率` 是**正式名**，原先 20/20 不触发。
+
+    原判据只看「别名 ≠ 正式名」，于是定义自己写着「两套算法的结果不可直接比较」
+    的指标，用户写出它的正式名就被判「一致」—— 把一次系统替他做的口径选择藏起来。
+    """
+    rep = read_input("600519 2023 年速动比率 3.67。", registry, source=source)
+    assert _verdicts(rep) == [Verdict.AMBIGUOUS_BASIS]
+    理由 = rep.claims[0].reason
+    assert "这个名字本身定不下口径" in 理由
+    # 🔴 **数字对得上这件事不许消失** —— 换的是判定，不是把信息藏起来。
+    assert "对得上" in 理由
+    assert "跨来源引用速动比率前须确认对方口径" in 理由
+
+
+def test_口径不是一次选择的指标仍然判得出一致(registry, source):
+    """反方向。把 20 份全标成「口径未声明」的改法会在这里红。"""
+    rep = read_input("600519 2023 年毛利率 91.96%。", registry, source=source)
+    assert _verdicts(rep) == [Verdict.CONSISTENT]
+
+
+def test_口径不是一次选择的指标仍然判得出不一致(registry, source):
+    rep = read_input("600519 2023 年流动比率 2.10。", registry, source=source)
+    assert _verdicts(rep) == [Verdict.INCONSISTENT]
+
+
+def test_两条判据并联而不是互相顶替(registry, source):
+    """`负债率` 同时命中两条（别名 ≠ 正式名；且该指标口径本身是一次选择）。
+
+    ⚠️ 判定只有一个，而**两句理由都要印出来** —— 读者要看得出是哪一条让它被标的。
+    """
+    rep = read_input("600519 2023 年负债率 17.98%。", registry, source=source)
+    assert _verdicts(rep) == [Verdict.AMBIGUOUS_BASIS]
+    理由 = rep.claims[0].reason
+    assert "这个名字本身定不下口径" in 理由
+    assert "而它不带口径限定" in 理由
+
+
+def test_只命中别名那一条时理由里不出现另一条(registry, source):
+    """`销售毛利率`：别名比正式名更具体，而 `gross_profit_margin` 是 false。"""
+    rep = read_input("600519 2023 年销售毛利率 91.96%。", registry, source=source)
+    assert _verdicts(rep) == [Verdict.AMBIGUOUS_BASIS]
+    理由 = rep.claims[0].reason
+    assert "而它不带口径限定" in 理由
+    assert "这个名字本身定不下口径" not in 理由
+
+
+def test_变动判据排在口径判据之前(registry, source):
+    """`资产负债率` 是 true，但「同比下降…个百分点」说的是**差**。
+
+    顺序反过来的后果：一条本该说「我只算得出水平值」的声明，
+    会被说成「口径未声明」—— 一句答非所问的真话。
+    """
+    rep = read_input(
+        "600519 2023 年资产负债率同比下降 0.5 个百分点。", registry, source=source
+    )
+    assert _verdicts(rep) == [Verdict.NOT_COVERED]
+
+
+def test_表被拿掉时核查层退回改之前的行为(registry, source, monkeypatch):
+    """造回归：把口径选择表清空，`速动比率` 应当又变成「一致」。
+
+    这一条钉住的是「这张表真的在决定判定」，而不是碰巧。
+    ⚠️ 它同时说明缺表是**静默**退化 —— 守表在不在的是
+    `tests/test_basis_choice.py` 那条「20 份一个不多一个不少」。
+    """
+    from semantic_layer.basis_choice import BasisChoiceTable
+
+    monkeypatch.setattr(registry, "basis_choice", BasisChoiceTable(entries={}))
+    rep = read_input("600519 2023 年速动比率 3.67。", registry, source=source)
+    assert _verdicts(rep) == [Verdict.CONSISTENT]
+
+
+# --------------------------------------------------------------------------
+# `N-89`：夹在数字之间的半角逗号是千分位，不是断句
+# --------------------------------------------------------------------------
+
+
+def test_千分位逗号不断句():
+    """🔴 原来 `1,764.7491` 被切成两段，前一段拿 `1` 去核营运资金。
+
+    `_NUMBER` 为千分位专门写了一条规则，而**它在生产路径上从来没被走到过** ——
+    切分排在它前面。注释与事实对不上。
+    """
+    assert split_segments("600519 2023 年营运资金 1,764.7491 亿元") == [
+        "600519 2023 年营运资金 1,764.7491 亿元"
+    ]
+
+
+def test_半角逗号在别处照样断句():
+    """判据只看标点：半角逗号**两侧都是数字**时才不是断句符。"""
+    assert split_segments("甲,乙") == ["甲", "乙"]
+    assert split_segments("速动比率 3.67,毛利率 91.96%") == [
+        "速动比率 3.67",
+        "毛利率 91.96%",
+    ]
+    assert split_segments("甲。乙；丙，丁") == ["甲", "乙", "丙", "丁"]
+
+
+def test_千分位金额核得出一致(registry, source):
+    """端到端：带千分位的金额不再被判成一个理直气壮的「不一致」。"""
+    rep = read_input(
+        "600519 2023 年营运资金 1,764.7491 亿元。", registry, source=source
+    )
+    assert _verdicts(rep) == [Verdict.CONSISTENT]
+    assert rep.claims[0].stated.text == "1,764.7491 亿元"
+
+
+def test_并列的两个数不再被切开各判一次(registry, source):
+    """顺带堵住的同形坑：`分别是 1,2` 原先被切成两段、两个数各自判一次。
+
+    而 `numbers_in()` 抬头写死了「一句话里剩下两个数时不挑一个」。
+    """
+    assert split_segments("600519 2023 年流动比率分别是 4.5,5.0") == [
+        "600519 2023 年流动比率分别是 4.5,5.0"
+    ]
+    rep = read_input(
+        "600519 2023 年流动比率分别是 4.5,5.0。", registry, source=source
+    )
+    assert _verdicts(rep) == [Verdict.NOT_COVERED]
+    assert "不止一个数" in rep.claims[0].reason

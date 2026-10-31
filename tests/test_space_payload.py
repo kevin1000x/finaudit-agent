@@ -172,3 +172,38 @@ def test_真仓库当前推得出去(载荷):
     assert bsp.check_shape(载荷) == []
     assert bsp.sweep(载荷) == []
     assert len(list(载荷.rglob("*.py"))) > 20
+
+
+# --------------------------------------------------------------------------
+# `N-88`：第一个位置参数是输出目录，所以不认的选项必须当场拒绝
+# --------------------------------------------------------------------------
+
+
+def test_传一个选项当输出目录必须拒绝且一个字节都不写(tmp_path, monkeypatch, capsys):
+    """🔴 造回归：这件事 2026-09-11 真的发生过。
+
+    `python scripts/build_space_payload.py --help` 当时把一整份
+    58 文件 / 830 KB 的载荷写进了一个名叫 `--help` 的目录，**一声不吭**，
+    还被下一条提交带进了仓库（已删，`494d101`）。
+    这里把判据钉死：退 2、**且 cwd 下一个新目录都不许出现**。
+    """
+    monkeypatch.chdir(tmp_path)
+    之前 = set(p.name for p in tmp_path.iterdir())
+
+    assert bsp.main(["build_space_payload.py", "--help"]) == 0  # 它是正当请求
+    assert bsp.main(["build_space_payload.py", "--推一下"]) == 2
+    assert bsp.main(["build_space_payload.py", "-o"]) == 2
+    assert bsp.main(["build_space_payload.py"]) == 2
+    assert bsp.main(["build_space_payload.py", "a", "b"]) == 2
+
+    之后 = set(p.name for p in tmp_path.iterdir())
+    assert 之后 == 之前, f"什么都不该写，却多出了 {之后 - 之前}"
+    assert "--help" not in 之后
+
+    说了用法 = capsys.readouterr()
+    assert "用法" in 说了用法.out + 说了用法.err
+
+
+def test_用法行只有一份():
+    """用法行从模块 docstring 现读，不另抄 —— 抄一份就有了第二份真相。"""
+    assert bsp.USAGE in bsp.__doc__

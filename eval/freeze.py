@@ -71,6 +71,11 @@ def _check_closed_verdicts() -> list:
     return []
 
 
+def _squeeze(text) -> str:
+    """去掉全部空白再比。题面里的换行与缩进不该参与「这句话在不在里面」。"""
+    return "".join(str(text or "").split())
+
+
 def _pregate_verify_case(path, case: dict) -> list:
     """一份核查题面的前置门禁。"""
     problems: list[str] = []
@@ -120,6 +125,70 @@ def _pregate_verify_case(path, case: dict) -> list:
             problems.append(
                 f"{path.name}：claims[{i}].verdict {verdict!r} 不在五态封闭集里"
             )
+
+        # 🔴 **`stated_text` 必须真的出自这一条声明**（`N-86` ②）。
+        #    与上面那条「切分必须真的切得出来」同一条原理：抽不出来的期望
+        #    是一个永远不可能命中的期望，那种题不是难，是坏。
+        if "stated_text" in claim:
+            st = claim.get("stated_text")
+            if not st or not isinstance(st, str):
+                problems.append(f"{path.name}：claims[{i}].stated_text 要是非空字符串")
+            elif _squeeze(st) not in _squeeze(text):
+                problems.append(
+                    f"{path.name}：claims[{i}].stated_text {st!r} 不在这一条声明"
+                    f"「{text}」里 —— 抽不出来的期望永远不可能命中"
+                )
+
+        # 承接的两种声明形式：`inherited: "代码/年份"`（正向）与
+        # `inherited: false` / `not_inherited: [...]`（反向，`N-86` ③）。
+        inh = claim.get("inherited")
+        if isinstance(inh, str) and inh and len(inh.split("/")) != 2:
+            problems.append(
+                f"{path.name}：claims[{i}].inherited 要写成「代码/年份」，得到 {inh!r}"
+            )
+        ni = claim.get("not_inherited")
+        if ni is not None:
+            if not isinstance(ni, list) or not ni or any(not str(x).strip() for x in ni):
+                problems.append(
+                    f"{path.name}：claims[{i}].not_inherited 要是一个非空字符串列表"
+                )
+
+    # 读成提问时可以声明答案内容（`N-86` ①）。**声明了就必须是真实存在的指标** ——
+    # 期望里引用一个不存在的 metric_id 与 C2 靶子是软柿子属于同一类构造错误。
+    want_answer = expected.get("answer")
+    if want_answer is not None:
+        if read_as != "QUESTION":
+            problems.append(
+                f"{path.name}：expected.answer 只在 read_as 是 QUESTION 时有意义"
+            )
+        if not isinstance(want_answer, dict) or not want_answer:
+            problems.append(f"{path.name}：expected.answer 要是一个非空映射")
+        else:
+            未知 = sorted(set(want_answer) - {"metric_id", "value"})
+            if 未知:
+                problems.append(
+                    f"{path.name}：expected.answer 里有判分器不认的键：{未知}"
+                )
+            # 🔴 **取值必须写成带引号的字符串。**
+            #    不加引号时 YAML 会把 `3.670351116817004026158851655` 读成 float，
+            #    **静默截成 17 位**，而判分器比的是 `str(Decimal)` 的全位 ——
+            #    于是那条期望**永远不可能命中**，和「切不出来的切分」是同一类坏题。
+            #    2026-10-31 实地发生过一次：frozen-04 的第一次冻结因此被整批丢弃重做。
+            if "value" in want_answer and not isinstance(want_answer["value"], str):
+                problems.append(
+                    f"{path.name}：expected.answer.value 必须写成带引号的字符串，"
+                    f"得到 {type(want_answer['value']).__name__} "
+                    f"{want_answer['value']!r} —— 不加引号 YAML 会读成 float 并"
+                    "静默丢精度，那条期望永远不可能命中"
+                )
+            mid = want_answer.get("metric_id")
+            if mid:
+                from semantic_layer.resolve import Refusal
+
+                if isinstance(_registry().resolve(str(mid)), Refusal):
+                    problems.append(
+                        f"{path.name}：expected.answer.metric_id {mid!r} 在 metrics/ 中不存在"
+                    )
     return problems
 
 

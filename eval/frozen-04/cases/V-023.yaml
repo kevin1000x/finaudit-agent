@@ -1,0 +1,26 @@
+id: V-023
+category: V2
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 数据不覆盖：整家公司都不在覆盖面里。
+
+conclusion: |
+  000651 2023 年流动比率 1.05。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 000651 2023 年流动比率 1.05
+      verdict: NOT_COVERED
+      stated_text: "1.05"
+  rationale: >
+    承继 V-009。000651 不在覆盖面里 ⇒ NOT_COVERED。与 V-022 是两件事（「没有这家公司」vs「这家公司没有这一年」），reason 必须分得开 —— 封闭集里它们共用一格，区分由 reason 承担（见 Verdict.NOT_COVERED 的注释）。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

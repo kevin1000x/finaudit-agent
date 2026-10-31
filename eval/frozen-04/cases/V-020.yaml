@@ -1,0 +1,26 @@
+id: V-020
+category: V2
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 口径未声明：两条判据同时命中（别名「负债率」≠ 正式名；且该指标口径本身是一次选择）。
+
+conclusion: |
+  600519 2023 年负债率 17.98%。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年负债率 17.98%
+      verdict: AMBIGUOUS_BASIS
+      stated_text: 17.98%
+  rationale: >
+    承继 V-006。「负债率」是 debt_to_asset_ratio 的别名，正式名是「资产负债率」⇒ 判据①（别名 ≠ 正式名）命中。D-045 之后判据②也命中：该定义自己写着「与做了调整的口径不可直接比较」（永续债）、「母公司资产负债率与合并口径可差数十个百分点」。**两条并联只会得到同一个判定**，这一题钉的就是这件事 —— 补一条判据不许改变已经对的那些。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

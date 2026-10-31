@@ -1,0 +1,27 @@
+id: V-016
+category: V1
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 不带问号也该读成提问 —— 判据只有「有没有那个数」。
+
+conclusion: |
+  600519 2023 年的期间费用率是多少
+
+expected:
+  read_as: QUESTION
+  refused: false
+  answer:
+    metric_id: period_expense_ratio
+  claims:
+    []
+  rationale: >
+    不带问号也该读成提问：判据只有一条，就是有没有一个没被主体/期间消耗掉的数值（D-041 §1），不靠标点、也不靠疑问词。承继 V-002 并补上答案内容（N-86 ①）。🔴 **本题只断言指标，刻意不断言取值**：COMPUTED-VALUES §1.7 记的是 `0.08523388089246972163777`（23 位），而引擎的 Decimal 上下文带 28 位有效数字 —— 前者是后者的**截断**。拿一个被截断的记录去做逐字相等断言，得到的是一条永远不可能命中的期望；而改成抄引擎打出来的那串数字，就是拿系统输出当标准答案（`D-012` 禁的正是这个）。⇒ 全位取值的断言放在 V-015（那一处签署记录与引擎逐位相同），这里只钉指标。COMPUTED-VALUES §1.7 的截断本身已记进台账（`N-90`）。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

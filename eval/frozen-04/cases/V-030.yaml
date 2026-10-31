@@ -1,0 +1,26 @@
+id: V-030
+category: V2
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 🔴 同一处容差边缘的**另一侧**：末位差一个单位就该翻成不一致。
+
+conclusion: |
+  600519 2023 年营运资金 1,764.7490 亿元。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年营运资金 1,764.7490 亿元
+      verdict: INCONSISTENT
+      stated_text: 1,764.7490 亿元
+  rationale: >
+    与 V-029 只差末位一个单位：「1,764.7490 亿元」= 176,474,900,000，容差仍是 5,000，而差 6,320.08 > 5,000 ⇒ 不一致。🔴 **一道边缘题只考一侧等于没考边缘** —— 把容差放大十倍，V-029 照样绿，只有这一题会红。⚠️ 它同时钉住「末尾的 0 是有效精度」：Decimal 的末位在 1e-4，若实现把尾零丢掉，容差会变成 5e4，这一题也会红。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

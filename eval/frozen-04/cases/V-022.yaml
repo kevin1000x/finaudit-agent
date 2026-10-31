@@ -1,0 +1,26 @@
+id: V-022
+category: V2
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 数据不覆盖：这家公司有，这一年没有。
+
+conclusion: |
+  万华化学 2023 年资产负债率 62%。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 万华化学 2023 年资产负债率 62%
+      verdict: NOT_COVERED
+      stated_text: 62%
+  rationale: >
+    承继 V-008。万华化学在覆盖面里（2019 年），2023 年不在 ⇒ 取不到数 ⇒ NOT_COVERED。「核不了」是正当输出不是失败（D-041 §3）。⚠️ 这一条的判定**先于**口径判据：拿不到数时谈口径没有意义，所以 D-045 不改变它。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

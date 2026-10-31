@@ -13,11 +13,16 @@ fail-closed 贯穿全模块：
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
 from . import dsl
+from .basis_choice import (
+    DEFAULT_BASIS_CHOICE_FILENAME,
+    BasisChoiceTable,
+    load_basis_choices,
+)
 from .definition import MetricDefinition, iter_definition_paths, load_definition
 from .validate import validate_definition
 from .vocabulary import Vocabulary, load_vocabulary
@@ -92,6 +97,10 @@ class Registry:
     definitions: dict
     by_alias: dict
     vocabulary: Vocabulary
+    #: 「这个指标的正式名够不够确定口径」（`N-84` / `D-045`）。
+    #: 缺表时是空表（全部按 `false`）—— 守它在不在的是
+    #: `tests/test_basis_choice.py` 那条「20 份一个不多一个不少」，不是这里。
+    basis_choice: BasisChoiceTable = field(default_factory=lambda: BasisChoiceTable({}))
 
     @classmethod
     def load(
@@ -141,7 +150,14 @@ class Registry:
             Path(vocabulary_path) if vocabulary_path else Path(metrics_dir) / "_flags.yaml"
         )
         vocab = load_vocabulary(vocab_path) if Path(vocab_path).is_file() else Vocabulary(0, {})
-        return cls(definitions=definitions, by_alias=by_alias, vocabulary=vocab)
+        # 口径选择表同理：**路径跟着 `metrics_dir` 走，不跟着 cwd 走**（上面那段的教训）。
+        basis = load_basis_choices(Path(metrics_dir) / DEFAULT_BASIS_CHOICE_FILENAME)
+        return cls(
+            definitions=definitions,
+            by_alias=by_alias,
+            vocabulary=vocab,
+            basis_choice=basis,
+        )
 
     def resolve(self, name: str) -> MetricDefinition | Refusal:
         """精确 metric_id → 别名 → 拒答。命中后先校验合规，不合规不许被消费。"""

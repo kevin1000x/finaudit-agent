@@ -11,14 +11,21 @@ cd docs/agent/poc-01 && sha256sum -c SHA256SUMS
 # 评测（Phase 1 起可用）
 python -m eval.run --suite frozen-01 --report reports/
 
-# 核查层评测（frozen-03，D-041 §5）。冻结校验与上面那条共用同一份实现。
-python -m eval.freeze --suite frozen-03 --check   # 只跑前置门禁
-python -m eval.verify_run --suite frozen-03       # 冻结校验 + 判分
+# 核查层评测（frozen-04，D-041 §5 / D-045）。冻结校验与上面那条共用同一份实现。
+python -m eval.freeze --suite frozen-04 --check   # 只跑前置门禁
+python -m eval.verify_run --suite frozen-04       # 冻结校验 + 判分
+
+# 🔴 frozen-03 已整批作废（D-045；3/14 = 21.4% > D-012 修订三的 10% 上限）
+#    这一条退 3 并拒绝判分 —— 它不是坏了，是**不许再报分数**
+python -m eval.verify_run --suite frozen-03
 ```
 
-⚠️ **引用 `frozen-03` 的读数时必须一并抄出 `model_wired`**：为 `false` 时那是
+⚠️ **引用 `frozen-04` 的读数时必须一并抄出 `model_wired`**：为 `false` 时那是
 「关掉说法归一之后」的分数，不是线上那套系统的分数（`N-78`）。
-⚠️ 它是**回归不是检验** —— 出题人就是写实现的人，限定见 `eval/frozen-03/FREEZE.md` §限定。
+⚠️ 它是**回归不是检验** —— 出题人就是写实现的人，限定见 `eval/frozen-04/FREEZE.md` §限定。
+⚠️ **不要去跑 `frozen-03` 再引用它的数**：那一批里有三题的标准答案与定义语料矛盾，
+作废逐条在 `eval/frozen-03/VOIDED.yaml`。它的 14 份题面**一个字节都不许改**
+（哈希仍在 CI 的冻结校验里），因为它是一份历史记录。
 
 （评测命令在 Phase 1 实现前不存在，不要假装跑过。）
 

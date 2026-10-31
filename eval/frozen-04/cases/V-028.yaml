@@ -1,0 +1,26 @@
+id: V-028
+category: V2
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 变动幅度：写的是 %，说的是差。
+
+conclusion: |
+  600519 2023 年资产负债率同比下降 0.5 个百分点。
+
+expected:
+  read_as: STATEMENT
+  claims:
+    - text: 600519 2023 年资产负债率同比下降 0.5 个百分点
+      verdict: NOT_COVERED
+      stated_text: 0.5 个百分点
+  rationale: >
+    承继 V-014。「同比下降…个百分点」说的是两年之**差**，而本层只算得出某一年的水平值。拿 0.005 去跟 0.1798 比会判出一个理直气壮的「不一致」，而用户那句话可能完全正确 ⇒ 不比。⚠️ 这一条的判定**先于**口径判据（_judge 里 _DELTA_UNITS 那一段排在前面），所以 D-045 把 debt_to_asset_ratio 标成 true 之后它仍然是 NOT_COVERED —— 这一题钉的就是这个顺序。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact

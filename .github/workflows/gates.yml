@@ -73,6 +73,7 @@ jobs:
           cd eval/frozen-01 && sha256sum -c SHA256SUMS \
             && cd ../frozen-02 && sha256sum -c SHA256SUMS \
             && cd ../frozen-03 && sha256sum -c SHA256SUMS \
+            && cd ../frozen-04 && sha256sum -c SHA256SUMS \
             && cd ../../docs/agent/poc-01 && sha256sum -c SHA256SUMS
 
   # ---------------------------------------------------------------

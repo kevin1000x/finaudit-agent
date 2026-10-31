@@ -1,0 +1,25 @@
+id: V-027
+category: V3
+frozen_at: "2026-10-31T13:58:21Z"
+
+# 整段一个数都没有 ⇒ 读成提问 ⇒ 走问答路径 ⇒ 拒答。
+
+conclusion: |
+  贵州茅台的品牌护城河很深，盈利能力持续增强。
+
+expected:
+  read_as: QUESTION
+  refused: true
+  claims:
+    []
+  rationale: >
+    承继 V-013。整段一个数都没有 ⇒ 读成提问 ⇒ 走问答路径 ⇒ 拒答。**不许因为「它显然是个观点」就自作主张读成待核声明**：判据只有一条，就是有没有那个数（D-041 §1）。⚠️ 这一题**刻意不声明 expected.answer**：拒答码的取值域随 D-022 / D-025 扩张过两次，把具体哪一支钉进冻结题会在下一次扩张时变成一道与系统质量无关的红灯。要钉拒答码，钉在单测里（那里改得动），不钉在冻结集里（那里改不动）。
+
+required_evidence:
+  - read_as
+  - claim_segmentation
+  - verdict_reason
+
+judging:
+  segmentation: exact
+  verdicts: exact
