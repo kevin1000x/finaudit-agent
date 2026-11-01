@@ -713,3 +713,87 @@ def test_真实年报文件里没有这一行时不许报出它的公司名与�
     assert "贵州茅台" not in miss.batch_id
     assert "a" * 16 not in miss.batch_id, "别家年报的 PDF 指纹不许出现"
     assert "没有 000651/2023 这一行" in miss.batch_id
+
+
+# ── 取数出处：年报第几页、哪一列（2026-11-01） ─────────────────────────────
+#
+# 🔴 README 写着证据链里有「合并资产负债表第几页、哪一列」，而页面上一个页码都没有。
+#    页码与列头一直在 `data/extracted/*.yaml` 的 `provenance` 里，只是没有任何代码
+#    把它带到页面上 —— 与 `G1` 同一课：「数据在」与「复核者看得到」是两件事。
+
+REAL = REPO / "data" / "extracted" / "600519_2023.yaml"
+
+
+def _section(page: str, title: str) -> str:
+    """页面里某一节的正文，去掉折行带来的空白 —— 折行可能把「第 59 页」劈开。"""
+    body = page.split(title, 1)[1].split("\n\n", 1)[0]
+    return "".join(body.split())
+
+
+def test_真实年报的每个输入都带页码与列头(registry):
+    a = answer_question("600519 2023 年的资产负债率是多少？", registry, source=FixtureSource(REAL))
+    assert not a.refused
+    assert a.inputs, "没有输入，本条在空转"
+    assert set(a.provenance) == set(a.inputs)
+    for where in a.provenance.values():
+        assert isinstance(where["page"], int) and where["page"] > 0
+        assert where["column_header"]
+    assert a.to_dict()["provenance"] == a.provenance
+
+
+def test_页码与列头印在复核者读的那一节里(registry):
+    原件 = yaml.safe_load(REAL.read_text(encoding="utf-8"))["provenance"]
+    a = answer_question("600519 2023 年的资产负债率是多少？", registry, source=FixtureSource(REAL))
+    节 = _section(
+        render_answer(a, registry.definitions["debt_to_asset_ratio"], None),
+        "这个数是拿哪几个数算出来的",
+    )
+    for path in a.inputs:
+        assert "第" + str(原件[path]["page"]) + "页" in 节, path + " 的页码没印出来"
+        assert "".join(原件[path]["column_header"].split()) in 节, path + " 的列头没印出来"
+
+
+def test_合成夹具不编页码(registry, source):
+    """合成夹具没有 PDF。给它印一个页码，等于给一家虚构公司编了一份年报。"""
+    a = answer_question("华鑫科技（900001）2023 年的期间费用率是多少？", registry, source=source)
+    assert a.inputs and a.provenance == {}
+    节 = _section(
+        render_answer(a, registry.definitions["period_expense_ratio"], None),
+        "这个数是拿哪几个数算出来的",
+    )
+    assert "页" not in 节
+
+
+def test_真实年报里没导出的字段不能说成公司没披露(registry):
+    """🔴 2026-11-01 实测：问茅台 2023 的加权平均 ROE，页面头一句是
+    「公司未披露加权平均净资产收益率」—— 而茅台 2023 年报披露了它。
+
+    那句话是定义写的拒答理由，前提是「数据源 = 整份年报」。真实数据源只导出
+    人工核对过的字段，于是「这份数据里没有这一行」被说成了「公司没披露」。
+    """
+    a = answer_question(
+        "600519 2023 年加权平均净资产收益率是多少", registry, source=FixtureSource(REAL)
+    )
+    assert a.refused and a.refusal["code"] == "UNDEFINED_CONDITION_HIT"
+    节 = _section(render_answer(a, registry.definitions["roe_weighted_average"], None), "为什么不给答案")
+    assert "不说明年报里没有披露" in 节
+
+
+def test_合成夹具缺字段时不加那句说明(registry, source):
+    """合成夹具没有「只导出核对过的字段」这回事：缺了就是这家虚构公司没有。"""
+    a = answer_question("新元（900004）2023 年的净资产收益率是多少？", registry, source=source)
+    page = render_answer(a, None, None)
+    assert "不说明年报里没有披露" not in page
+
+
+def test_多行的真实文件不印页码(tmp_path):
+    """`provenance` 按字段登记、不分行。多于一行时分不清这一页属于哪一行 —— 宁可不印。"""
+    p = tmp_path / "s.yaml"
+    p.write_text(
+        "meta:\n" + REAL_META
+        + 'rows:\n  - stock_code: "600519"\n    fiscal_year: 2023\n    bs.total_assets: "1"\n'
+        + '  - stock_code: "600519"\n    fiscal_year: 2022\n    bs.total_assets: "2"\n'
+        + 'provenance:\n  bs.total_assets: {page: 58, column_header: "2023年12月31日"}\n',
+        encoding="utf-8",
+    )
+    assert FixtureSource(p).at("600519", 2023).provenance == {}

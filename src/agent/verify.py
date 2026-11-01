@@ -44,8 +44,11 @@ from .answer import Answer, answer_question, render_answer
 from .intent import (
     _AMBIGUOUS_PREFIX,
     _AMBIGUOUS_SUFFIX,
+    _BOUNDARY_CHARS,
     _ENTITY,
     _PERIOD,
+    _is_ideograph,
+    _match_alias,
     _match_entities,
 )
 
@@ -394,6 +397,115 @@ MAX_CHECKABLE_CLAIMS = 24
 AMBIGUOUS = object()
 
 
+@dataclass(frozen=True)
+class _Blocked:
+    """上下文的这一维**被挡住了**：最近一次写下它的那一句，写的东西我认不出或认不准。
+
+    🔴 **不是 `None`。** `None` 是「前面谁都没写过」；挡住是「前面写过，我不敢认」——
+    后面的句子很可能接着在说它，所以**也不能越过它去承接更早的那个**。
+    """
+
+    why: str
+
+
+#: 相对时间。写了它的一句话说的**不是**前一句那一年：
+#: 「贵州茅台 2023 年毛利率 91.96%，去年毛利率 91.87%」的第二条说的是 2022。
+#: 承接 2023 就是拿 2023 的数去否定一条关于 2022 的声明 —— 2026-11-01 实测判了 ❌。
+#: 与 `_DELTA_WORDS` 同一条理由：只用于拒答方向，漏收的后果是退回原来的承接。
+#: 长的排前面：命中的词要原样印进理由，「上年同期」不能只印出「上年」。
+_RELATIVE_PERIOD_WORDS = (
+    "上年同期",
+    "去年同期",
+    "上一年度",
+    "上一年",
+    "上年",
+    "去年",
+    "前年",
+    "今年",
+    "明年",
+    "往年",
+    "同期",
+    "上期",
+)
+
+#: 指标名前面出现时，**单独成不了一个主体**的词：指代、连接、同一期间的限定。
+#:
+#: ⚠️ 又是一张人列的词表，而且方向与 `_DELTA_WORDS` 相反 —— 它**放行承接**，
+#: 是让系统多答的那一侧。所以收词的门槛只有一条：**它自己不可能是一家公司**。
+#: 它只回答「指标名前面剩下的字是不是全是这些」：名字里含着它们时
+#: （「宁德时代公司」），挖掉之后剩下的「宁德时代」照样挡住承接。
+#: 收少了的代价是误拒（「核不了」，理由里写着为什么），不是误答。
+#: 「母公司」刻意挡住：挖掉「公司」还剩「母」—— 母公司口径本来就不是定义里的合并口径。
+_SUBJECTLESS_WORDS = tuple(
+    sorted(
+        (
+            "本公司", "该公司", "公司",
+            "其中", "同时", "此外", "另外", "以及", "并且", "而且", "但是", "不过",
+            "而", "且", "但",
+            "报告期内", "报告期", "本年度", "本年", "当年", "本期", "当期",
+            "期内", "期末", "全年",
+            "整体", "合并",
+        ),
+        key=len,
+        reverse=True,
+    )
+)
+
+
+def _subject_written(seg: str, registry) -> str | None:
+    """这一句在指标名前面，是不是写着一个**我认不出的主体**。是就返回那截原文。
+
+    只在 `_entity_in()` 一个主体都没认出来时调用。锚点按序取：认出的指标名、
+    近似命中的那个说法、年份。三样都没有就不判 —— 那时分不清哪一截是主体、
+    哪一截是一个认不出的指标名，而那句话本来就会因为认不出指标名被拒。
+
+    🔴 判据是「剩下的字」，不是「像不像公司名」：后者要编一张公司名词表，
+    而覆盖面之外的公司正是这张表永远收不全的那些。
+
+    写了比年度更细期间的句子不判：`_judge()` 第一道就把它拒了，
+    而「第四季度」里的「第四」会被当成一个主体印回理由里。
+    """
+    if any(词 in seg for 词 in _SUB_ANNUAL_WORDS):
+        return None
+    alias, near = _match_alias(registry, seg)
+    说法 = alias or (near[0] if near else None)
+    if 说法:
+        锚 = seg.find(说法)
+    else:
+        年 = _PERIOD.search(seg)
+        锚 = 年.start() if 年 else 0
+    if 锚 <= 0:
+        return None
+    head = _ENTITY.sub(" ", _PERIOD.sub(" ", seg[:锚]))
+    原文 = " ".join(head.split())
+    for 词 in _SUBJECTLESS_WORDS + _RELATIVE_PERIOD_WORDS + _DELTA_WORDS:
+        head = head.replace(词, " ")
+    剩下 = "".join(
+        ch
+        if (_is_ideograph(ch) and ch not in _BOUNDARY_CHARS)
+        or (ch.isascii() and ch.isalpha())
+        else " "
+        for ch in head
+    )
+    # 单个拉丁字母不算（「Q4」挖掉之后剩的「Q」）；两个以上可能是英文简称。
+    if not any(not (片.isascii() and len(片) < 2) for 片 in 剩下.split()):
+        return None
+    return 原文
+
+
+def _relative_period_in(seg: str, registry) -> str | None:
+    """这一句写了相对时间吗（「去年」「上年同期」）。返回命中的那个词。
+
+    与 `_says_change()` 同一个做法：先把指标名挖掉，词要落在指标名之外。
+    """
+    alias, _near = _match_alias(registry, seg)
+    剩下 = seg.replace(alias, "") if alias else seg
+    for 词 in _RELATIVE_PERIOD_WORDS:
+        if 词 in 剩下:
+            return 词
+    return None
+
+
 def _period_in(seg: str):
     """这一句自己写了哪一年。没写 `None`；写了不止一年 `AMBIGUOUS`。
 
@@ -624,7 +736,9 @@ def read_input(text: str, registry, source=None, ask_model=None) -> VerifyReport
         )
 
     claims: list = []
-    #: 上一句立下的 `(主体, 期间)`，供后面几句承接。
+    #: 最近一次写下的 `(主体, 期间)`，供后面几句承接。**逐维、以最近的为准** ——
+    #: 报告印的是「承自前一句」，承接的就得是前一句立下的那个，不是第一句的。
+    #: 写下的东西认不出或认不准时是 `_Blocked`，见那个类。
     ctx_entity = None
     ctx_period = None
     #: 已经打出去几次问。见 `MAX_CHECKABLE_CLAIMS` 的注释。
@@ -641,13 +755,40 @@ def read_input(text: str, registry, source=None, ask_model=None) -> VerifyReport
         #    去否定一条关于万华化学的声明，还印一句「承自前一句」当作交代。
         own_e = _entity_in(seg, source, registry)
         own_p = _period_in(seg)
+        # 🔴 **认不出的主体也是主体**（2026-11-01 实测）。「宁德时代 2023 年毛利率
+        #    91.96%」跟在一句茅台后面时曾判 ✅ 一致 —— `own_e` 是 `None`，
+        #    于是承接了茅台。认不出 ≠ 没写。
+        生主体 = _subject_written(seg, registry) if own_e is None else None
+        相对 = _relative_period_in(seg, registry) if own_p is None else None
+
+        if own_e is AMBIGUOUS:
+            下一主体 = _Blocked(
+                "前面最近一次写主体的那句话里不止一家公司，或者公司名踩了边界，"
+                "我认不准是哪一家"
+            )
+        elif own_e is not None:
+            下一主体 = own_e
+        elif 生主体:
+            下一主体 = _Blocked(
+                "前面最近一次写主体的那句话写的是「" + 生主体 + "」，"
+                "我分不清它是不是另一家公司，这一句很可能接着在说它"
+            )
+        else:
+            下一主体 = ctx_entity
+        if own_p is AMBIGUOUS:
+            下一期间 = _Blocked("前面最近一次写期间的那句话写了不止一个年份，我不挑一个")
+        elif own_p is not None:
+            下一期间 = own_p
+        elif 相对:
+            下一期间 = _Blocked(
+                "前面最近一次写期间的那句话写的是「" + 相对 + "」，那是相对时间"
+            )
+        else:
+            下一期间 = ctx_period
 
         if stated is None:
-            # 这一句不可核，但主体与期间可能就写在它里面，捡起来给后面用。
-            if ctx_entity is None and own_e not in (None, AMBIGUOUS):
-                ctx_entity = own_e
-            if ctx_period is None and own_p not in (None, AMBIGUOUS):
-                ctx_period = own_p
+            # 这一句不可核，但主体与期间可能就写在它里面，留给后面用。
+            ctx_entity, ctx_period = 下一主体, 下一期间
             claims.append(
                 Claim(
                     text=seg,
@@ -675,28 +816,46 @@ def read_input(text: str, registry, source=None, ask_model=None) -> VerifyReport
         # 承接：**逐维承接，且只承接这一句自己没写的那一维**。
         # `AMBIGUOUS`（写了但认不准 —— 多家公司、多个年份、公司名边界踩线）
         # 一律**不承接**：那时停下来比猜一个更安全，`intent.py` 的原话是「不猜」。
+        # 没承接的那一维要说清为什么没承 —— 读者看到的是一条「核不了」，
+        # 而前一句明明写着主体。
         承 = []
+        没承 = []
         前缀 = ""
         if own_e is None and ctx_entity is not None:
-            前缀 += ctx_entity + " "
-            承.append("主体 " + ctx_entity)
+            if 生主体:
+                没承.append(
+                    "没有沿用前一句的主体：这句话在指标名前面还写了「" + 生主体
+                    + "」，我分不清它是不是另一家公司 —— 是的话，"
+                    "沿用前一句的主体就是拿那家公司的数去核它。"
+                )
+            elif isinstance(ctx_entity, _Blocked):
+                没承.append("没有沿用更前面的主体：" + ctx_entity.why + "。")
+            else:
+                前缀 += ctx_entity + " "
+                承.append("主体 " + ctx_entity)
         if own_p is None and ctx_period is not None:
-            前缀 += str(ctx_period) + "年 "
-            承.append("期间 " + str(ctx_period) + " 年")
+            if 相对:
+                没承.append(
+                    "没有沿用前一句的期间：这句话写的是「" + 相对
+                    + "」，那是另一个期间，我不替你换算成哪一年。"
+                )
+            elif isinstance(ctx_period, _Blocked):
+                没承.append("没有沿用更前面的期间：" + ctx_period.why + "。")
+            else:
+                前缀 += str(ctx_period) + "年 "
+                承.append("期间 " + str(ctx_period) + " 年")
         asked = (前缀 + seg) if 前缀 else seg
         inherited = "、".join(承) + " 承自前一句" if 承 else None
 
         answer = answer_question(asked, registry, source=source, ask_model=ask_model)
         问过 += 1
 
-        if ctx_entity is None and own_e not in (None, AMBIGUOUS):
-            ctx_entity = own_e
-        if ctx_period is None and own_p not in (None, AMBIGUOUS):
-            ctx_period = own_p
+        ctx_entity, ctx_period = 下一主体, 下一期间
 
         verdict, reason = _judge(
             answer, stated, registry, seg, extra, own_entity=own_e
         )
+        reason = "".join(没承) + reason
         claims.append(
             Claim(
                 text=seg,

@@ -578,6 +578,136 @@ def test_没有年份时期间承接但主体不承接(registry, source):
 
 
 # --------------------------------------------------------------------------
+# 9b. 认不出的主体也是主体（2026-11-01 实测）
+# --------------------------------------------------------------------------
+#
+# 🔴 `V-031` 钉住的是「后一句写了一家**认得出**的公司」。认不出的那一侧此前
+#    一道题都没有，而券商结论里最常见的恰恰是覆盖面之外的同行：
+#
+#    「贵州茅台 2023 年毛利率 91.96%，宁德时代 2023 年毛利率 91.96%」
+#
+#    第二条曾判 **✅ 一致** —— 拿茅台的数确认了一条关于宁德时代的声明，
+#    还印一句「主体 600519 承自前一句」当作交代。
+
+
+def test_认不出的公司名不承接前一句的主体(registry, source):
+    rep = read_input(
+        "贵州茅台 2023 年毛利率 91.96%，宁德时代 2023 年毛利率 91.96%",
+        registry,
+        source=source,
+    )
+    第二条 = rep.claims[1]
+    assert 第二条.verdict is Verdict.NOT_COVERED
+    assert "主体" not in (第二条.inherited or "")
+    assert "宁德时代" in 第二条.reason
+
+
+def test_认不出的公司名不带年份时也不承接(registry, source):
+    rep = read_input(
+        "贵州茅台 2023 年毛利率 91.96%，宁德时代毛利率 22.9%",
+        registry,
+        source=source,
+    )
+    第二条 = rep.claims[1]
+    assert 第二条.verdict is Verdict.NOT_COVERED
+    assert "主体" not in (第二条.inherited or "")
+
+
+def test_连词后面跟着认不出的公司名也不承接(registry, source):
+    rep = read_input(
+        "贵州茅台 2023 年毛利率 91.96%，而五粮液毛利率 75.8%",
+        registry,
+        source=source,
+    )
+    第二条 = rep.claims[1]
+    assert 第二条.verdict is Verdict.NOT_COVERED
+    assert "五粮液" in 第二条.reason
+
+
+@pytest.mark.parametrize(
+    "后一句, 判定",
+    [
+        ("其中净利率 50.6%", Verdict.AMBIGUOUS_BASIS),
+        ("公司流动比率 4.62", Verdict.CONSISTENT),
+        ("同时流动比率 4.62", Verdict.CONSISTENT),
+        ("流动比率达 4.62", Verdict.CONSISTENT),
+        ("期末流动比率 4.62", Verdict.CONSISTENT),
+    ],
+)
+def test_连词与指代词不挡承接(registry, source, 后一句, 判定):
+    """反向对照：挡住承接的判据不能把「其中」「公司」这类续写一并挡掉。"""
+    rep = read_input(
+        "贵州茅台 2023 年毛利率 91.96%，" + 后一句, registry, source=source
+    )
+    第二条 = rep.claims[1]
+    assert "主体 600519" in (第二条.inherited or "")
+    assert 第二条.verdict is 判定
+
+
+def test_自己写了年份的续写照样承接主体(registry, source):
+    rep = read_input(
+        "贵州茅台 2023 年毛利率 91.96%，2022 年毛利率 91.87%",
+        registry,
+        source=source,
+    )
+    第二条 = rep.claims[1]
+    assert "主体 600519" in (第二条.inherited or "")
+    assert "期间" not in (第二条.inherited or "")
+
+
+@pytest.mark.parametrize("相对", ["去年", "上年同期"])
+def test_相对时间不承接期间(registry, source, 相对):
+    """「去年毛利率 91.87%」说的是另一年。承接 2023 就是拿 2023 的数去否定它。"""
+    rep = read_input(
+        "贵州茅台 2023 年毛利率 91.96%，" + 相对 + "毛利率 91.87%",
+        registry,
+        source=source,
+    )
+    第二条 = rep.claims[1]
+    assert 第二条.verdict is Verdict.NOT_COVERED
+    assert "期间" not in (第二条.inherited or "")
+    assert 相对 in 第二条.reason
+
+
+def test_承接的是最近一次写下的主体与期间(registry, source):
+    """标签写的是「承自前一句」。前一句写了万华化学 2019，就不能承接更早的茅台 2023。"""
+    rep = read_input(
+        "600519 2023 年速动比率 3.67，万华化学 2019 年资产负债率 54.6%，流动比率 1.0",
+        registry,
+        source=source,
+    )
+    第三条 = rep.claims[2]
+    assert "600309" in (第三条.inherited or "")
+    assert "2019" in (第三条.inherited or "")
+    assert "600519" not in (第三条.inherited or "")
+    assert 第三条.answer is not None and str(第三条.answer.entity) == "600309"
+
+
+def test_不可核的句子里写的主体也立为上下文(registry, source):
+    rep = read_input(
+        "600519 2023 年流动比率 4.62，万华化学 2019 年表现不错，资产负债率 54.6%",
+        registry,
+        source=source,
+    )
+    第三条 = rep.claims[2]
+    assert "600309" in (第三条.inherited or "")
+    assert "600519" not in (第三条.inherited or "")
+
+
+def test_认不出的主体之后的续写也不承接更早的主体(registry, source):
+    """「宁德时代…，净利率 12%」里的净利率很可能是宁德时代的。承接茅台是猜。"""
+    rep = read_input(
+        "贵州茅台 2023 年毛利率 91.96%，宁德时代 2023 年毛利率 22.9%，净利率 12%",
+        registry,
+        source=source,
+    )
+    第三条 = rep.claims[2]
+    assert 第三条.verdict is Verdict.NOT_COVERED
+    assert "主体" not in (第三条.inherited or "")
+    assert "宁德时代" in 第三条.reason
+
+
+# --------------------------------------------------------------------------
 # 10. 两类「看起来完全正常的错判定」，2026-09-11 实测出来的
 # --------------------------------------------------------------------------
 

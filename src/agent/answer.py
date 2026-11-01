@@ -237,6 +237,17 @@ class FixtureSource:
         if self.is_real:
             self.row = {k: _as_number(v) for k, v in self.row.items()}
         self.found = bool(rows)
+        #: 字段 → `{page, column_header}`：这个数在年报第几页、哪一列（`D-003`）。
+        #: 🔴 只有真实年报有，且只认**单行**的文件：`provenance` 按字段登记、不分行，
+        #:    多于一行时分不清这一页属于哪一行 —— 宁可不印，不印一个张冠李戴的页码。
+        self.provenance: dict = {}
+        if self.is_real and self.found and len(data.get("rows") or []) == 1:
+            for path, where in (data.get("provenance") or {}).items():
+                if isinstance(where, dict) and isinstance(where.get("page"), int):
+                    self.provenance[str(path)] = {
+                        "page": where["page"],
+                        "column_header": str(where.get("column_header") or ""),
+                    }
 
     def at(self, stock_code, fiscal_year) -> "FixtureSource":
         """同一份夹具，换一行。**沿用同一份字节**，不重新读盘。
@@ -405,6 +416,9 @@ class Answer:
     gate: str = "not_reached"
     #: `D-038 G1` / `G2`：字段路径 → 这次真正读到的取值（字符串化，`None` 表示缺失）
     inputs: dict = field(default_factory=dict)
+    #: 字段路径 → `{page, column_header}`：`inputs` 里的数在年报第几页、哪一列。
+    #: 只有真实年报有；合成夹具没有 PDF，这里是空的（见 `FixtureSource.provenance`）。
+    provenance: dict = field(default_factory=dict)
     #: `D-038 G3`：`{"metric_count", "names", "sha256"}`，只在「说没有这个指标」时带
     registry_snapshot: Any = None
     #: `G4`（2026-09-09，`D-038` 同一条原理的第四处）：
@@ -431,6 +445,7 @@ class Answer:
             "evidence": dict(self.evidence),
             "gate": self.gate,
             "inputs": dict(self.inputs),
+            "provenance": {k: dict(v) for k, v in self.provenance.items()},
             "registry_snapshot": (
                 dict(self.registry_snapshot) if self.registry_snapshot else None
             ),
@@ -750,6 +765,10 @@ def answer_question(
     #    「执行哈希能标识一次执行，不能代替计算输入」。
     #    ⇒ 现在它是 `Answer` 的字段，`render_answer` 会把它印在正文里。
     inputs = {p: _shown(source.row.get(p)) for p in sorted(_formula_field_refs(defn))}
+    # 这几个数在年报第几页、哪一列。**不进下面那个哈希** —— 出处不改变算出来的数，
+    # 而执行哈希的定义（`D-038`）是「这一次拿什么算出了什么」。
+    出处 = getattr(source, "provenance", None) or {}
+    provenance = {p: dict(出处[p]) for p in inputs if p in 出处}
 
     evidence = dict(base)
     evidence["execution_hash"] = _sha256_text(
@@ -778,6 +797,7 @@ def answer_question(
         evidence=evidence,
         gate="passed",
         inputs=inputs,
+        provenance=provenance,
     )
 
 
@@ -816,7 +836,7 @@ _A_ENTITIES = "我们当时认得出哪些公司"
 _A_BY_MODEL = "这次的指标名是模型归一出来的"
 
 
-def _input_lines(defn, inputs: dict) -> list:
+def _input_lines(defn, inputs: dict, provenance: dict | None = None) -> list:
     """`字段 → 取值` 渲染成给财务读者看的一行行。
 
     中文名来自 `source_fields[].line_item`（定义自己写的），
@@ -826,12 +846,21 @@ def _input_lines(defn, inputs: dict) -> list:
     2026-09-09 之前这里有一份自己的截断逻辑，于是同比类指标的这一节
     印出两行同名不同值（`· 营业收入 0` / `· 营业收入 1500000000`），
     而本节的全部作用就是让人能重算一遍 —— 对不上字段就等于没有这一节。
+
+    `provenance` 在场时，每一行后面带上「年报第几页、哪一列」：
+    重算之前，复核者先得能在原件里**找到**这个数。
     """
     names = short_field_names(defn)
     out: list = []
     for path in sorted(inputs):
         label = names.get(path, path)
         out.extend(wrap("· " + label + "　" + str(inputs[path]), indent="    "))
+        where = (provenance or {}).get(path)
+        if where:
+            出处 = "年报第 " + str(where["page"]) + " 页"
+            if where.get("column_header"):
+                出处 += "「" + str(where["column_header"]) + "」列"
+            out.extend(wrap(出处, indent="        "))
     return out
 
 
@@ -845,6 +874,23 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
     if answer.refused:
         L.append(_A_REFUSED)
         L.extend(wrap("· " + str(answer.refusal.get("detail") or "（没有给出理由）")))
+        # 🔴 定义写的拒答理由以「数据源 = 整份年报」为前提（「公司未披露…」）。
+        #    真实数据源只导出人工核对过的字段 ⇒ 这一行不在，**不等于**年报里没有。
+        #    2026-11-01 实测：问茅台 2023 的加权平均 ROE，页面头一句说「公司未披露」，
+        #    而茅台 2023 年报披露了它。合成夹具不加这一句：缺了就是那家虚构公司没有。
+        if (
+            answer.refusal.get("code") == RefusalCode.UNDEFINED_CONDITION_HIT.name
+            and str(answer.evidence.get("data_source") or "").startswith("annual-report:")
+            and answer.inputs
+            and all(v == _shown(None) for v in answer.inputs.values())
+        ):
+            L.extend(
+                wrap(
+                    "· ⚠️ 这条之所以成立，是因为本系统的数据里没有这一行 —— 只导出了"
+                    "人工逐字段核对过的字段。它不说明年报里没有披露：年报可能披露了，"
+                    "只是这个字段还没核对过。"
+                )
+            )
         L.append("")
         # `D-038 G2`：拒答条件成立时，把那一条引用的字段连同取值摆出来。
         # 只说「触发了」，读者确认不了「触发得对」。
@@ -860,7 +906,7 @@ def render_answer(answer: Answer, defn=None, flag_descriptions: dict | None = No
         # 🔴 这一节是 H2 第一轮 5 道计算题全判「无法判断」直接换来的。
         if answer.inputs:
             L.append(_A_INPUTS)
-            L.extend(_input_lines(defn, answer.inputs))
+            L.extend(_input_lines(defn, answer.inputs, answer.provenance))
             L.append("")
 
     # 🔴 模型介入过的那一次，**必须写在正文里**，不能只躺在附录。
