@@ -314,7 +314,7 @@ README 里的类定义、架构图、文件清单，全是从代码派生出来�
 **本项目的口径解析、拒答判定、证据链装配全部不调模型**，因此**整个主流程都属于这一类**。
 ⇒ **判据**：这三条链路的测试**不得**以「需要密钥」为由被排除在 `gates.yml` 之外；
 若某条测试确实需要密钥，那说明它测的不是主流程，应当拆开。
-现状：`gates.yml` 跑的六道门**全部无密钥**，本条**当前成立**；
+现状：`gates.yml` 跑的五道门与冻结校验**全部无密钥**，本条**当前成立**；
 它约束的是未来——接了模型之后，不许顺手把主流程测试挪到密钥门后面。
 
 ## CI（2026-08-22 新增，D-021 第二条豁免）
@@ -338,14 +338,17 @@ CI 只允许跑验证：不得构建产物、发布、部署，工作流已声�
 「少写反斜杠」这条对策不够 —— 2026-08-28 避的是**修复动作**里的反斜杠，
 08-29 栽在**被写入内容**里的反斜杠上。完整病例见台账 `N-38`。
 
-## 提交前跑的必须是**整条七道门链**，不是其中几条（2026-08-31，实地踩到）
+## 提交前跑的必须是**整条门链**，不是其中几条（2026-08-31，实地踩到）
 
-**这就是那条链**（2026-09-05 补上 —— 此前它只活在交接文件里，
-每次会话都要重新拼一遍，拼漏一条正是本节记的那个事故）：
+**这就是那条链**，与 CI（`.github/workflows/gates.yml`）逐条相同：
 
 ```bash
-.venv/Scripts/python -m pytest -q   && .venv/Scripts/python -m semantic_layer scan   && .venv/Scripts/python -m semantic_layer validate   && .venv/Scripts/python scripts/check_xrefs.py   && .venv/Scripts/python scripts/check_reading_ledger.py   && .venv/Scripts/python scripts/check_gates.py   && .venv/Scripts/python -m pytest tests/test_plan_waves.py -q
+.venv/Scripts/python -m pytest -q   && .venv/Scripts/python -m semantic_layer scan   && .venv/Scripts/python -m semantic_layer validate   && .venv/Scripts/python scripts/check_xrefs.py   && .venv/Scripts/python scripts/check_gates.py
 ```
+
+⚠️ 2026-11-01 改过：这里原先是「七道门」，多出来的两条已经不成立 ——
+`scripts/check_reading_ledger.py` 随 `references/` 移出本仓（`D-043`），照抄会在那一步报「文件不存在」；
+`tests/test_plan_waves.py` 本来就在 `pytest -q` 里（`testpaths = ["tests"]`），单列一遍是重复。
 
 三条配套纪律：
 

@@ -36,6 +36,8 @@ Thumbs.db
 # Agent 工具的本机状态（权限白名单等，因机器而异，不进版本控制）
 .claude/settings.local.json
 .claude/settings.json.bak
+# 本机才有的指令（指向仓外工作记录的路径）。公开仓的 CLAUDE.md 不写这些。
+CLAUDE.local.md
 
 # 本地评测输出（评测问题集本身要进版本控制，结果不进）
 eval/runs/
