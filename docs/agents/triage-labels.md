@@ -23,7 +23,7 @@ The five canonical triage roles and the label string each maps to in this repo's
 **直接 `wontfix` 的情形**：
 
 - 要求引入非公开数据（D-010，不可协商）
-- 要求从 `data secret` / `privacy-preserving-agent-poc` 复制代码、语料或结论（D-004）
+- 要求从 `data secret`（操作者的另一个私有项目）复制代码、语料或结论（D-004）
 - 要求为了好看而修改已冻结的评测题目或标准答案（D-012）
 - 要求做通用 Data Agent / NL2SQL 引擎 / 多数据源（D-001）
 - 要求在未证明「非图不可」前建知识图谱（D-007）

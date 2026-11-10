@@ -64,7 +64,8 @@
   它的 Fog 指数、情感词典、Supabase 缓存与本项目无关。借的是托管：核查端点挂在它的 `/audit/*` 下。
 - 易混淆仓库（别搞错）：
   - `cninfo-analyzer-web`（TypeScript）是上面那个的 **Web 前端**，已克隆到 `../cninfo-analyzer-web`，用于演示
-  - `privacy-preserving-agent-poc`（PRIVATE）就是 `data secret`，**D-004 禁止读取、复制、引用**
+  - `data secret` 是操作者的另一个**私有**项目，**D-004 禁止读取、复制、引用**。它的仓库名不写进公开仓（`N-97`）；
+    拿不准手边某个仓是不是它，就按它处理，先问操作者
 - 仓库：`kevin1000x/finaudit-agent`，默认分支 `main`，remote 走 HTTPS + `gh` 凭据助手
 - **可见性：PUBLIC**（2026-09-11 经操作者明确指示执行，记在 `D-005` 修订三）。
   🔴 **执行者不得擅自把它改回 PRIVATE，也不得在没有同等明确指示时改动任何仓库的可见性。**

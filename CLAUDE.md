@@ -68,4 +68,4 @@
 | `rules/commands.md` | 跑评测、冻结题集、H2 复核器械，或要「造回归 → 看红 → 回退」验证一道门时 |
 | `rules/modes.md` | 切换模式、计划与现实不符、要宣告完成时 |
 | `rules/pitfalls.md` | 做架构决策、动数据源、做图、做界面之前 |
-| `rules/agent-skills.md` | 建 issue、配 hook 时 |
+| `rules/agent-skills.md` | 建 issue、配 hook 或权限规则时（冻结集的 deny 规则在这里） |

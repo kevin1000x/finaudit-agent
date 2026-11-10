@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Edit(/eval/frozen-01/cases/**)",
+      "Edit(/eval/frozen-01/fixtures/**)",
+      "Edit(/eval/frozen-01/SHA256SUMS)",
+      "Edit(/eval/frozen-02/cases/**)",
+      "Edit(/eval/frozen-02/fixtures/**)",
+      "Edit(/eval/frozen-02/SHA256SUMS)",
+      "Edit(/eval/frozen-03/cases/**)",
+      "Edit(/eval/frozen-03/fixtures/**)",
+      "Edit(/eval/frozen-03/SHA256SUMS)",
+      "Edit(/eval/frozen-04/cases/**)",
+      "Edit(/eval/frozen-04/fixtures/**)",
+      "Edit(/eval/frozen-04/SHA256SUMS)",
+      "Edit(/docs/agent/poc-01/definitions/**)",
+      "Edit(/docs/agent/poc-01/answers/**)",
+      "Edit(/docs/agent/poc-01/field_inventory.md)",
+      "Edit(/docs/agent/poc-01/questions.md)",
+      "Edit(/docs/agent/poc-01/COMPARISON.md)",
+      "Edit(/docs/agent/poc-01/SHA256SUMS)"
+    ]
+  }
+}

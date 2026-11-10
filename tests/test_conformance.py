@@ -509,3 +509,76 @@ def test_每份清单在工作树上自校验通过():
             assert got == want, f"{target} 哈希不符：清单 {want[:16]}… 实际 {got[:16]}…"
             checked += 1
     assert checked >= 26, f"覆盖太薄，只校了 {checked} 个文件（frozen-01 21 + poc-01 5 起）"
+
+
+# --------------------------------------------------------------------------
+# 冻结集的写入 deny 规则（N-98，2026-11-10）
+# --------------------------------------------------------------------------
+
+#: `D-012` 硬规则覆盖的冻结集（AGENTS.md）。`docs/agent/h2-*` 与 `eval/testdata/`
+#: 也有清单，但不在这条硬规则里：前者的 `answer-sheet.yaml` 要由复核人回填，后者是测试夹具。
+_D012_ROOTS = ("eval/frozen-", "docs/agent/poc-01/")
+
+
+def _deny_rules() -> list:
+    import json
+
+    settings = json.loads((REPO_ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    return settings["permissions"]["deny"]
+
+
+def _denied(rel: str, rules: list) -> bool:
+    """`rel`（仓库相对、正斜杠）是否落在某条 `Edit(/…)` 规则里。
+
+    ⚠️ 这是 Claude Code 匹配器的**近似**：`**` 与 `*` 都当成能跨目录的 `*`。
+    规则在真实工具上拦不拦得住，以 2026-11-10 的实测为准（`rules/agent-skills.md`）；
+    这里只管「清单里的每个文件都有规则罩着」这件会随新冻结一个套件而过期的事。
+    """
+    import fnmatch
+
+    for rule in rules:
+        if rule.startswith("Edit(/") and rule.endswith(")"):
+            if fnmatch.fnmatchcase(rel, rule[len("Edit(/"):-1].replace("**", "*")):
+                return True
+    return False
+
+
+def test_冻结集的承重文件都在写入deny规则里():
+    """🔴 「冻结题不可改」此前只是提示词（`N-98`）。
+
+    基准同样是磁盘上的清单，不是写死的套件名：新冻结一个套件而没在
+    `.claude/settings.json` 补规则，这一条就红到补上为止。
+    规则按套件逐个列、不用 `frozen-0*` 通配，是为了不挡住**冻结之前**写新套件的题面。
+
+    它挡不住的：Bash 与脚本写入不走这些规则。真正的护栏仍是上面两条哈希校验。
+    """
+    rules = _deny_rules()
+    bases, missing = [], []
+    for manifest in _manifests():
+        base = manifest.parent.relative_to(REPO_ROOT).as_posix() + "/"
+        if not base.startswith(_D012_ROOTS):
+            continue
+        bases.append(base)
+        targets = [base + "SHA256SUMS"] + [
+            base + _manifest_path(line)
+            for line in manifest.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        missing += [t for t in targets if not _denied(t, rules)]
+    assert len(bases) >= 5, f"只找到 {len(bases)} 个冻结集（frozen-01…04 + poc-01 起）：{bases}"
+    assert missing == [], "这些冻结文件没有写入 deny 规则：" + "; ".join(missing)
+
+
+def test_作废通道与冻结记录不在deny规则里():
+    """反方向：`VOIDED.yaml`（整批作废）与 `FREEZE.md`（只追加的冻结记录）必须仍可写。
+
+    把整个套件目录 deny 掉会顺手堵死整批作废 —— 而 `frozen-03` 正是这样作废的（`D-045`）。
+    ⚠️ 逐题 `voided:` 写在题面里，**会**被挡：那是有意的，见 `rules/agent-skills.md`。
+    """
+    rules = _deny_rules()
+    suites = sorted((REPO_ROOT / "eval").glob("frozen-*"))
+    assert suites, "eval/ 下一个冻结套件都没找到"
+    writable = [f"eval/{s.name}/{n}" for s in suites for n in ("VOIDED.yaml", "FREEZE.md")]
+    writable.append("docs/agent/poc-01/FREEZE.md")
+    blocked = [rel for rel in writable if _denied(rel, rules)]
+    assert blocked == [], "这些本该可写的文件被 deny 规则挡住了：" + "; ".join(blocked)

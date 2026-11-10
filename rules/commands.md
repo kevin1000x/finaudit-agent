@@ -26,6 +26,9 @@ python -m eval.verify_run --suite frozen-03
 ⚠️ **不要去跑 `frozen-03` 再引用它的数**：那一批里有三题的标准答案与定义语料矛盾，
 作废逐条在 `eval/frozen-03/VOIDED.yaml`。它的 14 份题面**一个字节都不许改**
 （哈希仍在 CI 的冻结校验里），因为它是一份历史记录。
+⚠️ **冻结一个新套件之后**，在 `.claude/settings.json` 的 `permissions.deny` 给它补三条
+（`cases/**`、`fixtures/**`、`SHA256SUMS`）；不补，`tests/test_conformance.py` 的 deny 覆盖测试就是红的。
+规则逐套件列、不用通配，所以冻结**之前**写题面不受影响（`N-98`，细节在 `rules/agent-skills.md`）。
 
 （评测命令在 Phase 1 实现前不存在，不要假装跑过。）
 
