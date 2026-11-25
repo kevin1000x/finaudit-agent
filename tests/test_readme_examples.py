@@ -11,6 +11,7 @@ README 说「逐字是系统的输出」，那一天起这句话就是假的，�
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -57,6 +58,24 @@ def _page(text: str) -> list:
 def _contiguous(needle: list, haystack: list) -> bool:
     n = len(needle)
     return any(haystack[i : i + n] == needle for i in range(len(haystack) - n + 1))
+
+
+def test_首页同一读数的两种表述():
+    section = _text().split("## 茅台净利率", 1)[1].split("\n## ", 1)[0]
+    sample = _quote_after(section, "复制下面这一行")
+    status, result = api.verify_endpoint({"text": sample})
+    assert status == 200
+    first, second = result["report"]["claims"]
+    assert (first["verdict"], second["verdict"]) == ("AMBIGUOUS_BASIS", "CONSISTENT")
+    answer = second["answer"]
+    assert first["answer"]["value"] == answer["value"]
+    assert answer["metric_id"] == "net_profit_margin_attributable"
+    for field, label in (("is.net_profit_attributable_to_parent", "归母净利润"),
+                         ("is.operating_revenue_current", "营业收入")):
+        source = answer["provenance"][field]
+        assert source["column_header"] in section
+        amount = Decimal(answer["inputs"][field])
+        assert re.search(rf"第 {source['page']} 页列示{label}\s*{re.escape(f'{amount:,.2f}')} 元", section)
 
 
 def test_它长什么样_逐字是系统的输出():

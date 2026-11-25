@@ -36,6 +36,10 @@
 - **pytest 在跑时不要再起 python 进程，也别加 `-I`**：`-I` 让 `PYTHONDONTWRITEBYTECODE` 失效，
   字节码写进 `src/**/__pycache__`，`tests/test_conformance.py` 当场红两条（2026-10-31）。
   临时脚本写进 scratchpad，带 `PYTHONDONTWRITEBYTECODE=1` 跑。
+- **批跑、探测的脚本和产物不要只放 scratchpad**：scratchpad 会被整个清掉。台账 `A-10` 丢过
+  茅台 PDF 与探测脚本；2026-11-12 `R-4` 第一遍整批的脚本连同 171 行结果又丢了一次，只能重跑。
+  脚本放进 `scripts/`，并在 `check_gates.py` 的 `NOT_GATES` 登记（`test_gates.py` 会查）；
+  中间产物写进已在 `.gitignore` 里的 `data/results/`。
 - Bash 工具把中文输出显示成乱码：python 加 `-X utf8`，结果写进文件，用 Read 看。
 - 往文件里写反斜杠用 `chr(92)`；用 Python 整文件改写时先写临时文件再 `os.replace`（病例在 `rules/commands.md`）。
 - **冻结题的期望值不能从系统输出抄**，那是 `D-012` 禁止的「迁就模型」；拿不到独立来源就只钉 `metric_id`。

@@ -209,6 +209,10 @@ GATES: tuple[Gate, ...] = (
 # `scripts/` 下**不是门禁**的东西，写在这里以示这不是漏登记。
 NOT_GATES: dict[str, str] = {
     "backlog_status.py": "统计工具，不产生通过/不通过判定，其 docstring 已写明",
+    "batch_extract.py": (
+        "整批读数器（`D-048` / `R-4`）：逐份记抽取状态与拒答结构，按结构归类出读数表。"
+        "退出码只说明脚本有没有跑完，不产生通过/不通过判定。其 docstring 已写明"
+    ),
     "probe_fields.py": (
         "探测工具，只 dump 版面原文供人判定，不产生通过/不通过判定；"
         "它一旦开始替人判「这一行是不是那个字段」，SC-8 就在探测阶段先失守。其 docstring 已写明"
